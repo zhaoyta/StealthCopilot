@@ -1,0 +1,27 @@
+# CLA Assistant 配置
+# 文档：https://github.com/contributor-assistant/github-action
+#
+# CLA 文档 URL（签署后存储在同仓库的 .github/cla-signatures.json）
+# 贡献者在 PR 评论区回复指定内容即完成签署。
+
+cla-path: '.github/cla.md'
+signatures-path: '.github/cla-signatures.json'
+
+# 豁免：仓库所有者无需签署 CLA
+allowlist: zhaoyta
+
+# 签署触发语句（贡献者在 PR 评论区回复此内容）
+sign-comment: >
+  I have read the CLA Document and I hereby sign the CLA.
+
+# 未签署时的提示评论（支持 Markdown）
+unsigned-comment: >
+  感谢您的贡献！在我们合并您的 PR 之前，请您签署贡献者许可协议（CLA）。
+
+  请在此 PR 的评论区回复以下内容（复制粘贴即可）：
+
+  ```
+  I have read the CLA Document and I hereby sign the CLA.
+  ```
+
+  签署后，CLA Assistant 会自动更新 PR 状态。

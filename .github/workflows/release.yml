@@ -1,0 +1,71 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: []
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Wait for build artifacts (macOS)
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const tag = context.ref.replace('refs/tags/', '');
+            // 等待同 commit 的 build workflow 完成（最多等 30 分钟）
+            const timeout = Date.now() + 30 * 60 * 1000;
+            while (Date.now() < timeout) {
+              const runs = await github.rest.actions.listWorkflowRunsForRepo({
+                owner, repo, event: 'push', status: 'completed',
+                head_sha: context.sha,
+              });
+              const buildRun = runs.data.workflow_runs.find(r => r.name === 'Build');
+              if (buildRun && buildRun.conclusion === 'success') break;
+              await new Promise(r => setTimeout(r, 30000));
+            }
+
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: stealthcopilot-macos
+          path: dist/mac/
+        continue-on-error: true
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: stealthcopilot-windows
+          path: dist/win/
+        continue-on-error: true
+
+      - name: Generate release notes from CHANGELOG
+        id: changelog
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          # 提取当前 tag 对应的 CHANGELOG 段落
+          NOTES=$(awk "/^## \[${TAG#v}\]/{found=1; next} found && /^## /{exit} found{print}" CHANGELOG.md)
+          echo "notes<<EOF" >> $GITHUB_OUTPUT
+          echo "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body: ${{ steps.changelog.outputs.notes }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') }}
+          files: |
+            dist/mac/*
+            dist/win/*

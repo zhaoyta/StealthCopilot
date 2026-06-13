@@ -1,0 +1,69 @@
+name: Bug Report
+description: 报告一个功能异常或崩溃
+labels: ["bug", "needs-triage"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你花时间填写 Bug 报告！请尽量提供详细信息，帮助我们快速定位问题。
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述
+      description: 清晰简洁地描述发生了什么
+      placeholder: 当我点击「开始说话链」时，应用崩溃并显示错误弹窗…
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      description: 如何稳定复现这个问题
+      placeholder: |
+        1. 打开应用
+        2. 进入「设置 → 说话链」
+        3. 点击「开始」
+        4. 看到崩溃
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期行为
+      placeholder: 应该正常启动说话链，显示绿色状态指示灯
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: 操作系统
+      options:
+        - macOS 14 (Sonoma)
+        - macOS 13 (Ventura)
+        - macOS 12 (Monterey)
+        - Windows 11
+        - Windows 10
+        - 其他
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 应用版本
+      placeholder: v0.2.1
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 错误日志 / 截图
+      description: 如有控制台日志或截图，请粘贴在此
+      render: shell

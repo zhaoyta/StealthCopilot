@@ -1,0 +1,79 @@
+name: Lint
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  go-lint:
+    name: Go Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: stealthcopilot/go.mod
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: stealthcopilot
+          args: --timeout=5m
+
+  go-licenses:
+    name: Third-party License Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: stealthcopilot/go.mod
+
+      - name: Install go-licenses
+        run: go install github.com/google/go-licenses@latest
+
+      - name: Generate THIRD_PARTY_LICENSES
+        working-directory: stealthcopilot
+        run: |
+          go-licenses report ./... \
+            --ignore github.com/zhaoyta/stealthcopilot \
+            --template ../scripts/licenses.tpl \
+            > ../THIRD_PARTY_LICENSES.new 2>/dev/null || true
+
+      - name: Check for license changes
+        run: |
+          if [ -f THIRD_PARTY_LICENSES ] && diff -q THIRD_PARTY_LICENSES THIRD_PARTY_LICENSES.new > /dev/null 2>&1; then
+            echo "✓ THIRD_PARTY_LICENSES is up to date"
+          elif [ ! -f THIRD_PARTY_LICENSES ]; then
+            echo "THIRD_PARTY_LICENSES not found — run 'go-licenses report' to generate it"
+            exit 1
+          else
+            echo "::warning::THIRD_PARTY_LICENSES may be outdated. Run go-licenses report to update."
+          fi
+
+  frontend-lint:
+    name: Frontend Lint (ESLint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install deps
+        working-directory: stealthcopilot/frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: ESLint
+        working-directory: stealthcopilot/frontend
+        run: pnpm lint

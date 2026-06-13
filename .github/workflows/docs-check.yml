@@ -1,0 +1,43 @@
+name: Docs Check
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  docs-check:
+    name: Docs Update Required
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check docs update for feat/fix commits
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+
+          # 获取 PR 中所有 commit message
+          MESSAGES=$(git log "$BASE".."$HEAD" --format="%s")
+
+          # 判断是否包含 feat: 或 fix: 类型提交
+          if ! echo "$MESSAGES" | grep -qE '^(feat|fix)(\(.+\))?!?:'; then
+            echo "No feat/fix commits found — docs check skipped."
+            exit 0
+          fi
+
+          echo "Found feat/fix commits:"
+          echo "$MESSAGES" | grep -E '^(feat|fix)(\(.+\))?!?:'
+
+          # 检查 PR diff 是否包含 docs/ 目录修改
+          CHANGED=$(git diff --name-only "$BASE".."$HEAD")
+          if echo "$CHANGED" | grep -q '^docs/'; then
+            echo "✓ docs/ changes found — check passed."
+            exit 0
+          fi
+
+          echo ""
+          echo "::error::PR contains feat/fix commits but no docs/ changes found."
+          echo "::error::Please update docs/ to describe the new feature or fix."
+          exit 1
