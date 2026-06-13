@@ -1,3 +1,21 @@
+# ─── Wails 构建产物 ───────────────────────────────────────────────────────────
+stealthcopilot/build/bin/
+stealthcopilot/build/windows/
+stealthcopilot/build/darwin/
+stealthcopilot/frontend/dist/
+stealthcopilot/frontend/node_modules/
+stealthcopilot/wailsjs/
+
+# ─── Go 测试产物 ──────────────────────────────────────────────────────────────
+coverage.out
+coverage.html
+*.test
+
+# ─── 文档站构建产物 ────────────────────────────────────────────────────────────
+docs/node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+
 # ─── 环境与密钥（绝不提交） ────────────────────────────────────────────────────
 .env
 .env.*
@@ -6,11 +24,6 @@
 *.p12
 *.pfx
 secrets/
-
-# ─── 文档站构建产物 ────────────────────────────────────────────────────────────
-docs/node_modules/
-docs/.vitepress/dist/
-docs/.vitepress/cache/
 
 # ─── macOS ────────────────────────────────────────────────────────────────────
 .DS_Store
