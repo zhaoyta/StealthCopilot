@@ -11,6 +11,7 @@ import (
 	"github.com/zhaoyta/stealthcopilot/internal/config"
 	"github.com/zhaoyta/stealthcopilot/internal/hearing"
 	"github.com/zhaoyta/stealthcopilot/internal/resume"
+	"github.com/zhaoyta/stealthcopilot/internal/speaking"
 	"github.com/zhaoyta/stealthcopilot/internal/system"
 	"github.com/zhaoyta/stealthcopilot/internal/ui"
 )
@@ -22,6 +23,7 @@ type App struct {
 	ResumeSvc           *resume.Service
 	SystemSvc           *system.Service
 	HearingChain        *hearing.Chain
+	SpeakingChain       *speaking.Chain
 	teleprompterMu      sync.RWMutex
 	teleprompterVisible bool
 	teleprompterWindow  windowSnapshot
@@ -90,6 +92,9 @@ func (a *App) startup(ctx context.Context) {
 
 	// 4. 听力链协调器（各组件在 StartHearingChain binding 中按需实例化）
 	a.HearingChain = &hearing.Chain{}
+
+	// 5. 说话链协调器（各组件在 StartSpeakingChain binding 中按需实例化）
+	a.SpeakingChain = &speaking.Chain{}
 }
 
 // shutdown 在 Wails 应用关闭时调用，释放资源。

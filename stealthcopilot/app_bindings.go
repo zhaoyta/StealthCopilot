@@ -10,8 +10,10 @@ import (
 	"github.com/zhaoyta/stealthcopilot/internal/hearing"
 	"github.com/zhaoyta/stealthcopilot/internal/rag"
 	"github.com/zhaoyta/stealthcopilot/internal/resume"
+	"github.com/zhaoyta/stealthcopilot/internal/speaking"
 	"github.com/zhaoyta/stealthcopilot/internal/system"
 	"github.com/zhaoyta/stealthcopilot/internal/translation"
+	"github.com/zhaoyta/stealthcopilot/internal/tts"
 	"github.com/zhaoyta/stealthcopilot/internal/ui"
 )
 
@@ -193,4 +195,40 @@ func (a *App) StartHearingChain() string {
 // StopHearingChain 停止听力链，等待所有 goroutine 退出后返回。
 func (a *App) StopHearingChain() {
 	a.HearingChain.Stop()
+}
+
+// ===== Speaking Chain 相关绑定 =====
+
+// StartSpeakingChain 启动说话链管道：麦克风捕获 → VAD → 讯飞翻译 → ElevenLabs TTS → 虚拟麦克风。
+// 配置从当前 ConfigSvc 读取；已在运行时先停止再重新启动。
+// 返回空字符串表示成功，否则返回错误描述。
+func (a *App) StartSpeakingChain() string {
+	cfg := a.ConfigSvc.InternalManager().Config
+	chainCfg := speaking.ChainConfig{
+		Xunfei: translation.XunfeiSpeakConfig{
+			AppID:      cfg.XunfeiAppID,
+			APIKey:     cfg.XunfeiAPIKey,
+			APISecret:  cfg.XunfeiAPISecret,
+			SourceLang: cfg.SpeakingInputLang,
+			TargetLang: cfg.SpeakingOutputLang,
+		},
+		ElevenLabs: tts.ElevenLabsConfig{
+			APIKey:  cfg.ElevenLabsKey,
+			VoiceID: cfg.ElevenLabsVoiceID,
+		},
+		PhysicalMicDevice:  cfg.PhysicalMicName,
+		VirtualMicDevice:   cfg.VirtualMicName,
+		SilenceThresholdMs: 800,
+	}
+	return a.SpeakingChain.Start(a.ctx, chainCfg)
+}
+
+// StopSpeakingChain 停止说话链，等待所有 goroutine 退出后返回。
+func (a *App) StopSpeakingChain() {
+	a.SpeakingChain.Stop()
+}
+
+// SetVADSilenceThreshold 运行时更新 VAD 静音阈值（毫秒），即时生效，无需重启说话链。
+func (a *App) SetVADSilenceThreshold(ms int) {
+	a.SpeakingChain.SetSilenceThreshold(ms)
 }
