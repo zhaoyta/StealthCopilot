@@ -11,7 +11,7 @@
   },
   "config": {
     "commitizen": {
-      "path": "node_modules/cz-git"
+      "path": "stealthcopilot/frontend/node_modules/cz-git"
     }
   },
   "lint-staged": {
