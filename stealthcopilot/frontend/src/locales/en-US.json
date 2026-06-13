@@ -11,23 +11,37 @@
     "next": "Next",
     "back": "Back",
     "finish": "Finish",
-    "skip": "Skip"
+    "skip": "Skip",
+    "delete": "Delete"
   },
   "setup": {
     "title": "Setup",
     "step": "Step {current} of {total}",
+    "welcome": {
+      "stepLabel": "Welcome",
+      "title": "Welcome to StealthCopilot",
+      "desc": "StealthCopilot helps you in real-time: it listens to your interviewer, generates professional English responses, and speaks in your cloned voice — all invisibly.",
+      "hearingDesc": "Captures interviewer speech and provides real-time Chinese suggestions",
+      "speakingDesc": "You speak Chinese; system outputs fluent cloned English audio",
+      "videoDesc": "Lip-synced real face, invisible to screen recording",
+      "hint": "Click Next to begin setup — takes about 5 minutes"
+    },
     "deps": {
       "title": "Dependency Check",
-      "desc": "Checking required components",
-      "virtualMic": "Virtual Microphone",
-      "virtualCam": "Virtual Camera",
+      "desc": "Check required system components. Missing items can be installed with one click.",
+      "virtualMic": "Virtual Microphone (BlackHole / VB-Cable)",
+      "virtualCam": "Virtual Camera (OBS VirtualCam)",
       "install": "Install",
       "installed": "Installed",
-      "failed": "Failed"
+      "failed": "Failed",
+      "recheck": "Re-check"
     },
     "apiKeys": {
       "title": "Configure API Keys",
-      "desc": "Your keys are stored locally only"
+      "desc": "Your keys are stored in the system Keychain (encrypted), never uploaded to any server.",
+      "optional": "optional",
+      "placeholder": "Paste key…",
+      "secureNote": "🔒 Keys are encrypted in system Keychain, never stored as plain text"
     },
     "language": {
       "title": "Language Settings",
@@ -38,12 +52,29 @@
     },
     "voice": {
       "title": "Voice Cloning",
-      "desc": "Record ~15 seconds to create your personal voice clone",
+      "desc": "Record ~15 seconds to create your personal English voice clone (requires ElevenLabs API Key)",
       "record": "Start Recording",
       "stop": "Stop Recording",
       "upload": "Upload & Clone",
       "uploading": "Uploading…",
-      "done": "Voice cloned successfully"
+      "done": "Voice cloned successfully",
+      "doneDesc": "Your personal voice has been saved. Speaking chain will use the cloned voice.",
+      "skipped": "Voice cloning skipped",
+      "skippedDesc": "Speaking chain will fall back to system TTS. You can complete this later in Settings.",
+      "readAloud": "Please read the following text aloud (~15 seconds):",
+      "sampleText": "I am a software engineer with extensive experience in designing and implementing distributed systems. In my previous role, I led the migration of a monolithic application to a microservices architecture, which improved scalability by 300%. I am passionate about clean code and believe that good engineering practices are essential for long-term team success.",
+      "micError": "Cannot access microphone. Please check system permissions."
+    },
+    "done": {
+      "title": "Setup Complete",
+      "desc": "Your configuration has been saved. Click Finish to enter the main interface.",
+      "summary": "Configuration Summary",
+      "xunfei": "iFlytek API (Hearing chain)",
+      "deepseek": "DeepSeek API (AI responses)",
+      "elevenlabs": "ElevenLabs API (TTS)",
+      "voiceId": "Voice Clone ID",
+      "simli": "Simli AI (Lip sync)",
+      "hint": "Optional items can be completed later in Settings"
     },
     "resume": {
       "title": "Import Resume",
@@ -63,6 +94,10 @@
       "advanced": "Advanced"
     },
     "apiKeys": {
+      "test": "Test Connection",
+      "statusOk": "Connected",
+      "statusFail": "Failed",
+      "statusTesting": "Testing…",
       "xunfei": {
         "appId": "iFlytek App ID",
         "apiKey": "iFlytek API Key",
@@ -82,16 +117,32 @@
       }
     },
     "devices": {
-      "virtualMic": "Virtual Microphone",
+      "virtualMic": "Virtual Microphone (BlackHole / VB-Cable)",
       "physicalMic": "Physical Microphone",
       "physicalCam": "Physical Camera",
-      "virtualCam": "Virtual Camera",
-      "refresh": "Refresh Devices"
+      "virtualCam": "Virtual Camera (OBS VirtualCam)",
+      "refresh": "Re-enumerate Devices",
+      "select": "Select…"
+    },
+    "resume": {
+      "empty": "Drag a resume here or click Upload to select a file",
+      "activate": "Set Active",
+      "activeLabel": "Active"
     },
     "ghost": {
       "opacity": "Opacity",
       "fontSize": "Font Size",
-      "position": "Position"
+      "position": "Position",
+      "preview": "Live Preview",
+      "previewSubtitle": "Interviewer: How do you handle…",
+      "previewAnswer": "Answer suggestion preview",
+      "positions": {
+        "topLeft": "Top Left",
+        "topRight": "Top Right",
+        "bottomLeft": "Bottom Left",
+        "bottomRight": "Bottom Right",
+        "center": "Center"
+      }
     },
     "advanced": {
       "ragPrompt": "Answer Generation Prompt",
@@ -101,6 +152,9 @@
   },
   "dashboard": {
     "title": "StealthCopilot",
+    "placeholder": "Main interface will be implemented in upcoming changes (hearing-chain / speaking-chain / video-chain)",
+    "openTeleprompter": "Open Teleprompter",
+    "openSettings": "Open Settings",
     "start": "Start Session",
     "stop": "End Session",
     "hearingChain": "Hearing Chain",
@@ -120,9 +174,14 @@
     "latency": "{ms}ms latency"
   },
   "teleprompter": {
+    "title": "StealthCopilot",
+    "pill": "Teleprompter",
     "subtitle": "Interviewer:",
     "suggestion": "Suggested Response:",
     "minimize": "Minimize",
+    "close": "Close",
+    "subtitlePlaceholder": "Waiting for interviewer subtitles...",
+    "answerPlaceholder": "Answer suggestions will stream here.",
     "noResume": "No active resume detected, suggestion feature disabled"
   }
 }

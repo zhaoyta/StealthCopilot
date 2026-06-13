@@ -11,23 +11,37 @@
     "next": "下一步",
     "back": "上一步",
     "finish": "完成",
-    "skip": "跳过"
+    "skip": "跳过",
+    "delete": "删除"
   },
   "setup": {
     "title": "初始化设置",
     "step": "第 {current} 步，共 {total} 步",
+    "welcome": {
+      "stepLabel": "欢迎",
+      "title": "欢迎使用 StealthCopilot",
+      "desc": "在面试中，StealthCopilot 实时帮您听懂面试官的问题、生成专业英文回答，并以您的声音克隆输出——让面试官只看到自信从容的您。",
+      "hearingDesc": "实时接收面试官语音，自动翻译并生成中文回答建议",
+      "speakingDesc": "您说中文，系统输出流利英文克隆声音",
+      "videoDesc": "口型同步真人画面，对屏幕录制完全不可见",
+      "hint": "点击【下一步】开始配置，约需 5 分钟完成初始化"
+    },
     "deps": {
       "title": "依赖检测",
-      "desc": "检测运行所需组件",
-      "virtualMic": "虚拟声卡",
-      "virtualCam": "虚拟摄像头",
+      "desc": "检测运行所需系统组件，缺失项可一键安装",
+      "virtualMic": "虚拟声卡（BlackHole / VB-Cable）",
+      "virtualCam": "虚拟摄像头（OBS VirtualCam）",
       "install": "一键安装",
       "installed": "已安装",
-      "failed": "安装失败"
+      "failed": "安装失败",
+      "recheck": "重新检测"
     },
     "apiKeys": {
       "title": "配置服务密钥",
-      "desc": "填写各服务的访问密钥，密钥仅存储在本地"
+      "desc": "填写各服务的访问密钥，密钥仅存储在系统密钥链（Keychain）中，不上传任何服务器",
+      "optional": "可选",
+      "placeholder": "粘贴密钥…",
+      "secureNote": "🔒 密钥加密存储于系统 Keychain，不落明文"
     },
     "language": {
       "title": "语言设置",
@@ -38,12 +52,29 @@
     },
     "voice": {
       "title": "声音克隆",
-      "desc": "录制约 15 秒语音，用于生成您的专属英文声音",
+      "desc": "录制约 15 秒语音，用于生成您的专属英文声音（需要 ElevenLabs API Key）",
       "record": "开始录制",
       "stop": "停止录制",
       "upload": "上传并克隆",
       "uploading": "上传中…",
-      "done": "声音克隆成功"
+      "done": "声音克隆成功",
+      "doneDesc": "您的专属声音已保存，说话链将使用克隆音色输出",
+      "skipped": "已跳过声音克隆",
+      "skippedDesc": "说话链将降级为系统默认 TTS，可稍后在设置中补全",
+      "readAloud": "请大声朗读以下文本（约 15 秒）：",
+      "sampleText": "I am a software engineer with extensive experience in designing and implementing distributed systems. In my previous role, I led the migration of a monolithic application to a microservices architecture, which improved scalability by 300%. I am passionate about clean code and believe that good engineering practices are essential for long-term team success.",
+      "micError": "无法访问麦克风，请检查系统权限设置"
+    },
+    "done": {
+      "title": "初始化完成",
+      "desc": "配置已保存，点击【完成】进入主界面开始使用",
+      "summary": "配置项汇总",
+      "xunfei": "讯飞 API（听力链）",
+      "deepseek": "DeepSeek API（AI 回答）",
+      "elevenlabs": "ElevenLabs API（TTS）",
+      "voiceId": "声音克隆 Voice ID",
+      "simli": "Simli AI（视频口型同步）",
+      "hint": "未完成的可选项可随时在设置面板补全"
     },
     "resume": {
       "title": "导入简历",
@@ -63,6 +94,10 @@
       "advanced": "高级"
     },
     "apiKeys": {
+      "test": "连接测试",
+      "statusOk": "已连接",
+      "statusFail": "失败",
+      "statusTesting": "测试中…",
       "xunfei": {
         "appId": "讯飞 App ID",
         "apiKey": "讯飞 API Key",
@@ -82,16 +117,32 @@
       }
     },
     "devices": {
-      "virtualMic": "虚拟声卡",
+      "virtualMic": "虚拟声卡（BlackHole / VB-Cable）",
       "physicalMic": "物理麦克风",
       "physicalCam": "物理摄像头",
-      "virtualCam": "虚拟摄像头",
-      "refresh": "刷新设备列表"
+      "virtualCam": "虚拟摄像头（OBS VirtualCam）",
+      "refresh": "重新枚举设备",
+      "select": "请选择…"
+    },
+    "resume": {
+      "empty": "拖拽简历到此处，或点击【上传】按钮选择文件",
+      "activate": "设为激活",
+      "activeLabel": "激活"
     },
     "ghost": {
       "opacity": "透明度",
       "fontSize": "字号",
-      "position": "位置"
+      "position": "位置",
+      "preview": "实时预览",
+      "previewSubtitle": "面试官：How do you handle…",
+      "previewAnswer": "回答建议示例文本",
+      "positions": {
+        "topLeft": "左上",
+        "topRight": "右上",
+        "bottomLeft": "左下",
+        "bottomRight": "右下",
+        "center": "居中"
+      }
     },
     "advanced": {
       "ragPrompt": "回答生成提示词",
@@ -101,6 +152,9 @@
   },
   "dashboard": {
     "title": "StealthCopilot",
+    "placeholder": "主界面将在后续 change 中实现（hearing-chain / speaking-chain / video-chain）",
+    "openTeleprompter": "打开提词窗",
+    "openSettings": "打开设置",
     "start": "开始面试",
     "stop": "结束面试",
     "hearingChain": "听力链",
@@ -120,9 +174,14 @@
     "latency": "延迟 {ms}ms"
   },
   "teleprompter": {
+    "title": "StealthCopilot",
+    "pill": "提词窗",
     "subtitle": "面试官说：",
     "suggestion": "回答建议：",
     "minimize": "最小化",
+    "close": "关闭",
+    "subtitlePlaceholder": "等待面试官字幕…",
+    "answerPlaceholder": "回答建议将在这里流式显示。",
     "noResume": "未检测到激活简历，建议功能已禁用"
   }
 }
