@@ -1,0 +1,36 @@
+# golangci-lint 配置 — StealthCopilot Go 代码质量门控
+# 所有 error 级别问题会阻断 CI 和 pre-commit
+
+run:
+  timeout: 5m
+  # 排除自动生成的文件
+  skip-files:
+    - ".*_generated\\.go$"
+
+linters:
+  enable:
+    - errcheck        # 强制检查所有 error 返回值
+    - govet           # Go 官方静态分析
+    - staticcheck     # 高级静态分析（检测常见 bug 模式）
+    - gofmt           # 格式化检查
+    - goimports       # import 排序和分组检查
+    - unused          # 检查未使用的代码
+    - gosimple        # 建议简化代码的写法
+    - ineffassign     # 检测无效赋值
+    - bodyclose       # 确保 HTTP response body 被关闭
+    - gocritic        # 多种代码风格和质量检查
+
+linters-settings:
+  errcheck:
+    # 检查类型断言的 ok 值
+    check-type-assertions: true
+  goimports:
+    # 本地模块前缀，用于 import 分组
+    local-prefixes: github.com/zhaoyta/stealthcopilot
+
+issues:
+  # 排除测试文件中的某些规则
+  exclude-rules:
+    - path: "_test\\.go$"
+      linters:
+        - errcheck

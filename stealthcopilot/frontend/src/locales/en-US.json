@@ -1,0 +1,128 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "close": "Close",
+    "loading": "Loading…",
+    "error": "An error occurred",
+    "success": "Success",
+    "reset": "Reset to Default",
+    "next": "Next",
+    "back": "Back",
+    "finish": "Finish",
+    "skip": "Skip"
+  },
+  "setup": {
+    "title": "Setup",
+    "step": "Step {current} of {total}",
+    "deps": {
+      "title": "Dependency Check",
+      "desc": "Checking required components",
+      "virtualMic": "Virtual Microphone",
+      "virtualCam": "Virtual Camera",
+      "install": "Install",
+      "installed": "Installed",
+      "failed": "Failed"
+    },
+    "apiKeys": {
+      "title": "Configure API Keys",
+      "desc": "Your keys are stored locally only"
+    },
+    "language": {
+      "title": "Language Settings",
+      "hearingSource": "Interviewer Language",
+      "hearingTarget": "My Language",
+      "speakingInput": "I Speak",
+      "speakingOutput": "Output Language"
+    },
+    "voice": {
+      "title": "Voice Cloning",
+      "desc": "Record ~15 seconds to create your personal voice clone",
+      "record": "Start Recording",
+      "stop": "Stop Recording",
+      "upload": "Upload & Clone",
+      "uploading": "Uploading…",
+      "done": "Voice cloned successfully"
+    },
+    "resume": {
+      "title": "Import Resume",
+      "desc": "Upload your resume for local AI indexing to help answer related questions",
+      "upload": "Choose File",
+      "formats": "PDF and Word formats supported"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "tabs": {
+      "apiKeys": "API Keys",
+      "language": "Language",
+      "devices": "Devices",
+      "resume": "Resume",
+      "ghost": "Teleprompter",
+      "advanced": "Advanced"
+    },
+    "apiKeys": {
+      "xunfei": {
+        "appId": "iFlytek App ID",
+        "apiKey": "iFlytek API Key",
+        "apiSecret": "iFlytek API Secret"
+      },
+      "deepseek": {
+        "key": "DeepSeek API Key",
+        "model": "Model"
+      },
+      "elevenlabs": {
+        "key": "ElevenLabs API Key",
+        "voiceId": "Voice ID"
+      },
+      "simli": {
+        "key": "Simli API Key",
+        "faceId": "Face ID"
+      }
+    },
+    "devices": {
+      "virtualMic": "Virtual Microphone",
+      "physicalMic": "Physical Microphone",
+      "physicalCam": "Physical Camera",
+      "virtualCam": "Virtual Camera",
+      "refresh": "Refresh Devices"
+    },
+    "ghost": {
+      "opacity": "Opacity",
+      "fontSize": "Font Size",
+      "position": "Position"
+    },
+    "advanced": {
+      "ragPrompt": "Answer Generation Prompt",
+      "speakPolishPrompt": "Speech Polish Prompt",
+      "polishEnabled": "Enable Speech Polishing (default off)"
+    }
+  },
+  "dashboard": {
+    "title": "StealthCopilot",
+    "start": "Start Session",
+    "stop": "End Session",
+    "hearingChain": "Hearing Chain",
+    "speakingChain": "Speaking Chain",
+    "videoChain": "Video Chain",
+    "status": {
+      "idle": "Idle",
+      "running": "Running",
+      "error": "Error",
+      "bypassed": "Bypassed"
+    },
+    "circuit": {
+      "open": "Cloud pipeline disconnected, now in local bypass mode",
+      "halfOpen": "Reconnecting cloud pipeline…",
+      "emergencyBypass": "Emergency Bypass"
+    },
+    "latency": "{ms}ms latency"
+  },
+  "teleprompter": {
+    "subtitle": "Interviewer:",
+    "suggestion": "Suggested Response:",
+    "minimize": "Minimize",
+    "noResume": "No active resume detected, suggestion feature disabled"
+  }
+}

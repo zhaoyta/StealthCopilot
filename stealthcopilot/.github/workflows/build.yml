@@ -1,0 +1,82 @@
+# build.yml — macOS + Windows 双平台并行构建
+# 触发：push v* tag 或手动触发
+# 注意：CGO 要求平台原生编译，不支持交叉编译
+
+name: Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-mac:
+    name: Build macOS
+    runs-on: macos-14  # Apple Silicon runner，支持 arm64 CGO
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 安装 Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: 安装前端依赖
+        run: npm install
+        working-directory: frontend
+
+      - name: 构建 macOS 应用
+        run: wails build -clean -platform darwin/arm64
+
+      - name: 上传制品
+        uses: actions/upload-artifact@v4
+        with:
+          name: stealthcopilot-macos
+          path: build/bin/
+
+  build-win:
+    name: Build Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 安装 MSYS2（CGO 编译环境）
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: mingw-w64-x86_64-gcc
+
+      - name: 安装 Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: 安装前端依赖
+        run: npm install
+        working-directory: frontend
+
+      - name: 构建 Windows 应用
+        run: wails build -clean -platform windows/amd64
+
+      - name: 上传制品
+        uses: actions/upload-artifact@v4
+        with:
+          name: stealthcopilot-windows
+          path: build/bin/

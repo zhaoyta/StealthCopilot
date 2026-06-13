@@ -1,0 +1,128 @@
+{
+  "common": {
+    "save": "保存",
+    "cancel": "取消",
+    "confirm": "确认",
+    "close": "关闭",
+    "loading": "加载中…",
+    "error": "发生错误",
+    "success": "操作成功",
+    "reset": "恢复默认",
+    "next": "下一步",
+    "back": "上一步",
+    "finish": "完成",
+    "skip": "跳过"
+  },
+  "setup": {
+    "title": "初始化设置",
+    "step": "第 {current} 步，共 {total} 步",
+    "deps": {
+      "title": "依赖检测",
+      "desc": "检测运行所需组件",
+      "virtualMic": "虚拟声卡",
+      "virtualCam": "虚拟摄像头",
+      "install": "一键安装",
+      "installed": "已安装",
+      "failed": "安装失败"
+    },
+    "apiKeys": {
+      "title": "配置服务密钥",
+      "desc": "填写各服务的访问密钥，密钥仅存储在本地"
+    },
+    "language": {
+      "title": "语言设置",
+      "hearingSource": "面试官语言",
+      "hearingTarget": "我的语言",
+      "speakingInput": "我说的语言",
+      "speakingOutput": "输出语言"
+    },
+    "voice": {
+      "title": "声音克隆",
+      "desc": "录制约 15 秒语音，用于生成您的专属英文声音",
+      "record": "开始录制",
+      "stop": "停止录制",
+      "upload": "上传并克隆",
+      "uploading": "上传中…",
+      "done": "声音克隆成功"
+    },
+    "resume": {
+      "title": "导入简历",
+      "desc": "上传简历，系统将在本地生成智能索引，助您快速回答相关问题",
+      "upload": "选择文件",
+      "formats": "支持 PDF、Word 格式"
+    }
+  },
+  "settings": {
+    "title": "设置",
+    "tabs": {
+      "apiKeys": "服务密钥",
+      "language": "语言",
+      "devices": "设备",
+      "resume": "简历",
+      "ghost": "提词窗",
+      "advanced": "高级"
+    },
+    "apiKeys": {
+      "xunfei": {
+        "appId": "讯飞 App ID",
+        "apiKey": "讯飞 API Key",
+        "apiSecret": "讯飞 API Secret"
+      },
+      "deepseek": {
+        "key": "DeepSeek API Key",
+        "model": "使用模型"
+      },
+      "elevenlabs": {
+        "key": "ElevenLabs API Key",
+        "voiceId": "Voice ID"
+      },
+      "simli": {
+        "key": "Simli API Key",
+        "faceId": "Face ID"
+      }
+    },
+    "devices": {
+      "virtualMic": "虚拟声卡",
+      "physicalMic": "物理麦克风",
+      "physicalCam": "物理摄像头",
+      "virtualCam": "虚拟摄像头",
+      "refresh": "刷新设备列表"
+    },
+    "ghost": {
+      "opacity": "透明度",
+      "fontSize": "字号",
+      "position": "位置"
+    },
+    "advanced": {
+      "ragPrompt": "回答生成提示词",
+      "speakPolishPrompt": "说话润色提示词",
+      "polishEnabled": "启用说话润色（默认关闭）"
+    }
+  },
+  "dashboard": {
+    "title": "StealthCopilot",
+    "start": "开始面试",
+    "stop": "结束面试",
+    "hearingChain": "听力链",
+    "speakingChain": "说话链",
+    "videoChain": "视频链",
+    "status": {
+      "idle": "待机",
+      "running": "运行中",
+      "error": "异常",
+      "bypassed": "已降级"
+    },
+    "circuit": {
+      "open": "云端管道已断开，当前为本地直通模式",
+      "halfOpen": "云端管道恢复中…",
+      "emergencyBypass": "紧急降级"
+    },
+    "latency": "延迟 {ms}ms"
+  },
+  "teleprompter": {
+    "subtitle": "面试官说：",
+    "suggestion": "回答建议：",
+    "minimize": "最小化",
+    "noResume": "未检测到激活简历，建议功能已禁用"
+  }
+}
