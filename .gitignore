@@ -1,0 +1,43 @@
+# ─── 构建产物 ─────────────────────────────────────────────────────────────────
+stealthcopilot/build/bin/
+stealthcopilot/build/windows/
+stealthcopilot/build/darwin/
+stealthcopilot/dist/
+stealthcopilot/frontend/dist/
+stealthcopilot/wailsjs/
+
+# ─── Go ───────────────────────────────────────────────────────────────────────
+*.test
+*.prof
+coverage.out
+coverage.html
+
+# ─── 前端 ─────────────────────────────────────────────────────────────────────
+stealthcopilot/frontend/node_modules/
+docs/node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+
+# ─── 环境与密钥（绝不提交） ────────────────────────────────────────────────────
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+
+# ─── macOS ────────────────────────────────────────────────────────────────────
+.DS_Store
+*.dmg
+
+# ─── Windows ──────────────────────────────────────────────────────────────────
+Thumbs.db
+*.msi
+*.exe
+
+# ─── IDE ──────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
