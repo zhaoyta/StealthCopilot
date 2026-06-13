@@ -182,6 +182,8 @@
     "close": "关闭",
     "subtitlePlaceholder": "等待面试官字幕…",
     "answerPlaceholder": "回答建议将在这里流式显示。",
-    "noResume": "未检测到激活简历，建议功能已禁用"
+    "noResume": "未检测到激活简历，建议功能已禁用",
+    "circuitOpenWarning": "云端管道已断开，当前为本地直通模式",
+    "emergencyBypass": "紧急降级"
   }
 }

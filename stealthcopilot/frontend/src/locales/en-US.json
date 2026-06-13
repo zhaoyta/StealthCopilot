@@ -182,6 +182,8 @@
     "close": "Close",
     "subtitlePlaceholder": "Waiting for interviewer subtitles...",
     "answerPlaceholder": "Answer suggestions will stream here.",
-    "noResume": "No active resume detected, suggestion feature disabled"
+    "noResume": "No active resume detected, suggestion feature disabled",
+    "circuitOpenWarning": "Cloud pipeline disconnected — local passthrough active",
+    "emergencyBypass": "Emergency Bypass"
   }
 }

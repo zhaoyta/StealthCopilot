@@ -14,6 +14,7 @@ import (
 	"github.com/zhaoyta/stealthcopilot/internal/speaking"
 	"github.com/zhaoyta/stealthcopilot/internal/system"
 	"github.com/zhaoyta/stealthcopilot/internal/ui"
+	"github.com/zhaoyta/stealthcopilot/internal/video"
 )
 
 // App 是 Wails 应用主结构，负责生命周期管理和各服务的协调初始化。
@@ -24,6 +25,7 @@ type App struct {
 	SystemSvc           *system.Service
 	HearingChain        *hearing.Chain
 	SpeakingChain       *speaking.Chain
+	VideoChain          *video.Chain
 	teleprompterMu      sync.RWMutex
 	teleprompterVisible bool
 	teleprompterWindow  windowSnapshot
@@ -95,6 +97,9 @@ func (a *App) startup(ctx context.Context) {
 
 	// 5. 说话链协调器（各组件在 StartSpeakingChain binding 中按需实例化）
 	a.SpeakingChain = &speaking.Chain{}
+
+	// 6. 视频链协调器（各组件在 StartVideoChain binding 中按需实例化）
+	a.VideoChain = &video.Chain{}
 }
 
 // shutdown 在 Wails 应用关闭时调用，释放资源。

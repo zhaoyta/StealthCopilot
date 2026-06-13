@@ -15,6 +15,7 @@ import (
 	"github.com/zhaoyta/stealthcopilot/internal/translation"
 	"github.com/zhaoyta/stealthcopilot/internal/tts"
 	"github.com/zhaoyta/stealthcopilot/internal/ui"
+	"github.com/zhaoyta/stealthcopilot/internal/video"
 )
 
 const (
@@ -231,4 +232,59 @@ func (a *App) StopSpeakingChain() {
 // SetVADSilenceThreshold 运行时更新 VAD 静音阈值（毫秒），即时生效，无需重启说话链。
 func (a *App) SetVADSilenceThreshold(ms int) {
 	a.SpeakingChain.SetSilenceThreshold(ms)
+}
+
+// ===== Video Chain 相关绑定 =====
+
+// StartVideoChain 启动视频链管道：摄像头捕获 → Simli 口型同步 → A/V 对齐 → 虚拟摄像头。
+// 配置从当前 ConfigSvc 读取；已在运行时先停止再重新启动。
+// 返回空字符串表示成功，否则返回错误描述。
+func (a *App) StartVideoChain() string {
+	cfg := a.ConfigSvc.InternalManager().Config
+	chainCfg := video.ChainConfig{
+		SimliAPIKey:        cfg.SimliKey,
+		SilmiFaceID:        cfg.SimliFaceID,
+		SimliHeartbeatAddr: "",          // Phase 1 暂不配置 UDP 端点，由 Simli 文档确认后填入
+		PhysicalCamDevice:  cfg.PhysicalCamName,
+		VirtualCamDevice:   cfg.VirtualCamName,
+	}
+	return a.VideoChain.Start(a.ctx, chainCfg)
+}
+
+// StopVideoChain 停止视频链，等待所有 goroutine 退出后返回。
+func (a *App) StopVideoChain() {
+	a.VideoChain.Stop()
+}
+
+// IsCircuitOpen 返回熔断器当前是否处于 Open（直通）状态，供前端显示警告条。
+func (a *App) IsCircuitOpen() bool {
+	return a.VideoChain.IsCircuitOpen()
+}
+
+// EnsureVirtualCameraDriver 检测并尝试安装虚拟摄像头驱动。
+// bundledDriverPath 为 App bundle 内的驱动文件路径（由前端传入）。
+// 返回空字符串表示成功或已安装，否则返回提示信息。
+func (a *App) EnsureVirtualCameraDriver(bundledDriverPath string) string {
+	result := video.EnsureDriver(bundledDriverPath)
+	return result.Message
+}
+
+// TripCircuit 手动触发熔断（用户点击幽灵提词窗"紧急降级"按钮时调用）。
+func (a *App) TripCircuit() {
+	a.VideoChain.TripCircuit()
+}
+
+// CheckVirtualCameraDriver 检测虚拟摄像头驱动注册状态（不执行安装）。
+func (a *App) CheckVirtualCameraDriver() string {
+	status := video.CheckDriverStatus()
+	switch status {
+	case video.DriverStatusRegistered:
+		return "registered"
+	case video.DriverStatusNotRegistered:
+		return "not_registered"
+	case video.DriverStatusUnsupported:
+		return "unsupported"
+	default:
+		return "unknown"
+	}
 }
