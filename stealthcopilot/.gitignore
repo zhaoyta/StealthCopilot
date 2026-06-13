@@ -1,49 +1,16 @@
-# ─── 构建产物 ─────────────────────────────────────────────────────────────────
+# Wails 构建产物（相对于此目录）
 build/bin/
 build/windows/
 build/darwin/
-dist/
-frontend/dist/
 
-# ─── Go ───────────────────────────────────────────────────────────────────────
+# 前端构建产物
+frontend/dist/
+frontend/node_modules/
+
+# Wails 运行时自动生成的 TS bindings（不需要提交）
+wailsjs/
+
+# Go 测试产物
 coverage.out
 coverage.html
 *.test
-*.prof
-
-# ─── 前端 ─────────────────────────────────────────────────────────────────────
-node_modules/
-frontend/node_modules/
-docs/node_modules/
-.vitepress/dist/
-docs/.vitepress/dist/
-docs/.vitepress/cache/
-
-# ─── 环境与密钥（绝不提交） ────────────────────────────────────────────────────
-.env
-.env.*
-*.pem
-*.key
-*.p12
-*.pfx
-secrets/
-
-# ─── macOS ────────────────────────────────────────────────────────────────────
-.DS_Store
-.AppleDouble
-.LSOverride
-*.dmg
-
-# ─── Windows ──────────────────────────────────────────────────────────────────
-Thumbs.db
-*.msi
-*.exe
-
-# ─── IDE ──────────────────────────────────────────────────────────────────────
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# ─── Wails ────────────────────────────────────────────────────────────────────
-wailsjs/

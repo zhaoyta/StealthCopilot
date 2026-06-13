@@ -7,8 +7,7 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
-    "lint": "eslint . --ext .vue,.ts,.js",
-    "prepare": "husky"
+    "lint": "eslint . --ext .vue,.ts,.js"
   },
   "config": {
     "commitizen": {
