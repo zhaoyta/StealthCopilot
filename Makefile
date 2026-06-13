@@ -55,8 +55,10 @@ commit:
 	git add -A
 	cd $(FRONT) && npx git-cz
 
-## push：提交后推送到远端（commit + push 一步完成）
-push: commit
+## push：有变更则先提交，再推送到远端
+push:
+	git add -A
+	@git diff --cached --quiet || (cd $(FRONT) && npx git-cz)
 	git push
 
 ## tag-patch：发布 patch 版本（如 v0.1.0 → v0.1.1），自动更新 CHANGELOG
