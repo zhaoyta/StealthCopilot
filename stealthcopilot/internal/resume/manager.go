@@ -193,6 +193,13 @@ func (m *Manager) Search(query string, topK int) ([]SearchResult, error) {
 	return m.vectors.Search(vec, activeID, topK)
 }
 
+// HasActiveResume 检查当前是否有激活的简历（供 RAG 检索降级判断使用）。
+func (m *Manager) HasActiveResume() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.activeResumeID() != ""
+}
+
 // activeResumeID 返回当前激活简历的 ID；若无激活简历返回空字符串。
 // 调用方需持有读锁。
 func (m *Manager) activeResumeID() string {

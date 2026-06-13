@@ -7,8 +7,11 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/zhaoyta/stealthcopilot/internal/config"
+	"github.com/zhaoyta/stealthcopilot/internal/hearing"
+	"github.com/zhaoyta/stealthcopilot/internal/rag"
 	"github.com/zhaoyta/stealthcopilot/internal/resume"
 	"github.com/zhaoyta/stealthcopilot/internal/system"
+	"github.com/zhaoyta/stealthcopilot/internal/translation"
 	"github.com/zhaoyta/stealthcopilot/internal/ui"
 )
 
@@ -159,4 +162,35 @@ func (a *App) ApplyStealthToWindowHandle(handle uintptr) string {
 // GetStealthStatus 返回最近一次原生 stealth hook 的应用状态。
 func (a *App) GetStealthStatus() ui.StealthStatus {
 	return a.stealthStatus
+}
+
+// ===== Hearing Chain 相关绑定 =====
+
+// StartHearingChain 启动听力链管道：音频捕获 → 讯飞翻译 → 意图识别 → RAG → 回答生成。
+// 配置从当前 ConfigSvc 读取；已在运行时先停止再重新启动。
+// 返回空字符串表示成功，否则返回错误描述。
+func (a *App) StartHearingChain() string {
+	cfg := a.ConfigSvc.InternalManager().Config
+	retriever := rag.NewRetriever(a.ResumeSvc.InternalManager())
+
+	chainCfg := hearing.ChainConfig{
+		Xunfei: translation.XunfeiConfig{
+			AppID:      cfg.XunfeiAppID,
+			APIKey:     cfg.XunfeiAPIKey,
+			APISecret:  cfg.XunfeiAPISecret,
+			SourceLang: cfg.HearingSourceLang,
+			TargetLang: cfg.HearingTargetLang,
+		},
+		DeepSeekKey:      cfg.DeepSeekKey,
+		DeepSeekModel:    cfg.DeepSeekModel,
+		RAGPrompt:        cfg.RAGPrompt,
+		VirtualMicDevice: cfg.VirtualMicName,
+		Retriever:        retriever,
+	}
+	return a.HearingChain.Start(a.ctx, chainCfg)
+}
+
+// StopHearingChain 停止听力链，等待所有 goroutine 退出后返回。
+func (a *App) StopHearingChain() {
+	a.HearingChain.Stop()
 }
