@@ -13,7 +13,7 @@ APP_DIR  := stealthcopilot
 FRONT    := stealthcopilot/frontend
 DOCS_DIR := docs
 
-.PHONY: dev build build-mac build-win commit lint test \
+.PHONY: dev build build-mac build-win commit push lint test \
         tag-patch tag-minor tag-major release docs docs-build
 
 # ─── 开发 ────────────────────────────────────────────────────────────────────
@@ -50,9 +50,14 @@ test:
 
 # ─── 提交 & 版本 ─────────────────────────────────────────────────────────────
 
-## commit：交互式规范化提交（Conventional Commits 格式）
+## commit：暂存所有变更 + 交互式规范化提交（Conventional Commits 格式）
 commit:
+	git add -A
 	cd $(FRONT) && npx git-cz
+
+## push：提交后推送到远端（commit + push 一步完成）
+push: commit
+	git push
 
 ## tag-patch：发布 patch 版本（如 v0.1.0 → v0.1.1），自动更新 CHANGELOG
 tag-patch:
