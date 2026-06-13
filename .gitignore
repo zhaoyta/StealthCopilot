@@ -5,6 +5,7 @@ stealthcopilot/build/darwin/
 stealthcopilot/frontend/dist/
 stealthcopilot/frontend/node_modules/
 stealthcopilot/wailsjs/
+stealthcopilot/frontend/wailsjs/
 
 # ─── Go 测试产物 ──────────────────────────────────────────────────────────────
 coverage.out
