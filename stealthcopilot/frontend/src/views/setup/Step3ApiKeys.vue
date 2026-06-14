@@ -70,9 +70,9 @@ async function saveAll() {
       <div
         v-for="f in fields"
         :key="f.service + '_' + f.field"
-        class="field-row"
+        class="field-row flex items-center gap-3"
       >
-        <label class="block text-sm text-gray-300 mb-1">
+        <label class="w-32 shrink-0 text-sm text-gray-300 text-left">
           {{ f.label }}
           <!-- eslint-disable @intlify/vue-i18n/no-raw-text -->
           <span
@@ -85,7 +85,7 @@ async function saveAll() {
           >（{{ t('setup.apiKeys.optional') }}）</span>
           <!-- eslint-enable @intlify/vue-i18n/no-raw-text -->
         </label>
-        <div class="flex gap-2">
+        <div class="flex flex-1 gap-2">
           <input
             v-model="f.value"
             :type="f.show ? 'text' : 'password'"

@@ -91,23 +91,27 @@ onMounted(async () => {
   } catch { /* 加载失败静默处理 */ }
 })
 
-async function saveField(svc: ServiceConfig, f: typeof svc.fields[0]) {
-  if (!f.value || f.value === '••••••••') return
+// 保存一张服务卡的全部字段（跳过未改动的掩码值）
+async function saveService(svc: ServiceConfig) {
   saving.value = true
-  svc.testStatus = 'untested' // Key 变更后重置测试状态
+  svc.testStatus = 'untested'
+  svc.testMsg = ''
   try {
-    let err = ''
-    if (f.service === 'deepseek' && f.field === 'model') {
-      // @ts-expect-error — Wails 运行时注入，window.go/window.runtime 无类型定义
-      const cur = await window.go.main.App.GetConfig()
-      // @ts-expect-error — Wails 运行时注入，window.go/window.runtime 无类型定义
-      err = await window.go.main.App.SaveLocalConfig({ ...cur, deepseek_model: f.value })
-    } else {
-      // @ts-expect-error — Wails 运行时注入，window.go/window.runtime 无类型定义
-      err = await window.go.main.App.SaveAPIKey({ service: f.service, field: f.field, value: f.value })
-      if (!err) f.value = '••••••••'
+    for (const f of svc.fields) {
+      if (!f.value || f.value === '••••••••') continue
+      let err = ''
+      if (f.service === 'deepseek' && f.field === 'model') {
+        // @ts-expect-error — Wails 运行时注入，window.go/window.runtime 无类型定义
+        const cur = await window.go.main.App.GetConfig()
+        // @ts-expect-error — Wails 运行时注入，window.go/window.runtime 无类型定义
+        err = await window.go.main.App.SaveLocalConfig({ ...cur, deepseek_model: f.value })
+      } else {
+        // @ts-expect-error — Wails 运行时注入，window.go/window.runtime 无类型定义
+        err = await window.go.main.App.SaveAPIKey({ service: f.service, field: f.field, value: f.value })
+        if (!err) f.value = '••••••••'
+      }
+      if (err) { svc.testMsg = err; break }
     }
-    svc.testMsg = err
   } catch { /* 静默处理 */ }
   saving.value = false
 }
@@ -175,9 +179,10 @@ function testStatusClass(s: TestStatus): string {
         <div
           v-for="f in svc.fields"
           :key="f.field"
+          class="flex items-center gap-3"
         >
-          <label class="block text-xs text-gray-400 mb-1">{{ f.label }}</label>
-          <div class="flex gap-2">
+          <label class="w-28 shrink-0 text-xs text-gray-400 text-left">{{ f.label }}</label>
+          <div class="flex flex-1 gap-2">
             <input
               v-model="f.value"
               :type="f.show ? 'text' : 'password'"
@@ -194,15 +199,19 @@ function testStatusClass(s: TestStatus): string {
                 :size="14"
               />
             </button>
-            <button
-              class="px-3 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs transition-colors"
-              :disabled="saving"
-              @click="saveField(svc, f)"
-            >
-              {{ t('common.save') }}
-            </button>
           </div>
         </div>
+      </div>
+
+      <!-- 每张卡片底部统一保存按钮 -->
+      <div class="mt-3 flex justify-center">
+        <button
+          class="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs transition-colors"
+          :disabled="saving"
+          @click="saveService(svc)"
+        >
+          {{ t('common.save') }}
+        </button>
       </div>
 
       <p
