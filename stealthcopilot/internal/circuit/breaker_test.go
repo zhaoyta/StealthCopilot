@@ -3,6 +3,8 @@ package circuit
 import (
 	"context"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -110,5 +112,81 @@ func TestBreaker_SendHeartbeatFailsWithoutResponse(t *testing.T) {
 	b := NewBreaker(conn.LocalAddr().String(), nil)
 	if b.sendHeartbeat() {
 		t.Fatal("sendHeartbeat should fail when peer does not respond")
+	}
+}
+
+// TestBreaker_HTTPHeartbeat_Success 验证 HTTP URL 心跳：服务端返回 200 时视为存活。
+func TestBreaker_HTTPHeartbeat_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	b := NewBreaker(srv.URL, nil)
+	if !b.sendHeartbeat() {
+		t.Fatal("HTTP heartbeat should succeed when server returns 200")
+	}
+}
+
+// TestBreaker_HTTPHeartbeat_4xx 验证 HTTP 4xx（如 401）仍视为连通（网络正常，业务层问题）。
+func TestBreaker_HTTPHeartbeat_4xx(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	b := NewBreaker(srv.URL, nil)
+	if !b.sendHeartbeat() {
+		t.Fatal("HTTP 4xx should still be treated as alive (network is reachable)")
+	}
+}
+
+// TestBreaker_HTTPHeartbeat_5xx 验证 HTTP 5xx 视为失联（服务端异常）。
+func TestBreaker_HTTPHeartbeat_5xx(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	b := NewBreaker(srv.URL, nil)
+	if b.sendHeartbeat() {
+		t.Fatal("HTTP 5xx should be treated as failure")
+	}
+}
+
+// TestBreaker_HTTPHeartbeat_Unreachable 验证无法连接的 HTTP 地址视为失联。
+func TestBreaker_HTTPHeartbeat_Unreachable(t *testing.T) {
+	// 使用不存在的本地地址
+	b := NewBreaker("http://127.0.0.1:19999", nil)
+	if b.sendHeartbeat() {
+		t.Fatal("unreachable HTTP address should return false")
+	}
+}
+
+// TestBreaker_TripsOnHTTPFailure 验证连续 HTTP 心跳失败后触发熔断。
+func TestBreaker_TripsOnHTTPFailure(t *testing.T) {
+	// 立即关闭服务端，模拟断线
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	var tripped bool
+	b := NewBreaker(srv.URL, func(s State) {
+		if s == StateOpen {
+			tripped = true
+		}
+	})
+
+	// 手动执行 tripThreshold 次失败心跳
+	for range tripThreshold {
+		b.handleHeartbeat(false)
+	}
+
+	if !tripped {
+		t.Error("breaker should have tripped after consecutive HTTP failures")
+	}
+	if !b.IsOpen() {
+		t.Error("IsOpen should be true after trip")
 	}
 }

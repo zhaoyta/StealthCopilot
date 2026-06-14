@@ -400,6 +400,10 @@ func (a *App) StartSpeakingChain() string {
 		VirtualMicDevice:   cfg.VirtualMicName,
 		SilenceThresholdMs: 800,
 		AudioSink:          a.VideoChain.SendAudioChunk,
+		DeepSeekKey:        cfg.DeepSeekKey,
+		DeepSeekModel:      cfg.DeepSeekModel,
+		PolishPrompt:       cfg.SpeakPolishPrompt,
+		PolishEnabled:      cfg.PolishEnabled,
 	}
 	return a.SpeakingChain.Start(a.ctx, chainCfg)
 }
@@ -424,7 +428,9 @@ func (a *App) StartVideoChain() string {
 	chainCfg := video.ChainConfig{
 		SimliAPIKey:        cfg.SimliKey,
 		SilmiFaceID:        cfg.SimliFaceID,
-		SimliHeartbeatAddr: "", // Phase 1 暂不配置 UDP 端点，由 Simli 文档确认后填入
+		// Simli 无公开 UDP 端点；改为 HTTP HEAD 探活。
+		// 心跳判断：任何 2xx/3xx/4xx 响应 = 网络连通；5xx 或超时 = 触发熔断。
+		SimliHeartbeatAddr: "https://api.simli.ai",
 		PhysicalCamDevice:  cfg.PhysicalCamName,
 		VirtualCamDevice:   cfg.VirtualCamName,
 	}

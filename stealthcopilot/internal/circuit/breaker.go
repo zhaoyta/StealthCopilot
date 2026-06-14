@@ -1,12 +1,19 @@
 // Package circuit 实现 StealthCopilot 的熔断器。
 // 状态机：Closed（正常）→ Open（降级直通）→ HalfOpen（尝试恢复）→ Closed
-// 触发条件：连续 3 次 UDP 心跳丢失（150ms）或视频 PTS 落后音频 >300ms。
+// 触发条件：连续 3 次心跳丢失（50ms 间隔）或视频 PTS 落后音频 >300ms。
+// 心跳协议自动路由：
+//   - targetAddr 以 "http" 开头 → HTTP HEAD 健康检查（适用于 Simli 等云端 HTTP API）
+//   - targetAddr 为 "host:port" 格式 → UDP ping/pong
+//   - targetAddr 为空 → 视为存活（禁用心跳检测，不触发误熔断）
+//
 // 切换延迟 ≤10ms（原子 bool 切换输出端，无锁路径）。
 package circuit
 
 import (
 	"context"
 	"net"
+	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -26,10 +33,11 @@ const (
 
 // 心跳相关常量
 const (
-	heartbeatInterval    = 50 * time.Millisecond // 心跳发送间隔
-	tripThreshold        = 3                     // 连续丢失触发熔断
-	recoverThreshold     = 3                     // 连续恢复关闭熔断
-	heartbeatDialTimeout = 20 * time.Millisecond // UDP 心跳响应超时
+	heartbeatInterval    = 50 * time.Millisecond  // 心跳发送间隔
+	tripThreshold        = 3                      // 连续丢失触发熔断
+	recoverThreshold     = 3                      // 连续恢复关闭熔断
+	heartbeatDialTimeout = 20 * time.Millisecond  // UDP 心跳响应超时
+	httpHealthTimeout    = 300 * time.Millisecond // HTTP 健康检查超时（含 DNS + TCP + 响应）
 )
 
 // Wails 事件名常量
@@ -46,23 +54,34 @@ type Breaker struct {
 	state         atomic.Int32  // 当前状态（State 类型）
 	missCount     int           // 连续心跳丢失次数（仅主循环读写）
 	recoverCount  int           // 连续心跳恢复次数（仅主循环读写）
-	targetAddr    string        // UDP 心跳目标地址
+	targetAddr    string        // 心跳目标：http(s) URL 或 UDP "host:port"
 	onStateChange OnStateChange // 状态变化回调
 
 	bypass atomic.Bool // true = 直通模式（Open），false = 云端模式（Closed）
 
-	mu     sync.Mutex
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
+	mu         sync.Mutex
+	cancel     context.CancelFunc
+	wg         sync.WaitGroup
+	httpClient *http.Client // HTTP 健康检查专用客户端（复用连接）
 }
 
 // NewBreaker 创建熔断器。
-// targetAddr 为 UDP 心跳目标地址（Simli API 心跳端点，格式 "host:port"）；
-// onStateChange 在状态变化时回调，可为 nil。
+//
+// targetAddr 支持两种格式：
+//   - "https://api.simli.ai" 等 HTTP(S) URL → 心跳改走 HTTP HEAD
+//   - "1.2.3.4:9000" 等 UDP 地址 → 沿用 UDP ping/pong
+//   - "" → 禁用心跳，适合纯靠 TripFromLag 触发的场景
 func NewBreaker(targetAddr string, onStateChange OnStateChange) *Breaker {
 	b := &Breaker{
 		targetAddr:    targetAddr,
 		onStateChange: onStateChange,
+		httpClient: &http.Client{
+			Timeout: httpHealthTimeout,
+			// 不跟随重定向，避免超时累积
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
 	}
 	b.state.Store(int32(StateClosed))
 	return b
@@ -105,7 +124,7 @@ func (b *Breaker) IsOpen() bool { return b.bypass.Load() }
 // CurrentState 返回当前状态（用于 UI 展示，非热路径）。
 func (b *Breaker) CurrentState() State { return State(b.state.Load()) }
 
-// heartbeatLoop 每 50ms 发送一次 UDP 心跳，维护连续丢包/恢复计数器。
+// heartbeatLoop 每 50ms 发送一次心跳，维护连续丢包/恢复计数器。
 func (b *Breaker) heartbeatLoop(ctx context.Context) {
 	defer b.wg.Done()
 	ticker := time.NewTicker(heartbeatInterval)
@@ -122,11 +141,36 @@ func (b *Breaker) heartbeatLoop(ctx context.Context) {
 	}
 }
 
-// sendHeartbeat 发送一次 UDP ping，返回是否收到响应。
+// sendHeartbeat 根据 targetAddr 格式选择心跳协议：HTTP HEAD 或 UDP ping。
+// targetAddr 为空时视为存活（避免误熔断）。
 func (b *Breaker) sendHeartbeat() bool {
 	if b.targetAddr == "" {
-		return true // 无目标地址时视为存活（避免空地址触发误熔断）
+		return true
 	}
+	if strings.HasPrefix(b.targetAddr, "http://") || strings.HasPrefix(b.targetAddr, "https://") {
+		return b.pingHTTP()
+	}
+	return b.pingUDP()
+}
+
+// pingHTTP 向目标 URL 发送 HEAD 请求检查连通性。
+// 任何 HTTP 响应（含 4xx）表示网络连通；仅网络错误或 5xx 服务端异常视为失联。
+func (b *Breaker) pingHTTP() bool {
+	req, err := http.NewRequest(http.MethodHead, b.targetAddr, nil)
+	if err != nil {
+		return false
+	}
+	resp, err := b.httpClient.Do(req)
+	if err != nil {
+		return false
+	}
+	_ = resp.Body.Close()
+	// 5xx 表示服务端异常，视为失联
+	return resp.StatusCode < http.StatusInternalServerError
+}
+
+// pingUDP 发送 UDP ping，等待 pong 响应。
+func (b *Breaker) pingUDP() bool {
 	conn, err := net.DialTimeout("udp", b.targetAddr, heartbeatDialTimeout)
 	if err != nil {
 		return false
@@ -157,7 +201,6 @@ func (b *Breaker) handleHeartbeat(alive bool) {
 	case StateOpen:
 		if alive {
 			b.recoverCount++
-			// 进入 HalfOpen：等待连续恢复确认
 			if b.recoverCount >= recoverThreshold {
 				b.halfOpen()
 			}
@@ -171,7 +214,6 @@ func (b *Breaker) handleHeartbeat(alive bool) {
 				b.close()
 			}
 		} else {
-			// 恢复失败，重新打开
 			b.recoverCount = 0
 			b.trip()
 		}
@@ -182,9 +224,9 @@ func (b *Breaker) handleHeartbeat(alive bool) {
 func (b *Breaker) trip() {
 	prev := State(b.state.Swap(int32(StateOpen)))
 	if prev == StateOpen {
-		return // 已经是 Open，不重复回调
+		return
 	}
-	b.bypass.Store(true) // ≤1ms 原子切换，热路径无锁
+	b.bypass.Store(true)
 	b.missCount = 0
 	b.recoverCount = 0
 	if b.onStateChange != nil {
