@@ -1,6 +1,7 @@
 package system
 
 import (
+	"encoding/json"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -59,7 +60,7 @@ func parseAppleDevices(audioRaw, videoRaw []byte) DeviceList {
 		VideoInputs:  []Device{},
 	}
 
-	_ = audioRaw // 备用：若 ffmpeg 不可用
+	dl.AudioOutputs = parseMacAudioOutputs(audioRaw)
 
 	lines := strings.Split(string(ffmpegAll), "\n")
 	var section string
@@ -101,8 +102,59 @@ func parseAppleDevices(audioRaw, videoRaw []byte) DeviceList {
 
 	// 若 ffmpeg 不可用，videoRaw 可为 system_profiler 输出备用
 	_ = videoRaw
+	if len(dl.AudioOutputs) == 0 {
+		dl.AudioOutputs = append(dl.AudioOutputs, Device{ID: "default", Name: "System Default Output"})
+	}
 
 	return dl
+}
+
+func parseMacAudioOutputs(raw []byte) []Device {
+	if len(raw) == 0 {
+		return nil
+	}
+	var root any
+	if err := json.Unmarshal(raw, &root); err != nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []Device
+	var walk func(any)
+	walk = func(v any) {
+		switch node := v.(type) {
+		case map[string]any:
+			name, _ := node["_name"].(string)
+			if name != "" && looksLikeAudioOutput(node) && !seen[name] {
+				seen[name] = true
+				out = append(out, Device{ID: name, Name: name})
+			}
+			for _, child := range node {
+				walk(child)
+			}
+		case []any:
+			for _, child := range node {
+				walk(child)
+			}
+		}
+	}
+	walk(root)
+	return out
+}
+
+func looksLikeAudioOutput(node map[string]any) bool {
+	for k, v := range node {
+		key := strings.ToLower(k)
+		if strings.Contains(key, "output") {
+			return true
+		}
+		if s, ok := v.(string); ok {
+			val := strings.ToLower(s)
+			if strings.Contains(val, "output") && !strings.Contains(val, "input") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func enumerateWinDevices() DeviceList {
@@ -113,7 +165,7 @@ func enumerateWinDevices() DeviceList {
 
 	dl := DeviceList{
 		AudioInputs:  []Device{},
-		AudioOutputs: []Device{},
+		AudioOutputs: []Device{{ID: "default", Name: "System Default Output"}},
 		VideoInputs:  []Device{},
 	}
 

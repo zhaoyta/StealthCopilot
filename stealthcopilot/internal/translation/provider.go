@@ -25,3 +25,22 @@ type Provider interface {
 	// Close 释放 WebSocket 连接等资源。
 	Close() error
 }
+
+// SpeakProvider translates a completed speech segment into target-language text.
+type SpeakProvider interface {
+	Translate(ctx context.Context, pcmData []byte) (string, error)
+}
+
+type NullProvider struct{}
+
+func (NullProvider) Translate(_ context.Context, _ <-chan []byte) (<-chan DualResult, error) {
+	ch := make(chan DualResult)
+	close(ch)
+	return ch, nil
+}
+
+func (NullProvider) Close() error { return nil }
+
+type NullSpeakProvider struct{}
+
+func (NullSpeakProvider) Translate(context.Context, []byte) (string, error) { return "", nil }

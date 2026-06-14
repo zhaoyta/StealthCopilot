@@ -8,6 +8,14 @@ type TranslationProviderType string
 const (
 	// TranslationProviderXunfei 使用讯飞实时语音翻译 API。
 	TranslationProviderXunfei TranslationProviderType = "xunfei"
+	TranslationProviderNull   TranslationProviderType = "null"
+)
+
+type LLMProviderType string
+
+const (
+	LLMProviderOpenAICompatible LLMProviderType = "openai_compatible"
+	LLMProviderDeepSeek         LLMProviderType = "deepseek"
 )
 
 // TTSProviderType 表示 TTS 服务提供商类型。
@@ -16,6 +24,8 @@ type TTSProviderType string
 const (
 	// TTSProviderElevenLabs 使用 ElevenLabs 流式 TTS。
 	TTSProviderElevenLabs TTSProviderType = "elevenlabs"
+	TTSProviderSystem     TTSProviderType = "system"
+	TTSProviderNull       TTSProviderType = "null"
 )
 
 // LipSyncProviderType 表示口型同步服务提供商类型。
@@ -26,21 +36,33 @@ const (
 	LipSyncProviderSimli LipSyncProviderType = "simli"
 	// LipSyncProviderStealth 使用后续自营 StealthCloud 服务（Phase 3）。
 	LipSyncProviderStealth LipSyncProviderType = "stealth_cloud"
+	LipSyncProviderNull    LipSyncProviderType = "null"
+)
+
+type EmbeddingProviderType string
+
+const (
+	EmbeddingProviderPythonBridge EmbeddingProviderType = "python_bridge"
+	EmbeddingProviderNull         EmbeddingProviderType = "null"
 )
 
 // ProviderConfig 持有所有 Provider 类型选择配置。
 // 运行时根据此配置实例化对应的实现。
 type ProviderConfig struct {
 	Translation TranslationProviderType // 翻译服务类型
+	LLM         LLMProviderType         // LLM / chat completions 服务类型
 	TTS         TTSProviderType         // TTS 服务类型
 	LipSync     LipSyncProviderType     // 口型同步服务类型
+	Embedding   EmbeddingProviderType   // 简历 embedding 服务类型
 }
 
 // DefaultProviderConfig 返回生产环境默认配置。
 func DefaultProviderConfig() ProviderConfig {
 	return ProviderConfig{
 		Translation: TranslationProviderXunfei,
+		LLM:         LLMProviderDeepSeek,
 		TTS:         TTSProviderElevenLabs,
 		LipSync:     LipSyncProviderSimli,
+		Embedding:   EmbeddingProviderPythonBridge,
 	}
 }

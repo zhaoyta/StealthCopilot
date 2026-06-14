@@ -83,9 +83,13 @@ func (a *App) startup(ctx context.Context) {
 
 	// 2. 简历服务（embedding：Python 桥接，不可用时降级为 NullProvider）
 	var embedder resume.EmbeddingProvider
-	provider := resume.NewPythonBridgeProvider(scriptPath)
-	if provider.Ready() {
-		embedder = provider
+	if cfgSvc.InternalManager().Config.EmbeddingProvider == config.EmbeddingProviderPythonBridge {
+		provider := resume.NewPythonBridgeProvider(scriptPath)
+		if provider.Ready() {
+			embedder = provider
+		} else {
+			embedder = &resume.NullProvider{}
+		}
 	} else {
 		embedder = &resume.NullProvider{}
 	}

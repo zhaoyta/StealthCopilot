@@ -14,6 +14,7 @@ interface DepItem {
 }
 
 const deps = ref<DepItem[]>([
+  { key: 'ffmpeg',      label: t('setup.deps.ffmpeg'),      status: 'checking', installMsg: '' },
   { key: 'virtual_mic', label: t('setup.deps.virtualMic'), status: 'checking', installMsg: '' },
   { key: 'virtual_cam', label: t('setup.deps.virtualCam'), status: 'checking', installMsg: '' },
 ])
@@ -23,8 +24,9 @@ async function checkDeps() {
   try {
     // @ts-expect-error — Wails 运行时注入
     const report = await window.go.main.App.CheckDeps()
-    deps.value[0].status = report.virtual_mic as DepStatus
-    deps.value[1].status = report.virtual_cam as DepStatus
+    deps.value[0].status = report.ffmpeg      as DepStatus
+    deps.value[1].status = report.virtual_mic as DepStatus
+    deps.value[2].status = report.virtual_cam as DepStatus
   } catch {
     deps.value.forEach(d => { d.status = 'unknown' })
   }

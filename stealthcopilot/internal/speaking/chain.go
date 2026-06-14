@@ -30,8 +30,12 @@ const (
 type ChainConfig struct {
 	// Xunfei 讯飞翻译 API 配置（复用听力链凭据）
 	Xunfei translation.XunfeiSpeakConfig
+	// Translator overrides Xunfei when a different speech translation provider is selected.
+	Translator translation.SpeakProvider
 	// ElevenLabs TTS 配置
 	ElevenLabs tts.ElevenLabsConfig
+	// TTSProvider overrides ElevenLabs when a different TTS provider is selected.
+	TTSProvider tts.Provider
 	// PhysicalMicDevice 物理麦克风设备名称
 	PhysicalMicDevice string
 	// VirtualMicDevice 虚拟声卡设备名称（BlackHole/VB-Cable）
@@ -47,6 +51,8 @@ type ChainConfig struct {
 	DeepSeekKey string
 	// DeepSeekModel DeepSeek 模型名称，如 "deepseek-chat"。
 	DeepSeekModel string
+	// LLMConfig configures OpenAI-compatible polishing.
+	LLMConfig llm.Config
 	// PolishPrompt 润色 Prompt 模板，包含 {input} 占位符。
 	PolishPrompt string
 	// PolishEnabled 为 true 时在讯飞翻译后、ElevenLabs TTS 前调用 DeepSeek 润色。
@@ -97,14 +103,18 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 		return "物理麦克风启动失败：" + err.Error()
 	}
 
-	// 讯飞语音翻译（说话链批量模式）
-	xunfei := translation.NewXunfeiSpeakProvider(cfg.Xunfei)
+	translator := cfg.Translator
+	if translator == nil {
+		translator = translation.NewXunfeiSpeakProvider(cfg.Xunfei)
+	}
 
-	// TTS Provider（ElevenLabs，未配置时降级为 NullTTSProvider）
-	var ttsProvider tts.Provider
-	if cfg.ElevenLabs.APIKey != "" && cfg.ElevenLabs.VoiceID != "" {
+	var ttsProvider tts.Provider = cfg.TTSProvider
+	switch {
+	case ttsProvider != nil:
+		// injected provider
+	case cfg.ElevenLabs.APIKey != "" && cfg.ElevenLabs.VoiceID != "":
 		ttsProvider = tts.NewElevenLabsProvider(cfg.ElevenLabs)
-	} else {
+	default:
 		ttsProvider = &tts.NullTTSProvider{}
 	}
 
@@ -120,7 +130,7 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 
 		// VAD 回调：每当检测到完整语音段时触发说话链管道
 		detector.Run(ctx, audioStream, func(seg vad.SpeechSegment) {
-			c.handleSegment(ctx, wailsCtx, seg, xunfei, ttsProvider, virtualMic, cfg)
+			c.handleSegment(ctx, wailsCtx, seg, translator, ttsProvider, virtualMic, cfg)
 		})
 	}()
 
@@ -159,7 +169,7 @@ func (c *Chain) handleSegment(
 	ctx context.Context,
 	wailsCtx context.Context,
 	seg vad.SpeechSegment,
-	xunfei *translation.XunfeiSpeakProvider,
+	translator translation.SpeakProvider,
 	ttsProvider tts.Provider,
 	virtualMic audio.VirtualMicWriter,
 	cfg ChainConfig,
@@ -169,7 +179,7 @@ func (c *Chain) handleSegment(
 	runtime.EventsEmit(wailsCtx, EventSpeakStart)
 
 	// 2. 讯飞语音翻译（2s 超时）
-	translatedText, err := xunfei.Translate(ctx, seg.PCM)
+	translatedText, err := translator.Translate(ctx, seg.PCM)
 	if err != nil {
 		// 超时或翻译失败：停止 Zero-PCM，降级（真实麦克风直通由用户手动切换）
 		virtualMic.EndTTS()
@@ -179,8 +189,15 @@ func (c *Chain) handleSegment(
 
 	// 3. [可选] DeepSeek 润色：将讯飞翻译结果润色为更流利的英文
 	//    PolishEnabled=true 且 DeepSeekKey 非空时调用；超时/失败时静默降级使用原译文。
-	if cfg.PolishEnabled && cfg.DeepSeekKey != "" {
-		if polished, polishErr := llm.Polish(ctx, cfg.DeepSeekKey, cfg.DeepSeekModel, cfg.PolishPrompt, translatedText); polishErr == nil {
+	llmCfg := cfg.LLMConfig
+	if llmCfg.APIKey == "" {
+		llmCfg.APIKey = cfg.DeepSeekKey
+	}
+	if llmCfg.Model == "" {
+		llmCfg.Model = cfg.DeepSeekModel
+	}
+	if cfg.PolishEnabled && llmCfg.APIKey != "" {
+		if polished, polishErr := llm.PolishWithConfig(ctx, llmCfg, cfg.PolishPrompt, translatedText); polishErr == nil {
 			translatedText = polished
 		}
 		// polish 出错时 translatedText 保持讯飞翻译原文，不中断流程

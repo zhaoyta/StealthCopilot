@@ -14,24 +14,34 @@ type FrontendConfig struct {
 	SimliFaceIDSet       bool `json:"simli_face_id_set"`
 
 	// 非敏感配置（明文）
-	UILocale           string  `json:"ui_locale"` // "zh-CN" | "en-US"
-	DeepSeekModel      string  `json:"deepseek_model"`
-	HearingSourceLang  string  `json:"hearing_source_lang"`
-	HearingTargetLang  string  `json:"hearing_target_lang"`
-	SpeakingInputLang  string  `json:"speaking_input_lang"`
-	SpeakingOutputLang string  `json:"speaking_output_lang"`
-	VirtualMicName     string  `json:"virtual_mic_name"`
-	PhysicalMicName    string  `json:"physical_mic_name"`
-	PhysicalCamName    string  `json:"physical_cam_name"`
-	VirtualCamName     string  `json:"virtual_cam_name"`
-	GhostFontSize      int     `json:"ghost_font_size"`
-	GhostOpacity       float64 `json:"ghost_opacity"`
-	GhostPosition      string  `json:"ghost_position"`
-	RAGPrompt          string  `json:"rag_prompt"`
-	SpeakPolishPrompt  string  `json:"speak_polish_prompt"`
-	PolishEnabled      bool    `json:"polish_enabled"`
-	SetupCompleted     bool    `json:"setup_completed"`
-	ActiveResumeID     string  `json:"active_resume_id"`
+	UILocale              string  `json:"ui_locale"` // "zh-CN" | "en-US"
+	DeepSeekModel         string  `json:"deepseek_model"`
+	LLMBaseURL            string  `json:"llm_base_url"`
+	TranslationProvider   string  `json:"translation_provider"`
+	LLMProvider           string  `json:"llm_provider"`
+	TTSProvider           string  `json:"tts_provider"`
+	LipSyncProvider       string  `json:"lipsync_provider"`
+	EmbeddingProvider     string  `json:"embedding_provider"`
+	HearingSourceLang     string  `json:"hearing_source_lang"`
+	HearingTargetLang     string  `json:"hearing_target_lang"`
+	SpeakingInputLang     string  `json:"speaking_input_lang"`
+	SpeakingOutputLang    string  `json:"speaking_output_lang"`
+	VirtualMicName        string  `json:"virtual_mic_name"`
+	PhysicalMicName       string  `json:"physical_mic_name"`
+	PhysicalCamName       string  `json:"physical_cam_name"`
+	VirtualCamName        string  `json:"virtual_cam_name"`
+	MonitorOutputName     string  `json:"monitor_output_name"`
+	HearingMonitorEnabled bool    `json:"hearing_monitor_enabled"`
+	HearingMonitorVolume  int     `json:"hearing_monitor_volume"`
+	HearingMonitorRate    int     `json:"hearing_monitor_rate"`
+	GhostFontSize         int     `json:"ghost_font_size"`
+	GhostOpacity          float64 `json:"ghost_opacity"`
+	GhostPosition         string  `json:"ghost_position"`
+	RAGPrompt             string  `json:"rag_prompt"`
+	SpeakPolishPrompt     string  `json:"speak_polish_prompt"`
+	PolishEnabled         bool    `json:"polish_enabled"`
+	SetupCompleted        bool    `json:"setup_completed"`
+	ActiveResumeID        string  `json:"active_resume_id"`
 }
 
 // SaveAPIKeyRequest 前端传入的 API Key 写入请求。
@@ -45,23 +55,33 @@ type SaveAPIKeyRequest struct {
 
 // SaveLocalConfigRequest 前端传入的本地配置写入请求（不含 API Key）。
 type SaveLocalConfigRequest struct {
-	UILocale           string  `json:"ui_locale"`
-	DeepSeekModel      string  `json:"deepseek_model"`
-	HearingSourceLang  string  `json:"hearing_source_lang"`
-	HearingTargetLang  string  `json:"hearing_target_lang"`
-	SpeakingInputLang  string  `json:"speaking_input_lang"`
-	SpeakingOutputLang string  `json:"speaking_output_lang"`
-	VirtualMicName     string  `json:"virtual_mic_name"`
-	PhysicalMicName    string  `json:"physical_mic_name"`
-	PhysicalCamName    string  `json:"physical_cam_name"`
-	VirtualCamName     string  `json:"virtual_cam_name"`
-	GhostFontSize      int     `json:"ghost_font_size"`
-	GhostOpacity       float64 `json:"ghost_opacity"`
-	GhostPosition      string  `json:"ghost_position"`
-	RAGPrompt          string  `json:"rag_prompt"`
-	SpeakPolishPrompt  string  `json:"speak_polish_prompt"`
-	PolishEnabled      bool    `json:"polish_enabled"`
-	SetupCompleted     bool    `json:"setup_completed"`
+	UILocale              string  `json:"ui_locale"`
+	DeepSeekModel         string  `json:"deepseek_model"`
+	LLMBaseURL            string  `json:"llm_base_url"`
+	TranslationProvider   string  `json:"translation_provider"`
+	LLMProvider           string  `json:"llm_provider"`
+	TTSProvider           string  `json:"tts_provider"`
+	LipSyncProvider       string  `json:"lipsync_provider"`
+	EmbeddingProvider     string  `json:"embedding_provider"`
+	HearingSourceLang     string  `json:"hearing_source_lang"`
+	HearingTargetLang     string  `json:"hearing_target_lang"`
+	SpeakingInputLang     string  `json:"speaking_input_lang"`
+	SpeakingOutputLang    string  `json:"speaking_output_lang"`
+	VirtualMicName        string  `json:"virtual_mic_name"`
+	PhysicalMicName       string  `json:"physical_mic_name"`
+	PhysicalCamName       string  `json:"physical_cam_name"`
+	VirtualCamName        string  `json:"virtual_cam_name"`
+	MonitorOutputName     string  `json:"monitor_output_name"`
+	HearingMonitorEnabled bool    `json:"hearing_monitor_enabled"`
+	HearingMonitorVolume  int     `json:"hearing_monitor_volume"`
+	HearingMonitorRate    int     `json:"hearing_monitor_rate"`
+	GhostFontSize         int     `json:"ghost_font_size"`
+	GhostOpacity          float64 `json:"ghost_opacity"`
+	GhostPosition         string  `json:"ghost_position"`
+	RAGPrompt             string  `json:"rag_prompt"`
+	SpeakPolishPrompt     string  `json:"speak_polish_prompt"`
+	PolishEnabled         bool    `json:"polish_enabled"`
+	SetupCompleted        bool    `json:"setup_completed"`
 }
 
 // DefaultPromptsResponse 返回 Go 后端硬编码的默认 Prompt 值。

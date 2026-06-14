@@ -18,10 +18,13 @@ const (
 	DefaultGhostOpacity       = 0.85
 	DefaultGhostPosition      = "bottom-right"
 	DefaultDeepSeekModel      = "deepseek-chat"
+	DefaultLLMBaseURL         = "https://api.deepseek.com/v1"
 	DefaultHearingSourceLang  = "en"
 	DefaultHearingTargetLang  = "zh"
 	DefaultSpeakingInputLang  = "zh"
 	DefaultSpeakingOutputLang = "en"
+	DefaultMonitorVolume      = 80
+	DefaultMonitorRate        = 0
 )
 
 // DefaultRAGPrompt 是 RAG 回答生成的默认提示词，Go 后端硬编码，前端不存储。
@@ -51,10 +54,18 @@ type AppConfig struct {
 	XunfeiAPISecret   string
 	DeepSeekKey       string
 	DeepSeekModel     string
+	LLMBaseURL        string
 	ElevenLabsKey     string
 	ElevenLabsVoiceID string
 	SimliKey          string
 	SimliFaceID       string
+
+	// Provider 选择
+	TranslationProvider TranslationProviderType
+	LLMProvider         LLMProviderType
+	TTSProvider         TTSProviderType
+	LipSyncProvider     LipSyncProviderType
+	EmbeddingProvider   EmbeddingProviderType
 
 	// 语言设置
 	HearingSourceLang  string
@@ -63,10 +74,16 @@ type AppConfig struct {
 	SpeakingOutputLang string
 
 	// 设备绑定
-	VirtualMicName  string
-	PhysicalMicName string
-	PhysicalCamName string
-	VirtualCamName  string
+	VirtualMicName    string
+	PhysicalMicName   string
+	PhysicalCamName   string
+	VirtualCamName    string
+	MonitorOutputName string
+
+	// 听力链译文耳机播报
+	HearingMonitorEnabled bool
+	HearingMonitorVolume  int
+	HearingMonitorRate    int
 
 	// 提词窗外观
 	GhostFontSize int
@@ -131,6 +148,12 @@ func (m *Manager) applyLocalConfig(lc LocalConfig) {
 	m.Config.ActiveResumeID = lc.ActiveResumeID
 	m.Config.UILocale = stringOr(lc.UILocale, "zh-CN")
 	m.Config.DeepSeekModel = stringOr(lc.DeepSeekModel, DefaultDeepSeekModel)
+	m.Config.LLMBaseURL = stringOr(lc.LLMBaseURL, DefaultLLMBaseURL)
+	m.Config.TranslationProvider = translationProviderOr(lc.TranslationProvider, TranslationProviderXunfei)
+	m.Config.LLMProvider = llmProviderOr(lc.LLMProvider, LLMProviderDeepSeek)
+	m.Config.TTSProvider = ttsProviderOr(lc.TTSProvider, TTSProviderElevenLabs)
+	m.Config.LipSyncProvider = lipSyncProviderOr(lc.LipSyncProvider, LipSyncProviderSimli)
+	m.Config.EmbeddingProvider = embeddingProviderOr(lc.EmbeddingProvider, EmbeddingProviderPythonBridge)
 	m.Config.HearingSourceLang = stringOr(lc.HearingSourceLang, DefaultHearingSourceLang)
 	m.Config.HearingTargetLang = stringOr(lc.HearingTargetLang, DefaultHearingTargetLang)
 	m.Config.SpeakingInputLang = stringOr(lc.SpeakingInputLang, DefaultSpeakingInputLang)
@@ -139,6 +162,10 @@ func (m *Manager) applyLocalConfig(lc LocalConfig) {
 	m.Config.PhysicalMicName = lc.PhysicalMicName
 	m.Config.PhysicalCamName = lc.PhysicalCamName
 	m.Config.VirtualCamName = lc.VirtualCamName
+	m.Config.MonitorOutputName = lc.MonitorOutputName
+	m.Config.HearingMonitorEnabled = lc.HearingMonitorEnabled
+	m.Config.HearingMonitorVolume = intOr(lc.HearingMonitorVolume, DefaultMonitorVolume)
+	m.Config.HearingMonitorRate = lc.HearingMonitorRate
 	m.Config.GhostFontSize = intOr(lc.GhostFontSize, DefaultGhostFontSize)
 	m.Config.GhostOpacity = floatOr(lc.GhostOpacity, DefaultGhostOpacity)
 	m.Config.GhostPosition = stringOr(lc.GhostPosition, DefaultGhostPosition)
@@ -188,24 +215,34 @@ func (m *Manager) SaveLocalConfig(lc LocalConfig) error {
 // ToLocalConfig 将当前内存配置转换为 LocalConfig（用于持久化）。
 func (m *Manager) ToLocalConfig() LocalConfig {
 	return LocalConfig{
-		SetupCompleted:     m.Config.SetupCompleted,
-		ActiveResumeID:     m.Config.ActiveResumeID,
-		UILocale:           m.Config.UILocale,
-		DeepSeekModel:      m.Config.DeepSeekModel,
-		HearingSourceLang:  m.Config.HearingSourceLang,
-		HearingTargetLang:  m.Config.HearingTargetLang,
-		SpeakingInputLang:  m.Config.SpeakingInputLang,
-		SpeakingOutputLang: m.Config.SpeakingOutputLang,
-		VirtualMicName:     m.Config.VirtualMicName,
-		PhysicalMicName:    m.Config.PhysicalMicName,
-		PhysicalCamName:    m.Config.PhysicalCamName,
-		VirtualCamName:     m.Config.VirtualCamName,
-		GhostFontSize:      m.Config.GhostFontSize,
-		GhostOpacity:       m.Config.GhostOpacity,
-		GhostPosition:      m.Config.GhostPosition,
-		RAGPrompt:          m.Config.RAGPrompt,
-		SpeakPolishPrompt:  m.Config.SpeakPolishPrompt,
-		PolishEnabled:      m.Config.PolishEnabled,
+		SetupCompleted:        m.Config.SetupCompleted,
+		ActiveResumeID:        m.Config.ActiveResumeID,
+		UILocale:              m.Config.UILocale,
+		DeepSeekModel:         m.Config.DeepSeekModel,
+		LLMBaseURL:            m.Config.LLMBaseURL,
+		TranslationProvider:   m.Config.TranslationProvider,
+		LLMProvider:           m.Config.LLMProvider,
+		TTSProvider:           m.Config.TTSProvider,
+		LipSyncProvider:       m.Config.LipSyncProvider,
+		EmbeddingProvider:     m.Config.EmbeddingProvider,
+		HearingSourceLang:     m.Config.HearingSourceLang,
+		HearingTargetLang:     m.Config.HearingTargetLang,
+		SpeakingInputLang:     m.Config.SpeakingInputLang,
+		SpeakingOutputLang:    m.Config.SpeakingOutputLang,
+		VirtualMicName:        m.Config.VirtualMicName,
+		PhysicalMicName:       m.Config.PhysicalMicName,
+		PhysicalCamName:       m.Config.PhysicalCamName,
+		VirtualCamName:        m.Config.VirtualCamName,
+		MonitorOutputName:     m.Config.MonitorOutputName,
+		HearingMonitorEnabled: m.Config.HearingMonitorEnabled,
+		HearingMonitorVolume:  m.Config.HearingMonitorVolume,
+		HearingMonitorRate:    m.Config.HearingMonitorRate,
+		GhostFontSize:         m.Config.GhostFontSize,
+		GhostOpacity:          m.Config.GhostOpacity,
+		GhostPosition:         m.Config.GhostPosition,
+		RAGPrompt:             m.Config.RAGPrompt,
+		SpeakPolishPrompt:     m.Config.SpeakPolishPrompt,
+		PolishEnabled:         m.Config.PolishEnabled,
 	}
 }
 
@@ -228,4 +265,49 @@ func floatOr(v, def float64) float64 {
 		return def
 	}
 	return v
+}
+
+func translationProviderOr(v TranslationProviderType, def TranslationProviderType) TranslationProviderType {
+	switch v {
+	case TranslationProviderXunfei, TranslationProviderNull:
+		return v
+	default:
+		return def
+	}
+}
+
+func llmProviderOr(v LLMProviderType, def LLMProviderType) LLMProviderType {
+	switch v {
+	case LLMProviderDeepSeek, LLMProviderOpenAICompatible:
+		return v
+	default:
+		return def
+	}
+}
+
+func ttsProviderOr(v TTSProviderType, def TTSProviderType) TTSProviderType {
+	switch v {
+	case TTSProviderElevenLabs, TTSProviderSystem, TTSProviderNull:
+		return v
+	default:
+		return def
+	}
+}
+
+func lipSyncProviderOr(v LipSyncProviderType, def LipSyncProviderType) LipSyncProviderType {
+	switch v {
+	case LipSyncProviderSimli, LipSyncProviderStealth, LipSyncProviderNull:
+		return v
+	default:
+		return def
+	}
+}
+
+func embeddingProviderOr(v EmbeddingProviderType, def EmbeddingProviderType) EmbeddingProviderType {
+	switch v {
+	case EmbeddingProviderPythonBridge, EmbeddingProviderNull:
+		return v
+	default:
+		return def
+	}
 }

@@ -16,6 +16,9 @@ func TestCheckDeps_ReturnsSupportedStatuses(t *testing.T) {
 
 	report := CheckDeps()
 
+	if !validStatuses[report.FFmpeg] {
+		t.Errorf("FFmpeg 返回了未知状态: %q", report.FFmpeg)
+	}
 	if !validStatuses[report.VirtualMic] {
 		t.Errorf("VirtualMic 返回了未知状态: %q", report.VirtualMic)
 	}
@@ -50,7 +53,7 @@ func TestInstallDep_KnownKey_HasMessage(t *testing.T) {
 		t.Skip("当前系统不支持依赖安装引导，跳过测试")
 	}
 
-	keys := []string{"virtual_mic", "virtual_cam"}
+	keys := []string{"ffmpeg", "virtual_mic", "virtual_cam"}
 	for _, key := range keys {
 		t.Run(key, func(t *testing.T) {
 			result := InstallDep(key)
@@ -58,6 +61,14 @@ func TestInstallDep_KnownKey_HasMessage(t *testing.T) {
 				t.Errorf("InstallDep(%q) 返回了空消息", key)
 			}
 		})
+	}
+}
+
+// TestCheckFFmpeg_ReturnsValidStatus 验证 checkFFmpeg 只返回 installed 或 missing。
+func TestCheckFFmpeg_ReturnsValidStatus(t *testing.T) {
+	status := checkFFmpeg()
+	if status != DepStatusInstalled && status != DepStatusMissing {
+		t.Errorf("checkFFmpeg 返回了意外状态: %q", status)
 	}
 }
 

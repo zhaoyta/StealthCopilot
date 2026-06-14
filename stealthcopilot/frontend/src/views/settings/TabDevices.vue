@@ -8,6 +8,7 @@ const { t } = useI18n()
 interface DeviceOption { id: string; name: string }
 
 const audioInputs  = ref<DeviceOption[]>([])
+const audioOutputs = ref<DeviceOption[]>([])
 const videoInputs  = ref<DeviceOption[]>([])
 const refreshing   = ref(false)
 const saving       = ref(false)
@@ -18,6 +19,10 @@ const config = reactive({
   physicalMic: '',
   physicalCam: '',
   virtualCam:  '',
+  monitorOutput: '',
+  hearingMonitorEnabled: false,
+  hearingMonitorVolume: 80,
+  hearingMonitorRate: 0,
 })
 
 async function loadDevices() {
@@ -26,6 +31,7 @@ async function loadDevices() {
     // @ts-expect-error — Wails 运行时注入，window.go/window.runtime 无类型定义
     const dl = await window.go.main.App.EnumerateDevices()
     audioInputs.value = dl.audio_inputs  || []
+    audioOutputs.value = dl.audio_outputs || [{ id: 'default', name: 'System Default Output' }]
     videoInputs.value = dl.video_inputs  || []
   } catch { /* 静默处理 */ }
   refreshing.value = false
@@ -40,6 +46,10 @@ onMounted(async () => {
     config.physicalMic = cfg.physical_mic_name || ''
     config.physicalCam = cfg.physical_cam_name || ''
     config.virtualCam  = cfg.virtual_cam_name  || ''
+    config.monitorOutput = cfg.monitor_output_name || ''
+    config.hearingMonitorEnabled = Boolean(cfg.hearing_monitor_enabled)
+    config.hearingMonitorVolume = cfg.hearing_monitor_volume || 80
+    config.hearingMonitorRate = cfg.hearing_monitor_rate || 0
   } catch { /* 静默处理 */ }
 })
 
@@ -56,6 +66,10 @@ async function save() {
       physical_mic_name: config.physicalMic,
       physical_cam_name: config.physicalCam,
       virtual_cam_name:  config.virtualCam,
+      monitor_output_name: config.monitorOutput,
+      hearing_monitor_enabled: config.hearingMonitorEnabled,
+      hearing_monitor_volume: Number(config.hearingMonitorVolume),
+      hearing_monitor_rate: Number(config.hearingMonitorRate),
     })
     msg.value = err || t('common.success')
   } catch (e: unknown) { msg.value = String(e) }
@@ -121,6 +135,64 @@ async function save() {
             {{ d.name }}
           </option>
         </select>
+      </div>
+
+      <!-- 听力链译文播报 -->
+      <div class="border-t border-gray-700 pt-4 space-y-4">
+        <label class="flex items-center justify-between gap-4">
+          <span class="text-xs text-gray-400">{{ t('settings.devices.hearingMonitor') }}</span>
+          <input
+            v-model="config.hearingMonitorEnabled"
+            type="checkbox"
+            class="h-4 w-4 accent-blue-500"
+          >
+        </label>
+
+        <div>
+          <label class="block text-xs text-gray-400 mb-1">{{ t('settings.devices.monitorOutput') }}</label>
+          <select
+            v-model="config.monitorOutput"
+            class="form-select"
+          >
+            <option value="">
+              {{ t('settings.devices.systemDefaultOutput') }}
+            </option>
+            <option
+              v-for="d in audioOutputs"
+              :key="d.id"
+              :value="d.name"
+            >
+              {{ d.name }}
+            </option>
+          </select>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <label class="block">
+            <span class="block text-xs text-gray-400 mb-1">
+              {{ `${t('settings.devices.monitorVolume')} ${config.hearingMonitorVolume}` }}
+            </span>
+            <input
+              v-model.number="config.hearingMonitorVolume"
+              type="range"
+              min="0"
+              max="100"
+              class="w-full accent-blue-500"
+            >
+          </label>
+          <label class="block">
+            <span class="block text-xs text-gray-400 mb-1">
+              {{ `${t('settings.devices.monitorRate')} ${config.hearingMonitorRate}` }}
+            </span>
+            <input
+              v-model.number="config.hearingMonitorRate"
+              type="range"
+              min="-5"
+              max="5"
+              class="w-full accent-blue-500"
+            >
+          </label>
+        </div>
       </div>
 
       <!-- 物理摄像头 -->

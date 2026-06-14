@@ -15,8 +15,7 @@ import (
 )
 
 const (
-	deepSeekChatURL = "https://api.deepseek.com/v1/chat/completions"
-	streamTimeout   = 60 * time.Second
+	streamTimeout = 60 * time.Second
 	// historyMaxTurns 是内存中保留的最大对话轮数（超出后滚动删除最旧记录）。
 	historyMaxTurns = 3
 )
@@ -43,6 +42,7 @@ type QAPair struct {
 type AnswerGenerator struct {
 	apiKey  string
 	model   string
+	baseURL string
 	emitter EventEmitter
 	client  *http.Client
 
@@ -53,9 +53,14 @@ type AnswerGenerator struct {
 // NewAnswerGenerator 创建回答生成器。
 // emitter 传入 Wails EventsEmit 的包装函数；model 为 DeepSeek 模型名。
 func NewAnswerGenerator(apiKey, model string, emitter EventEmitter) *AnswerGenerator {
+	return NewAnswerGeneratorWithConfig(Config{APIKey: apiKey, Model: model}, emitter)
+}
+
+func NewAnswerGeneratorWithConfig(cfg Config, emitter EventEmitter) *AnswerGenerator {
 	return &AnswerGenerator{
-		apiKey:  apiKey,
-		model:   model,
+		apiKey:  cfg.APIKey,
+		model:   cfg.Model,
+		baseURL: cfg.BaseURL,
 		emitter: emitter,
 		client:  &http.Client{Timeout: streamTimeout},
 		history: make(map[string][]QAPair),
@@ -106,7 +111,10 @@ func (g *AnswerGenerator) streamGenerate(ctx context.Context, messages []llmMess
 	bodyBytes, _ := json.Marshal(reqBody)
 
 	httpReq, err := http.NewRequestWithContext(
-		ctx, http.MethodPost, deepSeekChatURL, bytes.NewReader(bodyBytes),
+		ctx,
+		http.MethodPost,
+		Config{BaseURL: g.baseURL}.chatCompletionsURL(),
+		bytes.NewReader(bodyBytes),
 	)
 	if err != nil {
 		return "", err

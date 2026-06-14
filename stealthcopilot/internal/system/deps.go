@@ -24,6 +24,7 @@ const (
 type DepsReport struct {
 	VirtualMic DepStatus `json:"virtual_mic"` // BlackHole (macOS) / VB-Cable (Windows)
 	VirtualCam DepStatus `json:"virtual_cam"` // OBS 虚拟摄像头 / CoreMediaIO 插件
+	FFmpeg     DepStatus `json:"ffmpeg"`      // 音视频采集必需；macOS brew / Windows 官网
 }
 
 // CheckDeps 检测运行所需的系统级依赖。
@@ -31,7 +32,17 @@ func CheckDeps() DepsReport {
 	return DepsReport{
 		VirtualMic: checkVirtualMic(),
 		VirtualCam: checkVirtualCam(),
+		FFmpeg:     checkFFmpeg(),
 	}
+}
+
+// checkFFmpeg 检测 ffmpeg 是否在 PATH 中可用。
+// ffmpeg 用于音视频采集（avfoundation/dshow）和设备枚举，缺失时两条链路均无法工作。
+func checkFFmpeg() DepStatus {
+	if _, err := exec.LookPath("ffmpeg"); err == nil {
+		return DepStatusInstalled
+	}
+	return DepStatusMissing
 }
 
 // checkVirtualMic 检测虚拟声卡是否已安装。
@@ -161,6 +172,21 @@ func InstallDep(key string) DepInstallResult {
 
 func installDepMac(key string) DepInstallResult {
 	switch key {
+	case "ffmpeg":
+		if brewPath, err := exec.LookPath("brew"); err == nil {
+			script := fmt.Sprintf(
+				`tell application "Terminal" to do script "%s install ffmpeg"`,
+				brewPath,
+			)
+			if err := exec.Command("osascript", "-e", script).Start(); err == nil {
+				return DepInstallResult{
+					AutoInstalled: true,
+					Message:       "已在 Terminal 中启动 Homebrew 安装，完成后点击「重新检测」",
+				}
+			}
+		}
+		_ = exec.Command("open", "https://ffmpeg.org/download.html").Start()
+		return DepInstallResult{Message: "已打开 FFmpeg 官方下载页，安装完成后点击「重新检测」"}
 	case "virtual_mic":
 		// 优先使用 Homebrew 在独立 Terminal 中安装，用户可看到安装进度
 		if brewPath, err := exec.LookPath("brew"); err == nil {
@@ -193,6 +219,18 @@ func installDepMac(key string) DepInstallResult {
 
 func installDepWin(key string) DepInstallResult {
 	switch key {
+	case "ffmpeg":
+		// 优先尝试 winget（Windows 11 / 10 新版内置）
+		if _, err := exec.LookPath("winget"); err == nil {
+			if err := exec.Command("winget", "install", "Gyan.FFmpeg", "--silent").Start(); err == nil {
+				return DepInstallResult{
+					AutoInstalled: true,
+					Message:       "已通过 winget 静默安装 FFmpeg，完成后点击「重新检测」",
+				}
+			}
+		}
+		_ = exec.Command("cmd", "/c", "start", "https://ffmpeg.org/download.html#build-windows").Start()
+		return DepInstallResult{Message: "已打开 FFmpeg 下载页，将 ffmpeg.exe 放入系统 PATH 后点击「重新检测」"}
 	case "virtual_mic":
 		_ = exec.Command("cmd", "/c", "start", "https://vb-audio.com/Cable/").Start()
 		return DepInstallResult{

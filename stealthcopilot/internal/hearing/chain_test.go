@@ -5,12 +5,33 @@ package hearing
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/zhaoyta/stealthcopilot/internal/llm"
 	"github.com/zhaoyta/stealthcopilot/internal/translation"
 )
+
+type fakeMonitorSink struct {
+	mu     sync.Mutex
+	spoken []string
+}
+
+func (f *fakeMonitorSink) Speak(_ context.Context, text string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.spoken = append(f.spoken, text)
+	return nil
+}
+
+func (f *fakeMonitorSink) Close() error { return nil }
+
+func (f *fakeMonitorSink) count() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.spoken)
+}
 
 // TestEventConstants 验证向前端推送的事件名常量未被意外修改。
 func TestEventConstants(t *testing.T) {
@@ -69,7 +90,7 @@ func TestProcessLoop_NonFinalSubtitle(t *testing.T) {
 	})
 
 	// classifier/retriever/generator 传 nil —— IsFinal=false 不会触达这些分支
-	go c.processLoop(ctx, resultCh, nil, nil, nil, "test-session", "", emitFn)
+	go c.processLoop(ctx, resultCh, nil, nil, nil, "test-session", "", emitFn, nil)
 
 	resultCh <- translation.DualResult{DstText: "面试官的问题", IsFinal: false}
 
@@ -102,7 +123,7 @@ func TestProcessLoop_EmptyDstText(t *testing.T) {
 		}
 	})
 
-	go c.processLoop(ctx, resultCh, nil, nil, nil, "test-session", "", emitFn)
+	go c.processLoop(ctx, resultCh, nil, nil, nil, "test-session", "", emitFn, nil)
 
 	resultCh <- translation.DualResult{DstText: "", IsFinal: false}
 
@@ -125,7 +146,7 @@ func TestProcessLoop_ContextCancel(t *testing.T) {
 	done := make(chan struct{})
 
 	go func() {
-		c.processLoop(ctx, resultCh, nil, nil, nil, "test-session", "", nil)
+		c.processLoop(ctx, resultCh, nil, nil, nil, "test-session", "", nil, nil)
 		close(done)
 	}()
 
@@ -135,5 +156,33 @@ func TestProcessLoop_ContextCancel(t *testing.T) {
 		// processLoop 正常退出
 	case <-time.After(2 * time.Second):
 		t.Fatal("processLoop did not exit after context cancel")
+	}
+}
+
+// TestProcessLoop_FinalTranslationSpeaksMonitor 验证耳机监听只播报最终译文。
+func TestProcessLoop_FinalTranslationSpeaksMonitor(t *testing.T) {
+	var c Chain
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	resultCh := make(chan translation.DualResult, 2)
+	monitor := &fakeMonitorSink{}
+	emitFn := llm.EventEmitter(func(string, ...any) {})
+
+	go c.processLoop(ctx, resultCh, nil, nil, nil, "test-session", "", emitFn, monitor)
+
+	resultCh <- translation.DualResult{DstText: "处理中", IsFinal: false}
+	resultCh <- translation.DualResult{DstText: "请介绍一下项目经验", IsFinal: true}
+
+	deadline := time.After(2 * time.Second)
+	for {
+		if monitor.count() == 1 {
+			return
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("monitor speak count = %d, want 1", monitor.count())
+		case <-time.After(10 * time.Millisecond):
+		}
 	}
 }

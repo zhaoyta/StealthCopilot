@@ -10,12 +10,15 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"github.com/zhaoyta/stealthcopilot/internal/audio"
 	"github.com/zhaoyta/stealthcopilot/internal/config"
 	"github.com/zhaoyta/stealthcopilot/internal/hearing"
+	"github.com/zhaoyta/stealthcopilot/internal/lipsync"
 	"github.com/zhaoyta/stealthcopilot/internal/llm"
 	"github.com/zhaoyta/stealthcopilot/internal/rag"
 	"github.com/zhaoyta/stealthcopilot/internal/resume"
@@ -63,7 +66,8 @@ func (a *App) TestAPIConnection(service string) APIConnectionResult {
 		if cfg.DeepSeekKey == "" {
 			return APIConnectionResult{Message: "DeepSeek API Key 未配置"}
 		}
-		req, _ := http.NewRequest(http.MethodGet, "https://api.deepseek.com/models", nil)
+		modelsURL := strings.TrimRight(cfg.LLMBaseURL, "/") + "/models"
+		req, _ := http.NewRequest(http.MethodGet, modelsURL, nil)
 		req.Header.Set("Authorization", "Bearer "+cfg.DeepSeekKey)
 		return probeHTTP(client, req)
 	case "elevenlabs":
@@ -326,6 +330,16 @@ func (a *App) GetStealthStatus() ui.StealthStatus {
 func (a *App) StartHearingChain() string {
 	cfg := a.ConfigSvc.InternalManager().Config
 	retriever := rag.NewRetriever(a.ResumeSvc.InternalManager())
+	var translator translation.Provider
+	if cfg.TranslationProvider == config.TranslationProviderNull {
+		translator = translation.NullProvider{}
+	}
+	llmCfg := llm.Config{
+		Provider: string(cfg.LLMProvider),
+		APIKey:   cfg.DeepSeekKey,
+		Model:    cfg.DeepSeekModel,
+		BaseURL:  cfg.LLMBaseURL,
+	}
 
 	chainCfg := hearing.ChainConfig{
 		Xunfei: translation.XunfeiConfig{
@@ -335,12 +349,20 @@ func (a *App) StartHearingChain() string {
 			SourceLang: cfg.HearingSourceLang,
 			TargetLang: cfg.HearingTargetLang,
 		},
-		DeepSeekKey:      cfg.DeepSeekKey,
-		DeepSeekModel:    cfg.DeepSeekModel,
-		RAGPrompt:        cfg.RAGPrompt,
-		VirtualMicDevice: cfg.VirtualMicName,
-		Retriever:        retriever,
-		EventSink:        a.emitTeleprompterEvent,
+		TranslationProvider: translator,
+		LLMConfig:           llmCfg,
+		DeepSeekKey:         cfg.DeepSeekKey,
+		DeepSeekModel:       cfg.DeepSeekModel,
+		RAGPrompt:           cfg.RAGPrompt,
+		VirtualMicDevice:    cfg.VirtualMicName,
+		MonitorConfig: audio.MonitorConfig{
+			Enabled:      cfg.HearingMonitorEnabled,
+			OutputDevice: cfg.MonitorOutputName,
+			Rate:         cfg.HearingMonitorRate,
+			Volume:       cfg.HearingMonitorVolume,
+		},
+		Retriever: retriever,
+		EventSink: a.emitTeleprompterEvent,
 	}
 	return a.HearingChain.Start(a.ctx, chainCfg)
 }
@@ -384,6 +406,21 @@ func (a *App) StopHearingChain() {
 // 返回空字符串表示成功，否则返回错误描述。
 func (a *App) StartSpeakingChain() string {
 	cfg := a.ConfigSvc.InternalManager().Config
+	var translator translation.SpeakProvider
+	if cfg.TranslationProvider == config.TranslationProviderNull {
+		translator = translation.NullSpeakProvider{}
+	}
+	var ttsProvider tts.Provider
+	switch cfg.TTSProvider {
+	case config.TTSProviderNull, config.TTSProviderSystem:
+		ttsProvider = &tts.NullTTSProvider{}
+	}
+	llmCfg := llm.Config{
+		Provider: string(cfg.LLMProvider),
+		APIKey:   cfg.DeepSeekKey,
+		Model:    cfg.DeepSeekModel,
+		BaseURL:  cfg.LLMBaseURL,
+	}
 	chainCfg := speaking.ChainConfig{
 		Xunfei: translation.XunfeiSpeakConfig{
 			AppID:      cfg.XunfeiAppID,
@@ -396,12 +433,15 @@ func (a *App) StartSpeakingChain() string {
 			APIKey:  cfg.ElevenLabsKey,
 			VoiceID: cfg.ElevenLabsVoiceID,
 		},
+		Translator:         translator,
+		TTSProvider:        ttsProvider,
 		PhysicalMicDevice:  cfg.PhysicalMicName,
 		VirtualMicDevice:   cfg.VirtualMicName,
 		SilenceThresholdMs: 800,
 		AudioSink:          a.VideoChain.SendAudioChunk,
 		DeepSeekKey:        cfg.DeepSeekKey,
 		DeepSeekModel:      cfg.DeepSeekModel,
+		LLMConfig:          llmCfg,
 		PolishPrompt:       cfg.SpeakPolishPrompt,
 		PolishEnabled:      cfg.PolishEnabled,
 	}
@@ -425,14 +465,23 @@ func (a *App) SetVADSilenceThreshold(ms int) {
 // 返回空字符串表示成功，否则返回错误描述。
 func (a *App) StartVideoChain() string {
 	cfg := a.ConfigSvc.InternalManager().Config
+	var lipSyncProvider lipsync.Provider
+	lipSyncCloudMode := false
+	if cfg.LipSyncProvider == config.LipSyncProviderNull {
+		lipSyncProvider = lipsync.NewNullLipSyncProvider()
+	} else if cfg.LipSyncProvider == config.LipSyncProviderSimli {
+		lipSyncCloudMode = cfg.SimliKey != "" && cfg.SimliFaceID != ""
+	}
 	chainCfg := video.ChainConfig{
-		SimliAPIKey:        cfg.SimliKey,
-		SilmiFaceID:        cfg.SimliFaceID,
+		SimliAPIKey: cfg.SimliKey,
+		SilmiFaceID: cfg.SimliFaceID,
 		// Simli 无公开 UDP 端点；改为 HTTP HEAD 探活。
 		// 心跳判断：任何 2xx/3xx/4xx 响应 = 网络连通；5xx 或超时 = 触发熔断。
 		SimliHeartbeatAddr: "https://api.simli.ai",
 		PhysicalCamDevice:  cfg.PhysicalCamName,
 		VirtualCamDevice:   cfg.VirtualCamName,
+		LipSyncProvider:    lipSyncProvider,
+		LipSyncCloudMode:   lipSyncCloudMode,
 	}
 	return a.VideoChain.Start(a.ctx, chainCfg)
 }

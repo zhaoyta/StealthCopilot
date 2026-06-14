@@ -29,6 +29,7 @@
     "deps": {
       "title": "Dependency Check",
       "desc": "Check required system components. Missing items can be installed with one click.",
+      "ffmpeg": "FFmpeg (required for audio/video capture)",
       "virtualMic": "Virtual Microphone (BlackHole / VB-Cable)",
       "virtualCam": "Virtual Camera (OBS VirtualCam)",
       "install": "Install",
@@ -143,6 +144,11 @@
       "physicalMic": "Physical Microphone",
       "physicalCam": "Physical Camera",
       "virtualCam": "Virtual Camera (OBS VirtualCam)",
+      "hearingMonitor": "Hearing translated-audio monitor",
+      "monitorOutput": "Headphone monitor output",
+      "systemDefaultOutput": "System Default Output",
+      "monitorVolume": "Monitor Volume",
+      "monitorRate": "Monitor Rate",
       "refresh": "Re-enumerate Devices",
       "select": "Select…"
     },
@@ -173,7 +179,23 @@
     "advanced": {
       "ragPrompt": "Answer Generation Prompt",
       "speakPolishPrompt": "Speech Polish Prompt",
-      "polishEnabled": "Enable Speech Polishing (default off)"
+      "polishEnabled": "Enable Speech Polishing (default off)",
+      "providers": "External Service Providers",
+      "translationProvider": "Realtime Translation Provider",
+      "llmProvider": "LLM Provider",
+      "llmBaseURL": "LLM Base URL",
+      "ttsProvider": "TTS Provider",
+      "lipsyncProvider": "Lip Sync Provider",
+      "embeddingProvider": "Embedding Provider",
+      "providerNames": {
+        "xunfei": "Xunfei",
+        "deepseek": "DeepSeek",
+        "openaiCompatible": "OpenAI Compatible",
+        "elevenlabs": "ElevenLabs",
+        "simli": "Simli",
+        "pythonBridge": "Python Bridge",
+        "null": "Disabled / Null"
+      }
     }
   },
   "dashboard": {

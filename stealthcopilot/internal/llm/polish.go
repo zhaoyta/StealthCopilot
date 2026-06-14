@@ -28,10 +28,14 @@ const polishTimeout = 5 * time.Second
 //
 // 返回值：润色后文本；失败时返回 (input, err)，调用方应降级使用原始文本。
 func Polish(ctx context.Context, apiKey, model, promptTpl, input string) (string, error) {
+	return PolishWithConfig(ctx, Config{APIKey: apiKey, Model: model}, promptTpl, input)
+}
+
+func PolishWithConfig(ctx context.Context, cfg Config, promptTpl, input string) (string, error) {
 	prompt := strings.ReplaceAll(promptTpl, "{input}", input)
 
 	reqBody := polishRequest{
-		Model: model,
+		Model: cfg.Model,
 		Messages: []llmMessage{
 			{Role: "system", Content: prompt},
 		},
@@ -43,13 +47,13 @@ func Polish(ctx context.Context, apiKey, model, promptTpl, input string) (string
 	defer cancel()
 
 	httpReq, err := http.NewRequestWithContext(
-		timeoutCtx, http.MethodPost, deepSeekChatURL, bytes.NewReader(bodyBytes),
+		timeoutCtx, http.MethodPost, cfg.chatCompletionsURL(), bytes.NewReader(bodyBytes),
 	)
 	if err != nil {
 		return input, fmt.Errorf("polish: build request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+	httpReq.Header.Set("Authorization", "Bearer "+cfg.APIKey)
 
 	client := &http.Client{Timeout: polishTimeout}
 	resp, err := client.Do(httpReq)

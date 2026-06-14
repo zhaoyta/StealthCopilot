@@ -9,6 +9,12 @@ const config = reactive({
   ragPrompt: '',
   speakPolishPrompt: '',
   polishEnabled: false,
+  translationProvider: 'xunfei',
+  llmProvider: 'deepseek',
+  llmBaseURL: 'https://api.deepseek.com/v1',
+  ttsProvider: 'elevenlabs',
+  lipsyncProvider: 'simli',
+  embeddingProvider: 'python_bridge',
 })
 const defaults = reactive({ ragPrompt: '', speakPolishPrompt: '' })
 const expanded = reactive({ rag: false, speak: false })
@@ -26,6 +32,12 @@ onMounted(async () => {
     config.ragPrompt = cfg.rag_prompt || ''
     config.speakPolishPrompt = cfg.speak_polish_prompt || ''
     config.polishEnabled = cfg.polish_enabled || false
+    config.translationProvider = cfg.translation_provider || 'xunfei'
+    config.llmProvider = cfg.llm_provider || 'deepseek'
+    config.llmBaseURL = cfg.llm_base_url || 'https://api.deepseek.com/v1'
+    config.ttsProvider = cfg.tts_provider || 'elevenlabs'
+    config.lipsyncProvider = cfg.lipsync_provider || 'simli'
+    config.embeddingProvider = cfg.embedding_provider || 'python_bridge'
     defaults.ragPrompt = defs.rag_prompt
     defaults.speakPolishPrompt = defs.speak_polish_prompt
   } catch { /* 静默处理 */ }
@@ -43,6 +55,12 @@ async function save() {
       rag_prompt: config.ragPrompt,
       speak_polish_prompt: config.speakPolishPrompt,
       polish_enabled: config.polishEnabled,
+      translation_provider: config.translationProvider,
+      llm_provider: config.llmProvider,
+      llm_base_url: config.llmBaseURL,
+      tts_provider: config.ttsProvider,
+      lipsync_provider: config.lipsyncProvider,
+      embedding_provider: config.embeddingProvider,
     })
     msg.value = err || t('common.success')
   } catch (e: unknown) { msg.value = String(e) }
@@ -69,6 +87,73 @@ async function save() {
           :class="config.polishEnabled ? 'translate-x-6' : 'translate-x-1'"
         />
       </button>
+    </div>
+
+    <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 space-y-4">
+      <h3 class="text-sm font-medium text-gray-200">
+        {{ t('settings.advanced.providers') }}
+      </h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <label class="block">
+          <span class="block text-xs text-gray-400 mb-1">{{ t('settings.advanced.translationProvider') }}</span>
+          <select
+            v-model="config.translationProvider"
+            class="form-select"
+          >
+            <option value="xunfei">{{ t('settings.advanced.providerNames.xunfei') }}</option>
+            <option value="null">{{ t('settings.advanced.providerNames.null') }}</option>
+          </select>
+        </label>
+        <label class="block">
+          <span class="block text-xs text-gray-400 mb-1">{{ t('settings.advanced.llmProvider') }}</span>
+          <select
+            v-model="config.llmProvider"
+            class="form-select"
+          >
+            <option value="deepseek">{{ t('settings.advanced.providerNames.deepseek') }}</option>
+            <option value="openai_compatible">{{ t('settings.advanced.providerNames.openaiCompatible') }}</option>
+          </select>
+        </label>
+        <label class="block md:col-span-2">
+          <span class="block text-xs text-gray-400 mb-1">{{ t('settings.advanced.llmBaseURL') }}</span>
+          <input
+            v-model="config.llmBaseURL"
+            type="text"
+            class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white
+                   focus:outline-none focus:border-blue-400"
+          >
+        </label>
+        <label class="block">
+          <span class="block text-xs text-gray-400 mb-1">{{ t('settings.advanced.ttsProvider') }}</span>
+          <select
+            v-model="config.ttsProvider"
+            class="form-select"
+          >
+            <option value="elevenlabs">{{ t('settings.advanced.providerNames.elevenlabs') }}</option>
+            <option value="null">{{ t('settings.advanced.providerNames.null') }}</option>
+          </select>
+        </label>
+        <label class="block">
+          <span class="block text-xs text-gray-400 mb-1">{{ t('settings.advanced.lipsyncProvider') }}</span>
+          <select
+            v-model="config.lipsyncProvider"
+            class="form-select"
+          >
+            <option value="simli">{{ t('settings.advanced.providerNames.simli') }}</option>
+            <option value="null">{{ t('settings.advanced.providerNames.null') }}</option>
+          </select>
+        </label>
+        <label class="block">
+          <span class="block text-xs text-gray-400 mb-1">{{ t('settings.advanced.embeddingProvider') }}</span>
+          <select
+            v-model="config.embeddingProvider"
+            class="form-select"
+          >
+            <option value="python_bridge">{{ t('settings.advanced.providerNames.pythonBridge') }}</option>
+            <option value="null">{{ t('settings.advanced.providerNames.null') }}</option>
+          </select>
+        </label>
+      </div>
     </div>
 
     <!-- RAG 回答生成 Prompt -->

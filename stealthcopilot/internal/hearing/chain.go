@@ -35,6 +35,10 @@ type SubtitleEvent struct {
 type ChainConfig struct {
 	// Xunfei 讯飞翻译 API 配置
 	Xunfei translation.XunfeiConfig
+	// TranslationProvider overrides Xunfei when a different provider is selected.
+	TranslationProvider translation.Provider
+	// LLMConfig configures OpenAI-compatible intent classification and answer generation.
+	LLMConfig llm.Config
 	// DeepSeekKey DeepSeek API Key
 	DeepSeekKey string
 	// DeepSeekModel DeepSeek 模型名称
@@ -43,6 +47,10 @@ type ChainConfig struct {
 	RAGPrompt string
 	// VirtualMicDevice 虚拟声卡设备名称（BlackHole/VB-Cable）
 	VirtualMicDevice string
+	// MonitorConfig controls private translated-audio playback for the interviewee.
+	MonitorConfig audio.MonitorConfig
+	// MonitorSink allows tests or alternate runtimes to override system speech.
+	MonitorSink audio.MonitorSink
 	// Retriever RAG 检索器（依赖 resume.Manager）
 	Retriever *rag.Retriever
 	// EventSink mirrors hearing/answer events to non-Wails consumers such as the native teleprompter.
@@ -82,9 +90,11 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 		return "音频捕获启动失败：" + err.Error()
 	}
 
-	// 讯飞翻译
-	xunfei := translation.NewXunfeiProvider(cfg.Xunfei)
-	resultCh, err := xunfei.Translate(ctx, audioStream)
+	translator := cfg.TranslationProvider
+	if translator == nil {
+		translator = translation.NewXunfeiProvider(cfg.Xunfei)
+	}
+	resultCh, err := translator.Translate(ctx, audioStream)
 	if err != nil {
 		cancel()
 		c.cancel = nil
@@ -92,7 +102,18 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 	}
 
 	// 意图分类器
-	classifier := intent.NewClassifier(cfg.DeepSeekKey, cfg.DeepSeekModel)
+	llmCfg := cfg.LLMConfig
+	if llmCfg.APIKey == "" {
+		llmCfg.APIKey = cfg.DeepSeekKey
+	}
+	if llmCfg.Model == "" {
+		llmCfg.Model = cfg.DeepSeekModel
+	}
+	classifier := intent.NewClassifierWithConfig(llmCfg)
+	monitor := cfg.MonitorSink
+	if monitor == nil {
+		monitor = audio.NewSystemMonitorSink(cfg.MonitorConfig)
+	}
 
 	// combinedEmit 统一负责 Wails 事件推送和 EventSink 转发，processLoop 只调用此函数。
 	// 两路合一避免 processLoop 内部重复"emit + if sink" 模式，也使 processLoop 可测试。
@@ -102,7 +123,7 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 			cfg.EventSink(eventName, data...)
 		}
 	})
-	generator := llm.NewAnswerGenerator(cfg.DeepSeekKey, cfg.DeepSeekModel, combinedEmit)
+	generator := llm.NewAnswerGeneratorWithConfig(llmCfg, combinedEmit)
 
 	// session ID：每次 StartHearingChain 创建新 session，避免跨会话混用历史
 	sessionID := uuid.New().String()
@@ -110,7 +131,9 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
-		c.processLoop(ctx, resultCh, classifier, cfg.Retriever, generator, sessionID, cfg.RAGPrompt, combinedEmit)
+		defer translator.Close()
+		defer monitor.Close()
+		c.processLoop(ctx, resultCh, classifier, cfg.Retriever, generator, sessionID, cfg.RAGPrompt, combinedEmit, monitor)
 	}()
 
 	return ""
@@ -139,6 +162,7 @@ func (c *Chain) processLoop(
 	sessionID string,
 	ragPromptTpl string,
 	emitFn llm.EventEmitter,
+	monitor audio.MonitorSink,
 ) {
 	for {
 		select {
@@ -156,6 +180,15 @@ func (c *Chain) processLoop(
 				IsFinal: result.IsFinal,
 			}
 			emitFn(EventSubtitle, subtitle)
+
+			if result.IsFinal && result.DstText != "" && monitor != nil {
+				dstText := result.DstText
+				c.wg.Add(1)
+				go func() {
+					defer c.wg.Done()
+					_ = monitor.Speak(ctx, dstText)
+				}()
+			}
 
 			// 2. 仅对 is_end=true 的完整句子触发意图识别 + RAG（D3）
 			if !result.IsFinal || result.SrcText == "" {

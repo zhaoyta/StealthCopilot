@@ -22,6 +22,8 @@ type ChainConfig struct {
 	SimliHeartbeatAddr string // UDP 心跳目标地址（Simli API 端点）
 	PhysicalCamDevice  string // 物理摄像头设备名
 	VirtualCamDevice   string // 虚拟摄像头设备名
+	LipSyncProvider    lipsync.Provider
+	LipSyncCloudMode   bool
 }
 
 // Chain 视频链协调器，持有各组件实例和运行状态。
@@ -78,10 +80,16 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 	// 虚拟摄像头写入器：仅在平台提供可写 sink 时使用真实 writer。
 	vcWriter := NewSystemVirtualCameraWriter(cfg.VirtualCamDevice)
 
-	// 口型同步 Provider（Simli 或 Null 直通）
 	var lipSync lipsync.Provider
-	cloudMode := false
-	if cfg.SimliAPIKey != "" && cfg.SilmiFaceID != "" {
+	cloudMode := cfg.LipSyncCloudMode
+	switch {
+	case cfg.LipSyncProvider != nil:
+		lipSync = cfg.LipSyncProvider
+		if startErr := lipSync.Start(ctx, cfg.SilmiFaceID); startErr != nil {
+			lipSync = lipsync.NewNullLipSyncProvider()
+			cloudMode = false
+		}
+	case cfg.SimliAPIKey != "" && cfg.SilmiFaceID != "":
 		p := lipsync.NewSimliProvider(lipsync.SimliConfig{
 			APIKey: cfg.SimliAPIKey,
 			FaceID: cfg.SilmiFaceID,
@@ -93,7 +101,7 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 			lipSync = p
 			cloudMode = true
 		}
-	} else {
+	default:
 		lipSync = lipsync.NewNullLipSyncProvider()
 	}
 

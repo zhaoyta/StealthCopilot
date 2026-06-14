@@ -29,6 +29,7 @@
     "deps": {
       "title": "依赖检测",
       "desc": "检测运行所需系统组件，缺失项可一键安装",
+      "ffmpeg": "FFmpeg（音视频采集必需）",
       "virtualMic": "虚拟声卡（BlackHole / VB-Cable）",
       "virtualCam": "虚拟摄像头（OBS VirtualCam）",
       "install": "一键安装",
@@ -143,6 +144,11 @@
       "physicalMic": "物理麦克风",
       "physicalCam": "物理摄像头",
       "virtualCam": "虚拟摄像头（OBS VirtualCam）",
+      "hearingMonitor": "听力链译文耳机播报",
+      "monitorOutput": "耳机监听输出",
+      "systemDefaultOutput": "系统默认输出",
+      "monitorVolume": "播报音量",
+      "monitorRate": "播报语速",
       "refresh": "重新枚举设备",
       "select": "请选择…"
     },
@@ -173,7 +179,23 @@
     "advanced": {
       "ragPrompt": "回答生成提示词",
       "speakPolishPrompt": "说话润色提示词",
-      "polishEnabled": "启用说话润色（默认关闭）"
+      "polishEnabled": "启用说话润色（默认关闭）",
+      "providers": "外部服务 Provider",
+      "translationProvider": "实时翻译 Provider",
+      "llmProvider": "LLM Provider",
+      "llmBaseURL": "LLM Base URL",
+      "ttsProvider": "TTS Provider",
+      "lipsyncProvider": "口型同步 Provider",
+      "embeddingProvider": "Embedding Provider",
+      "providerNames": {
+        "xunfei": "讯飞",
+        "deepseek": "DeepSeek",
+        "openaiCompatible": "OpenAI 兼容",
+        "elevenlabs": "ElevenLabs",
+        "simli": "Simli",
+        "pythonBridge": "Python Bridge",
+        "null": "禁用 / Null"
+      }
     }
   },
   "dashboard": {
