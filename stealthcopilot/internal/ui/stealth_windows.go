@@ -10,7 +10,7 @@ import (
 
 const (
 	wdaExcludeFromCapture = 0x00000011
-	gwlExStyle            = -20
+	gwlExStyle            = ^uintptr(19) // -20 as a pointer-sized Win32 index.
 	wsExTransparent       = 0x00000020
 	windows10Major        = 10
 	windows10Minor        = 0
@@ -49,12 +49,12 @@ func setWindowDisplayAffinity(hwnd uintptr) error {
 }
 
 func enableClickThrough(hwnd uintptr) error {
-	style, _, callErr := procGetWindowLongPtr.Call(hwnd, uintptr(gwlExStyle))
+	style, _, callErr := procGetWindowLongPtr.Call(hwnd, gwlExStyle)
 	if style == 0 && callErr != windows.ERROR_SUCCESS {
 		return fmt.Errorf("GetWindowLongPtr: %w", callErr)
 	}
 
-	ret, _, setErr := procSetWindowLongPtr.Call(hwnd, uintptr(gwlExStyle), style|uintptr(wsExTransparent))
+	ret, _, setErr := procSetWindowLongPtr.Call(hwnd, gwlExStyle, style|uintptr(wsExTransparent))
 	if ret == 0 && setErr != windows.ERROR_SUCCESS {
 		return fmt.Errorf("SetWindowLongPtr: %w", setErr)
 	}

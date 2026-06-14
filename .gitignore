@@ -1,6 +1,8 @@
 # ─── Wails 构建产物 ───────────────────────────────────────────────────────────
 stealthcopilot/build/bin/
 stealthcopilot/build/windows/
+!stealthcopilot/build/windows/
+!stealthcopilot/build/windows/icon.ico
 stealthcopilot/build/darwin/
 stealthcopilot/frontend/dist/
 stealthcopilot/frontend/node_modules/
