@@ -34,6 +34,10 @@ module.exports = {
     '@intlify/vue-i18n/no-missing-keys': 'error',
     // 允许 any 类型（Wails binding 生成代码中常见）
     '@typescript-eslint/no-explicit-any': 'warn',
+    // Vue recommended 的排版规则对现有 Wails 页面噪声较大，保留给格式化工具处理
+    'vue/max-attributes-per-line': 'off',
+    'vue/multiline-html-element-content-newline': 'off',
+    'vue/singleline-html-element-content-newline': 'off',
   },
   // 排除规则见 .eslintignore（lint-staged 直接传文件时 ignorePatterns 无效）
   ignorePatterns: [],

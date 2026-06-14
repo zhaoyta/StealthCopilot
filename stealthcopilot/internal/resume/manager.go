@@ -1,10 +1,17 @@
 package resume
 
 import (
+	"archive/zip"
+	"bytes"
 	"fmt"
+	"html"
+	"io"
+	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -16,7 +23,7 @@ type Manager struct {
 	store    *fileStore
 	vectors  *vectorStore
 	embedder EmbeddingProvider
-	mu       sync.RWMutex // 保护 store 和 vectors 的并发访问
+	mu       sync.RWMutex   // 保护 store 和 vectors 的并发访问
 	wg       sync.WaitGroup // 追踪后台 embedding goroutine，Close() 时等待所有完成
 }
 
@@ -94,17 +101,24 @@ func (m *Manager) generateEmbedding(resumeID string, onStatusChange func(r *Resu
 
 	setStatus(EmbeddingStatusProcessing, "")
 
-	// 读取文件字节（此处直接使用原始字节作为文本，PDF/DOCX 的完整解析可在 Phase 2 扩展）
+	var fileName string
 	m.mu.RLock()
-	raw, err := m.store.ReadText(resumeID)
+	r, err := m.store.Get(resumeID)
+	if err == nil {
+		fileName = r.Name
+	}
+	raw, readErr := m.store.ReadText(resumeID)
 	m.mu.RUnlock()
 	if err != nil {
 		setStatus(EmbeddingStatusError, err.Error())
 		return
 	}
+	if readErr != nil {
+		setStatus(EmbeddingStatusError, readErr.Error())
+		return
+	}
 
-	// 将字节转为文本（若是二进制格式则仅取可打印 UTF-8 部分）
-	text := extractText(raw)
+	text := extractText(fileName, raw)
 	if strings.TrimSpace(text) == "" {
 		setStatus(EmbeddingStatusError, "无法提取文本内容，请确认文件格式正确")
 		return
@@ -114,7 +128,7 @@ func (m *Manager) generateEmbedding(resumeID string, onStatusChange func(r *Resu
 	embeddings := make([][]float32, 0, len(chunks))
 
 	for _, chunk := range chunks {
-		vec, err := m.embedder.Embed(chunk)
+		vec, err := embedPassage(m.embedder, chunk)
 		if err != nil {
 			setStatus(EmbeddingStatusError, err.Error())
 			return
@@ -219,22 +233,124 @@ func (m *Manager) Close() error {
 
 // --- 文本处理工具 ---
 
-// extractText 尝试将字节转为 UTF-8 文本（PDF/DOCX 的深度解析留给 Phase 2）。
-func extractText(data []byte) string {
+func embedPassage(provider EmbeddingProvider, chunk string) ([]float32, error) {
+	if passageProvider, ok := provider.(PassageEmbeddingProvider); ok {
+		return passageProvider.EmbedPassage(chunk)
+	}
+	return provider.Embed(chunk)
+}
+
+func extractText(fileName string, data []byte) string {
+	switch strings.ToLower(filepath.Ext(fileName)) {
+	case ".docx":
+		return extractDOCXText(data)
+	case ".pdf":
+		return extractPDFText(data)
+	default:
+		return extractUTF8Text(data)
+	}
+}
+
+func extractUTF8Text(data []byte) string {
 	s := string(data)
 	if utf8.ValidString(s) {
-		return s
+		return strings.TrimSpace(s)
 	}
-	// 过滤非 UTF-8 字节，保留可读内容
 	var b strings.Builder
 	for i := 0; i < len(data); {
 		r, size := utf8.DecodeRune(data[i:])
-		if r != utf8.RuneError {
+		if r != utf8.RuneError && (unicode.IsPrint(r) || unicode.IsSpace(r)) {
 			b.WriteRune(r)
 		}
 		i += size
 	}
-	return b.String()
+	return strings.TrimSpace(b.String())
+}
+
+func extractDOCXText(data []byte) string {
+	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return extractUTF8Text(data)
+	}
+	for _, f := range reader.File {
+		if f.Name != "word/document.xml" {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return ""
+		}
+		defer rc.Close()
+		xmlBytes, err := io.ReadAll(rc)
+		if err != nil {
+			return ""
+		}
+		return xmlText(xmlBytes)
+	}
+	return ""
+}
+
+func extractPDFText(data []byte) string {
+	text := extractPDFLiteralText(data)
+	if strings.TrimSpace(text) != "" {
+		return text
+	}
+	return extractUTF8Text(data)
+}
+
+var (
+	xmlParagraphRE = regexp.MustCompile(`(?i)</w:p>`)
+	xmlTagRE       = regexp.MustCompile(`<[^>]+>`)
+	pdfLiteralRE   = regexp.MustCompile(`\((?:\\.|[^\\)])*\)\s*T[Jj]`)
+)
+
+func xmlText(data []byte) string {
+	s := string(data)
+	s = xmlParagraphRE.ReplaceAllString(s, "\n")
+	s = xmlTagRE.ReplaceAllString(s, "")
+	s = html.UnescapeString(s)
+	return normalizeWhitespace(s)
+}
+
+func extractPDFLiteralText(data []byte) string {
+	matches := pdfLiteralRE.FindAll(data, -1)
+	var parts []string
+	for _, match := range matches {
+		start := bytes.IndexByte(match, '(')
+		end := bytes.LastIndexByte(match, ')')
+		if start < 0 || end <= start {
+			continue
+		}
+		part := unescapePDFLiteral(string(match[start+1 : end]))
+		if strings.TrimSpace(part) != "" {
+			parts = append(parts, part)
+		}
+	}
+	return normalizeWhitespace(strings.Join(parts, "\n"))
+}
+
+func unescapePDFLiteral(s string) string {
+	replacer := strings.NewReplacer(
+		`\\`, `\`,
+		`\(`, `(`,
+		`\)`, `)`,
+		`\n`, "\n",
+		`\r`, "\n",
+		`\t`, "\t",
+	)
+	return replacer.Replace(s)
+}
+
+func normalizeWhitespace(s string) string {
+	lines := strings.Split(s, "\n")
+	cleaned := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.Join(strings.Fields(line), " ")
+		if line != "" {
+			cleaned = append(cleaned, line)
+		}
+	}
+	return strings.TrimSpace(strings.Join(cleaned, "\n"))
 }
 
 // splitChunks 将长文本按最大字符数分割为重叠块（重叠 50 字符以减少边界截断影响）。

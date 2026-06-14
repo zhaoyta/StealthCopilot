@@ -14,13 +14,13 @@ const (
 
 // 默认值常量
 const (
-	DefaultGhostFontSize     = 16
-	DefaultGhostOpacity      = 0.85
-	DefaultGhostPosition     = "bottom-right"
-	DefaultDeepSeekModel     = "deepseek-chat"
-	DefaultHearingSourceLang = "en"
-	DefaultHearingTargetLang = "zh"
-	DefaultSpeakingInputLang = "zh"
+	DefaultGhostFontSize      = 16
+	DefaultGhostOpacity       = 0.85
+	DefaultGhostPosition      = "bottom-right"
+	DefaultDeepSeekModel      = "deepseek-chat"
+	DefaultHearingSourceLang  = "en"
+	DefaultHearingTargetLang  = "zh"
+	DefaultSpeakingInputLang  = "zh"
 	DefaultSpeakingOutputLang = "en"
 )
 
@@ -78,6 +78,9 @@ type AppConfig struct {
 	SpeakPolishPrompt string
 	PolishEnabled     bool
 
+	// 界面语言
+	UILocale string // "zh-CN" | "en-US"
+
 	// 初始化状态
 	SetupCompleted bool
 	ActiveResumeID string
@@ -126,6 +129,7 @@ func (m *Manager) reload() {
 func (m *Manager) applyLocalConfig(lc LocalConfig) {
 	m.Config.SetupCompleted = lc.SetupCompleted
 	m.Config.ActiveResumeID = lc.ActiveResumeID
+	m.Config.UILocale = stringOr(lc.UILocale, "zh-CN")
 	m.Config.DeepSeekModel = stringOr(lc.DeepSeekModel, DefaultDeepSeekModel)
 	m.Config.HearingSourceLang = stringOr(lc.HearingSourceLang, DefaultHearingSourceLang)
 	m.Config.HearingTargetLang = stringOr(lc.HearingTargetLang, DefaultHearingTargetLang)
@@ -186,6 +190,7 @@ func (m *Manager) ToLocalConfig() LocalConfig {
 	return LocalConfig{
 		SetupCompleted:     m.Config.SetupCompleted,
 		ActiveResumeID:     m.Config.ActiveResumeID,
+		UILocale:           m.Config.UILocale,
 		DeepSeekModel:      m.Config.DeepSeekModel,
 		HearingSourceLang:  m.Config.HearingSourceLang,
 		HearingTargetLang:  m.Config.HearingTargetLang,

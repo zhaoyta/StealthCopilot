@@ -44,7 +44,10 @@ func (p *XunfeiSpeakProvider) Translate(ctx context.Context, pcmData []byte) (st
 		return "", fmt.Errorf("xunfei_speak: build auth URL: %w", err)
 	}
 
-	conn, _, err := websocket.DefaultDialer.DialContext(timeoutCtx, authURL, nil)
+	conn, resp, err := websocket.DefaultDialer.DialContext(timeoutCtx, authURL, nil)
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
 	if err != nil {
 		return "", fmt.Errorf("xunfei_speak: dial: %w", err)
 	}

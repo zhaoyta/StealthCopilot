@@ -35,6 +35,7 @@ func (s *Service) GetConfig() FrontendConfig {
 		ElevenLabsVoiceIDSet: c.ElevenLabsVoiceID != "",
 		SimliKeySet:          c.SimliKey != "",
 		SimliFaceIDSet:       c.SimliFaceID != "",
+		UILocale:             c.UILocale,
 		DeepSeekModel:        c.DeepSeekModel,
 		HearingSourceLang:    c.HearingSourceLang,
 		HearingTargetLang:    c.HearingTargetLang,
@@ -67,6 +68,7 @@ func (s *Service) SaveAPIKey(req SaveAPIKeyRequest) string {
 // SaveLocalConfig 将非敏感配置写入本地文件并同步内存。
 func (s *Service) SaveLocalConfig(req SaveLocalConfigRequest) string {
 	lc := LocalConfig{
+		UILocale:           req.UILocale,
 		DeepSeekModel:      req.DeepSeekModel,
 		HearingSourceLang:  req.HearingSourceLang,
 		HearingTargetLang:  req.HearingTargetLang,

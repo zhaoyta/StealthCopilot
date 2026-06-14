@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"os"
 	"path/filepath"
 	"sync"
@@ -17,6 +18,9 @@ import (
 	"github.com/zhaoyta/stealthcopilot/internal/video"
 )
 
+//go:embed scripts/embed.py
+var embeddedEmbedScript []byte
+
 // App 是 Wails 应用主结构，负责生命周期管理和各服务的协调初始化。
 type App struct {
 	ctx                 context.Context
@@ -26,6 +30,7 @@ type App struct {
 	HearingChain        *hearing.Chain
 	SpeakingChain       *speaking.Chain
 	VideoChain          *video.Chain
+	TeleprompterWindow  ui.TeleprompterWindow
 	teleprompterMu      sync.RWMutex
 	teleprompterVisible bool
 	teleprompterWindow  windowSnapshot
@@ -53,11 +58,20 @@ func (a *App) startup(ctx context.Context) {
 	a.stealthStatus = ui.StealthStatusUnavailable
 
 	dataDir := appDataDir()
+	scriptPath := filepath.Join(dataDir, "embed.py")
+	if err := ensureEmbeddedFile(scriptPath, embeddedEmbedScript, 0o700); err != nil {
+		_, _ = runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
+			Type:    runtime.ErrorDialog,
+			Title:   "初始化失败",
+			Message: "无法安装 embedding 脚本：" + err.Error(),
+		})
+		os.Exit(1)
+	}
 
 	// 1. 配置服务（含 Keychain 预读，应 2s 内完成）
 	cfgSvc, err := config.NewService(dataDir)
 	if err != nil {
-		runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
+		_, _ = runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
 			Type:    runtime.ErrorDialog,
 			Title:   "初始化失败",
 			Message: "无法加载配置：" + err.Error(),
@@ -68,7 +82,6 @@ func (a *App) startup(ctx context.Context) {
 	cfgSvc.Startup(ctx)
 
 	// 2. 简历服务（embedding：Python 桥接，不可用时降级为 NullProvider）
-	scriptPath := filepath.Join(dataDir, "embed.py")
 	var embedder resume.EmbeddingProvider
 	provider := resume.NewPythonBridgeProvider(scriptPath)
 	if provider.Ready() {
@@ -79,7 +92,7 @@ func (a *App) startup(ctx context.Context) {
 
 	resumeSvc, err := resume.NewService(dataDir, embedder)
 	if err != nil {
-		runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
+		_, _ = runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
 			Type:    runtime.ErrorDialog,
 			Title:   "初始化失败",
 			Message: "无法初始化简历服务：" + err.Error(),
@@ -100,10 +113,16 @@ func (a *App) startup(ctx context.Context) {
 
 	// 6. 视频链协调器（各组件在 StartVideoChain binding 中按需实例化）
 	a.VideoChain = &video.Chain{}
+
+	// 7. 原生提词窗（平台不可用时内部为 no-op，ShowTeleprompter 会走 Wails fallback）
+	a.TeleprompterWindow = ui.NewTeleprompterWindow()
 }
 
 // shutdown 在 Wails 应用关闭时调用，释放资源。
 func (a *App) shutdown(_ context.Context) {
+	if a.TeleprompterWindow != nil {
+		_ = a.TeleprompterWindow.Close()
+	}
 	if a.ResumeSvc != nil {
 		_ = a.ResumeSvc.InternalManager().Close()
 	}
@@ -129,4 +148,15 @@ func appDataDir() string {
 func isDir(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
+}
+
+func ensureEmbeddedFile(path string, data []byte, perm os.FileMode) error {
+	current, err := os.ReadFile(path)
+	if err == nil && string(current) == string(data) {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, perm)
 }

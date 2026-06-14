@@ -14,6 +14,7 @@ type FrontendConfig struct {
 	SimliFaceIDSet       bool `json:"simli_face_id_set"`
 
 	// 非敏感配置（明文）
+	UILocale           string  `json:"ui_locale"` // "zh-CN" | "en-US"
 	DeepSeekModel      string  `json:"deepseek_model"`
 	HearingSourceLang  string  `json:"hearing_source_lang"`
 	HearingTargetLang  string  `json:"hearing_target_lang"`
@@ -44,6 +45,7 @@ type SaveAPIKeyRequest struct {
 
 // SaveLocalConfigRequest 前端传入的本地配置写入请求（不含 API Key）。
 type SaveLocalConfigRequest struct {
+	UILocale           string  `json:"ui_locale"`
 	DeepSeekModel      string  `json:"deepseek_model"`
 	HearingSourceLang  string  `json:"hearing_source_lang"`
 	HearingTargetLang  string  `json:"hearing_target_lang"`

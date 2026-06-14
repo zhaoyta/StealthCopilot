@@ -1,6 +1,7 @@
 package video
 
 import (
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -60,9 +61,9 @@ func TestRingBuffer_OverflowProtection(t *testing.T) {
 }
 
 func TestRingBuffer_LagTriggersCallback(t *testing.T) {
-	triggered := false
+	var triggered atomic.Bool
 	rb := NewRingBuffer(16, func(lagMs int64) {
-		triggered = true
+		triggered.Store(true)
 	})
 	stopCh := make(chan struct{})
 	go rb.RunAligner(stopCh)
@@ -73,7 +74,7 @@ func TestRingBuffer_LagTriggersCallback(t *testing.T) {
 	rb.PushVideo(lipsync.VideoFrame{PTS: 0})
 
 	time.Sleep(50 * time.Millisecond)
-	if !triggered {
+	if !triggered.Load() {
 		t.Error("expected onLag callback to be triggered")
 	}
 }

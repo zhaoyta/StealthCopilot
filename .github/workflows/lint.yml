@@ -67,13 +67,10 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install pnpm
-        run: npm install -g pnpm
-
       - name: Install deps
         working-directory: stealthcopilot/frontend
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
       - name: ESLint
         working-directory: stealthcopilot/frontend
-        run: pnpm lint
+        run: npm run lint

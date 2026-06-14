@@ -45,6 +45,8 @@ type ChainConfig struct {
 	VirtualMicDevice string
 	// Retriever RAG 检索器（依赖 resume.Manager）
 	Retriever *rag.Retriever
+	// EventSink mirrors hearing/answer events to non-Wails consumers such as the native teleprompter.
+	EventSink llm.EventEmitter
 }
 
 // Chain 是听力链的主协调器，持有各组件实例和运行状态。
@@ -68,8 +70,11 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 	ctx, cancel := context.WithCancel(wailsCtx)
 	c.cancel = cancel
 
-	// 音频捕获（NullCaptureProvider 作为降级；portaudio 实现待工程化 change 引入）
+	// 音频捕获：用户选择设备时使用系统采集；未配置设备时保持静音降级。
 	var captureProvider audio.CaptureProvider = &audio.NullCaptureProvider{}
+	if cfg.VirtualMicDevice != "" {
+		captureProvider = audio.NewSystemCaptureProvider()
+	}
 	audioStream, err := captureProvider.Start(ctx, cfg.VirtualMicDevice)
 	if err != nil {
 		cancel()
@@ -89,11 +94,15 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 	// 意图分类器
 	classifier := intent.NewClassifier(cfg.DeepSeekKey, cfg.DeepSeekModel)
 
-	// 回答生成器（使用 Wails EventsEmit 推送 token）
-	emitter := llm.EventEmitter(func(eventName string, data ...any) {
+	// combinedEmit 统一负责 Wails 事件推送和 EventSink 转发，processLoop 只调用此函数。
+	// 两路合一避免 processLoop 内部重复"emit + if sink" 模式，也使 processLoop 可测试。
+	combinedEmit := llm.EventEmitter(func(eventName string, data ...any) {
 		runtime.EventsEmit(wailsCtx, eventName, data...)
+		if cfg.EventSink != nil {
+			cfg.EventSink(eventName, data...)
+		}
 	})
-	generator := llm.NewAnswerGenerator(cfg.DeepSeekKey, cfg.DeepSeekModel, emitter)
+	generator := llm.NewAnswerGenerator(cfg.DeepSeekKey, cfg.DeepSeekModel, combinedEmit)
 
 	// session ID：每次 StartHearingChain 创建新 session，避免跨会话混用历史
 	sessionID := uuid.New().String()
@@ -101,7 +110,7 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
-		c.processLoop(ctx, wailsCtx, resultCh, classifier, cfg.Retriever, generator, sessionID, cfg.RAGPrompt)
+		c.processLoop(ctx, resultCh, classifier, cfg.Retriever, generator, sessionID, cfg.RAGPrompt, combinedEmit)
 	}()
 
 	return ""
@@ -120,15 +129,16 @@ func (c *Chain) Stop() {
 
 // processLoop 是听力链的核心处理循环，协调字幕推送、意图识别、RAG 检索和回答生成。
 // D2 设计决策：src_text 和 dst_text 并行分发，字幕不等待意图识别结果。
+// emitFn 由 Start() 创建，内部同时推送 Wails 事件和 EventSink，processLoop 本身无 Wails 依赖。
 func (c *Chain) processLoop(
 	ctx context.Context,
-	wailsCtx context.Context,
 	results <-chan translation.DualResult,
 	classifier *intent.Classifier,
 	retriever *rag.Retriever,
 	generator *llm.AnswerGenerator,
 	sessionID string,
 	ragPromptTpl string,
+	emitFn llm.EventEmitter,
 ) {
 	for {
 		select {
@@ -137,14 +147,15 @@ func (c *Chain) processLoop(
 		case result, ok := <-results:
 			if !ok {
 				// channel 关闭 = 讯飞重连耗尽，通知前端
-				runtime.EventsEmit(wailsCtx, EventError, "讯飞连接中断，请检查网络或重新启动")
+				emitFn(EventError, "讯飞连接中断，请检查网络或重新启动")
 				return
 			}
 			// 1. 立即推送字幕（dst_text）到提词窗，不等待意图分类
-			runtime.EventsEmit(wailsCtx, EventSubtitle, SubtitleEvent{
+			subtitle := SubtitleEvent{
 				Text:    result.DstText,
 				IsFinal: result.IsFinal,
-			})
+			}
+			emitFn(EventSubtitle, subtitle)
 
 			// 2. 仅对 is_end=true 的完整句子触发意图识别 + RAG（D3）
 			if !result.IsFinal || result.SrcText == "" {
@@ -160,10 +171,7 @@ func (c *Chain) processLoop(
 				ragResult := retriever.Retrieve(srcText)
 				if !ragResult.HasActiveResume {
 					// 无激活简历时发送降级提示事件
-					runtime.EventsEmit(wailsCtx, EventSubtitle, SubtitleEvent{
-						Text:    "（未激活简历，回答仅供参考）",
-						IsFinal: true,
-					})
+					emitFn(EventSubtitle, SubtitleEvent{Text: "（未激活简历，回答仅供参考）", IsFinal: true})
 				}
 				// 启动流式回答生成（D5+D6）
 				generator.Generate(ctx, llm.GenerateConfig{

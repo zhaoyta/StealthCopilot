@@ -163,3 +163,8 @@ func (s *Service) CheckDeps() DepsReport {
 func (s *Service) EnumerateDevices() DeviceList {
 	return EnumerateDevices()
 }
+
+// InstallDep 引导安装指定系统依赖，返回操作结果和提示消息。
+func (s *Service) InstallDep(key string) DepInstallResult {
+	return InstallDep(key)
+}

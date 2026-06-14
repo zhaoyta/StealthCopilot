@@ -2,6 +2,7 @@
 package system
 
 import (
+	"fmt"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -90,18 +91,32 @@ func checkWinVBCable() DepStatus {
 }
 
 func checkMacVirtualCam() DepStatus {
-	// 检测 OBS 虚拟摄像头插件（com.obsproject.obs-mac-virtualcam）
-	out, err := exec.Command(
-		"pluginkit", "-m", "-i", "com.obsproject.obs-mac-virtualcam",
-	).Output()
-	if err == nil && strings.Contains(string(out), "com.obsproject") {
+	// 方法1：system_profiler 直接列出已注册摄像头，是最可靠的地面实况
+	// OBS v28+ 注册为 "OBS Virtual Camera"（系统扩展方式）
+	camOut, _ := exec.Command("system_profiler", "SPCameraDataType").Output()
+	if strings.Contains(strings.ToLower(string(camOut)), "obs") {
 		return DepStatusInstalled
 	}
-	// 也可能通过 CoreMediaIO 插件目录安装
-	out2, _ := exec.Command("ls", "/Library/CoreMediaIO/Plug-Ins/DAL/").Output()
-	if strings.Contains(strings.ToLower(string(out2)), "obs") {
+
+	// 方法2：检测 OBS v28+ 系统扩展（mac-camera-extension）
+	extOut, _ := exec.Command("systemextensionsctl", "list").Output()
+	if strings.Contains(string(extOut), "com.obsproject.obs-studio.mac-camera-extension") {
 		return DepStatusInstalled
 	}
+
+	// 方法3：OBS app bundle 内置插件（v28+ 打包在 .app 中）
+	if _, err := exec.Command("ls",
+		"/Applications/OBS.app/Contents/PlugIns/mac-virtualcam.plugin",
+	).Output(); err == nil {
+		return DepStatusInstalled
+	}
+
+	// 方法4：旧版 OBS v27- CoreMediaIO DAL 插件目录
+	dalOut, _ := exec.Command("ls", "/Library/CoreMediaIO/Plug-Ins/DAL/").Output()
+	if strings.Contains(strings.ToLower(string(dalOut)), "obs") {
+		return DepStatusInstalled
+	}
+
 	return DepStatusMissing
 }
 
@@ -119,4 +134,76 @@ func checkWinVirtualCam() DepStatus {
 		return DepStatusInstalled
 	}
 	return DepStatusMissing
+}
+
+// DepInstallResult 表示依赖安装操作的结果。
+type DepInstallResult struct {
+	// AutoInstalled 为 true 表示已通过包管理器自动触发安装流程。
+	// 安装在独立 Terminal 中运行，仍需用户点击「重新检测」确认完成。
+	AutoInstalled bool `json:"auto_installed"`
+	// Message 是展示给用户的操作提示或错误说明。
+	Message string `json:"message"`
+}
+
+// InstallDep 根据依赖 key 尝试引导安装。
+// macOS: 虚拟声卡优先走 Homebrew（在 Terminal 中运行），否则开浏览器下载页。
+// Windows: 统一打开官方下载页。
+func InstallDep(key string) DepInstallResult {
+	switch runtime.GOOS {
+	case "darwin":
+		return installDepMac(key)
+	case "windows":
+		return installDepWin(key)
+	default:
+		return DepInstallResult{Message: "当前系统暂不支持自动引导，请参考文档手动安装"}
+	}
+}
+
+func installDepMac(key string) DepInstallResult {
+	switch key {
+	case "virtual_mic":
+		// 优先使用 Homebrew 在独立 Terminal 中安装，用户可看到安装进度
+		if brewPath, err := exec.LookPath("brew"); err == nil {
+			script := fmt.Sprintf(
+				`tell application "Terminal" to do script "%s install blackhole-2ch"`,
+				brewPath,
+			)
+			// 使用 Start() 而非 Run()：osascript 启动 Terminal 后即可返回，无需等待 Terminal 退出
+			if err := exec.Command("osascript", "-e", script).Start(); err == nil {
+				return DepInstallResult{
+					AutoInstalled: true,
+					Message:       "已在 Terminal 中启动 Homebrew 安装，完成后点击「重新检测」",
+				}
+			}
+		}
+		// Homebrew 不可用，打开官方下载页
+		_ = exec.Command("open", "https://existential.audio/blackhole/").Start()
+		return DepInstallResult{
+			Message: "已打开 BlackHole 官方下载页，安装完成后点击「重新检测」",
+		}
+	case "virtual_cam":
+		_ = exec.Command("open", "https://obsproject.com/").Start()
+		return DepInstallResult{
+			Message: "已打开 OBS 官方下载页，安装后在 OBS 工具栏启用「虚拟摄像头」，再点击「重新检测」",
+		}
+	default:
+		return DepInstallResult{Message: "未知依赖项：" + key}
+	}
+}
+
+func installDepWin(key string) DepInstallResult {
+	switch key {
+	case "virtual_mic":
+		_ = exec.Command("cmd", "/c", "start", "https://vb-audio.com/Cable/").Start()
+		return DepInstallResult{
+			Message: "已打开 VB-Cable 下载页，安装完成后重启应用并点击「重新检测」",
+		}
+	case "virtual_cam":
+		_ = exec.Command("cmd", "/c", "start", "https://obsproject.com/").Start()
+		return DepInstallResult{
+			Message: "已打开 OBS 下载页，安装后在 OBS 工具栏启用「虚拟摄像头」，再点击「重新检测」",
+		}
+	default:
+		return DepInstallResult{Message: "未知依赖项：" + key}
+	}
 }

@@ -26,10 +26,10 @@ const (
 
 // 心跳相关常量
 const (
-	heartbeatInterval    = 50 * time.Millisecond  // 心跳发送间隔
-	tripThreshold        = 3                       // 连续丢失触发熔断
-	recoverThreshold     = 3                       // 连续恢复关闭熔断
-	heartbeatDialTimeout = 20 * time.Millisecond   // UDP 心跳响应超时
+	heartbeatInterval    = 50 * time.Millisecond // 心跳发送间隔
+	tripThreshold        = 3                     // 连续丢失触发熔断
+	recoverThreshold     = 3                     // 连续恢复关闭熔断
+	heartbeatDialTimeout = 20 * time.Millisecond // UDP 心跳响应超时
 )
 
 // Wails 事件名常量
@@ -133,7 +133,11 @@ func (b *Breaker) sendHeartbeat() bool {
 	}
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(heartbeatDialTimeout))
-	_, err = conn.Write([]byte("ping"))
+	if _, err = conn.Write([]byte("ping")); err != nil {
+		return false
+	}
+	buf := make([]byte, 16)
+	_, err = conn.Read(buf)
 	return err == nil
 }
 

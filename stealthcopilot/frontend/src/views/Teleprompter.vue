@@ -8,8 +8,10 @@ defineOptions({ name: 'AppTeleprompter' })
 const emit = defineEmits<{ (e: 'close'): void }>()
 const { t } = useI18n()
 
-const eventSubtitle = 'teleprompter:subtitle'
-const eventTranslationText = 'translation:dst_text'
+// 听力链字幕事件：后端 hearing/chain.go EventSubtitle = "hearing:subtitle"
+const eventHearingSubtitle = 'hearing:subtitle'
+// 听力链错误事件：讯飞重连耗尽时触发
+const eventHearingError = 'hearing:error'
 const eventAnswerToken = 'answer:token'
 const eventAnswerDone = 'answer:done'
 const eventHide = 'teleprompter:hide'
@@ -21,6 +23,7 @@ const minOpacity = 0.3
 const maxOpacity = 1
 
 const subtitles = ref<string[]>([])
+const hearingError = ref('')
 const answer = ref('')
 const fontSize = ref(16)
 const opacity = ref(0.85)
@@ -60,8 +63,8 @@ function listenRuntimeEvents() {
   const runtimeApi = getRuntime()
   if (!runtimeApi) return
 
-  unlisteners.push(runtimeApi.EventsOn(eventSubtitle, appendSubtitle))
-  unlisteners.push(runtimeApi.EventsOn(eventTranslationText, appendSubtitle))
+  unlisteners.push(runtimeApi.EventsOn(eventHearingSubtitle, appendSubtitle))
+  unlisteners.push(runtimeApi.EventsOn(eventHearingError, (msg: string) => { hearingError.value = msg }))
   unlisteners.push(runtimeApi.EventsOn(eventAnswerToken, appendAnswerToken))
   unlisteners.push(runtimeApi.EventsOn(eventAnswerDone, finishAnswer))
   unlisteners.push(runtimeApi.EventsOn(eventHide, () => emit('close')))
@@ -69,7 +72,8 @@ function listenRuntimeEvents() {
   unlisteners.push(runtimeApi.EventsOn(eventCircuitClosed, () => { circuitOpen.value = false }))
 }
 
-function appendSubtitle(text: string) {
+function appendSubtitle(payload: string | { text?: string }) {
+  const text = typeof payload === 'string' ? payload : payload?.text
   if (!text) return
   subtitles.value.push(text)
   nextTick(() => {
@@ -182,6 +186,20 @@ function getRuntime(): { EventsOn: (eventName: string, callback: (...data: any[]
           </button>
         </div>
       </header>
+
+      <!-- 听力链错误条：hearing:error 事件触发时显示红色提示 -->
+      <div
+        v-if="hearingError"
+        class="flex items-center justify-between gap-2 px-3 py-1.5 bg-red-600/90 text-white text-xs"
+      >
+        <span>{{ hearingError }}</span>
+        <button
+          class="shrink-0 px-2 py-0.5 rounded bg-white/20 hover:bg-white/30 font-medium"
+          @click="hearingError = ''"
+        >
+          {{ t('common.close') }}
+        </button>
+      </div>
 
       <!-- 熔断警告条：circuit:open 时显示橙色提示，提供紧急降级按钮 -->
       <div

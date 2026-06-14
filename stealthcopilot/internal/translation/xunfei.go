@@ -107,7 +107,10 @@ func (p *XunfeiTranslationProvider) session(
 		return fmt.Errorf("xunfei: build auth URL: %w", err)
 	}
 
-	conn, _, err := websocket.DefaultDialer.DialContext(ctx, authURL, nil)
+	conn, resp, err := websocket.DefaultDialer.DialContext(ctx, authURL, nil)
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
 	if err != nil {
 		return fmt.Errorf("xunfei: dial: %w", err)
 	}

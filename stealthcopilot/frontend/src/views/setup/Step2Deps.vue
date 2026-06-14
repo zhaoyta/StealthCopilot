@@ -10,11 +10,12 @@ interface DepItem {
   key: string
   label: string
   status: DepStatus
+  installMsg: string // 安装操作后的提示消息（空字符串表示无提示）
 }
 
 const deps = ref<DepItem[]>([
-  { key: 'virtual_mic', label: t('setup.deps.virtualMic'), status: 'checking' },
-  { key: 'virtual_cam', label: t('setup.deps.virtualCam'), status: 'checking' },
+  { key: 'virtual_mic', label: t('setup.deps.virtualMic'), status: 'checking', installMsg: '' },
+  { key: 'virtual_cam', label: t('setup.deps.virtualCam'), status: 'checking', installMsg: '' },
 ])
 
 async function checkDeps() {
@@ -31,15 +32,16 @@ async function checkDeps() {
 
 async function install(dep: DepItem) {
   dep.status = 'installing'
-  // 弹出系统安装引导（实际安装逻辑由 ghost-window change 实现驱动捆绑）
+  dep.installMsg = ''
   try {
-    // @ts-expect-error — Wails 运行时注入，window.go/window.runtime 无类型定义
-    await window.go.main.App.InstallDep(dep.key)
-    dep.status = 'installed'
+    // @ts-expect-error — Wails 运行时注入
+    const result = await window.go.main.App.InstallDep(dep.key) as { auto_installed: boolean; message: string }
+    dep.installMsg = result?.message ?? ''
   } catch {
     dep.status = 'failed'
+    return
   }
-  // 安装后重新检测
+  // 无论是否自动安装，都重新检测实际状态
   await checkDeps()
 }
 
@@ -77,33 +79,43 @@ onMounted(checkDeps)
       <div
         v-for="dep in deps"
         :key="dep.key"
-        class="dep-item flex items-center justify-between bg-gray-700 rounded-xl px-5 py-4"
+        class="dep-item bg-gray-700 rounded-xl px-5 py-4"
       >
-        <div class="flex items-center gap-3">
-          <span class="text-xl">{{ statusIcon(dep.status) }}</span>
-          <span class="font-medium">{{ dep.label }}</span>
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <span class="text-xl">{{ statusIcon(dep.status) }}</span>
+            <span class="font-medium">{{ dep.label }}</span>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <span
+              class="text-sm"
+              :class="statusClass(dep.status)"
+            >
+              <template v-if="dep.status === 'installed'">{{ t('setup.deps.installed') }}</template>
+              <template v-else-if="dep.status === 'checking' || dep.status === 'installing'">
+                {{ t('common.loading') }}
+              </template>
+              <template v-else-if="dep.status === 'failed'">{{ t('setup.deps.failed') }}</template>
+              <template v-else>{{ t('setup.deps.missing') }}</template>
+            </span>
+            <button
+              v-if="dep.status === 'missing' || dep.status === 'failed'"
+              class="px-4 py-1.5 text-sm bg-blue-500 hover:bg-blue-600 rounded-lg transition-colors"
+              @click="install(dep)"
+            >
+              {{ t('setup.deps.install') }}
+            </button>
+          </div>
         </div>
 
-        <div class="flex items-center gap-3">
-          <span
-            class="text-sm"
-            :class="statusClass(dep.status)"
-          >
-            <template v-if="dep.status === 'installed'">{{ t('setup.deps.installed') }}</template>
-            <template v-else-if="dep.status === 'checking' || dep.status === 'installing'">
-              {{ t('common.loading') }}
-            </template>
-            <template v-else-if="dep.status === 'failed'">{{ t('setup.deps.failed') }}</template>
-            <template v-else>{{ t('setup.deps.install') }}</template>
-          </span>
-          <button
-            v-if="dep.status === 'missing' || dep.status === 'failed'"
-            class="px-4 py-1.5 text-sm bg-blue-500 hover:bg-blue-600 rounded-lg transition-colors"
-            @click="install(dep)"
-          >
-            {{ t('setup.deps.install') }}
-          </button>
-        </div>
+        <!-- 安装操作完成后显示的引导提示 -->
+        <p
+          v-if="dep.installMsg"
+          class="mt-2 text-xs text-yellow-300 leading-relaxed"
+        >
+          {{ dep.installMsg }}
+        </p>
       </div>
     </div>
 

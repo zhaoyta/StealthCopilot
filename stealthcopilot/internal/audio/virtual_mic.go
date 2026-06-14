@@ -38,7 +38,6 @@ type VirtualMicWriter interface {
 // 用于：portaudio 未安装时的降级运行，以及单元测试。
 type NullVirtualMicWriter struct {
 	state atomic.Int32
-	mu    sync.Mutex
 	done  chan struct{}
 	once  sync.Once
 }
@@ -95,7 +94,3 @@ func (w *NullVirtualMicWriter) zeroPCMLoop() {
 		}
 	}
 }
-
-// VirtualMicSampleRate 是虚拟麦克风写入采样率（与 TTS 输出采样率一致）。
-// 此常量已在 tts/elevenlabs.go 中定义，此处为包内引用（避免跨包 import cycle）。
-const virtualMicSampleRate = 44100

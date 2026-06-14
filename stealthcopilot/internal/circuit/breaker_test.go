@@ -2,6 +2,7 @@ package circuit
 
 import (
 	"context"
+	"net"
 	"testing"
 	"time"
 )
@@ -74,5 +75,40 @@ func TestBreaker_NoTripOnEmptyAddr(t *testing.T) {
 
 	if b.CurrentState() != StateClosed {
 		t.Errorf("should remain Closed with empty addr, got %v", b.CurrentState())
+	}
+}
+
+func TestBreaker_SendHeartbeatRequiresResponse(t *testing.T) {
+	conn, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("ListenPacket: %v", err)
+	}
+	defer conn.Close()
+
+	go func() {
+		buf := make([]byte, 16)
+		n, addr, readErr := conn.ReadFrom(buf)
+		if readErr != nil || n == 0 {
+			return
+		}
+		_, _ = conn.WriteTo([]byte("pong"), addr)
+	}()
+
+	b := NewBreaker(conn.LocalAddr().String(), nil)
+	if !b.sendHeartbeat() {
+		t.Fatal("sendHeartbeat should succeed when peer responds")
+	}
+}
+
+func TestBreaker_SendHeartbeatFailsWithoutResponse(t *testing.T) {
+	conn, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("ListenPacket: %v", err)
+	}
+	defer conn.Close()
+
+	b := NewBreaker(conn.LocalAddr().String(), nil)
+	if b.sendHeartbeat() {
+		t.Fatal("sendHeartbeat should fail when peer does not respond")
 	}
 }

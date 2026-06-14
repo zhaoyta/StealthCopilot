@@ -33,6 +33,7 @@
       "virtualCam": "虚拟摄像头（OBS VirtualCam）",
       "install": "一键安装",
       "installed": "已安装",
+      "missing": "未安装",
       "failed": "安装失败",
       "recheck": "重新检测"
     },
@@ -114,6 +115,27 @@
       "simli": {
         "key": "Simli API Key",
         "faceId": "Face ID"
+      },
+      "serviceNames": {
+        "xunfei": "讯飞 (iFlytek)",
+        "deepseek": "DeepSeek",
+        "elevenlabs": "ElevenLabs",
+        "simli": "Simli AI"
+      }
+    },
+    "language": {
+      "uiLanguage": "界面语言",
+      "langs": {
+        "en": "英语",
+        "zh": "中文",
+        "ja": "日语",
+        "ko": "韩语",
+        "fr": "法语",
+        "de": "德语",
+        "es": "西班牙语",
+        "ru": "俄语",
+        "ar": "阿拉伯语",
+        "pt": "葡萄牙语"
       }
     },
     "devices": {
@@ -127,7 +149,11 @@
     "resume": {
       "empty": "拖拽简历到此处，或点击【上传】按钮选择文件",
       "activate": "设为激活",
-      "activeLabel": "激活"
+      "activeLabel": "激活",
+      "statusPending": "待处理",
+      "statusProcessing": "生成索引中…",
+      "statusReady": "已就绪",
+      "statusError": "处理失败"
     },
     "ghost": {
       "opacity": "透明度",
@@ -151,27 +177,36 @@
     }
   },
   "dashboard": {
-    "title": "StealthCopilot",
-    "placeholder": "主界面将在后续 change 中实现（hearing-chain / speaking-chain / video-chain）",
-    "openTeleprompter": "打开提词窗",
-    "openSettings": "打开设置",
-    "start": "开始面试",
-    "stop": "结束面试",
+    "systemNormal": "系统正常",
+    "systemDesc": "熔断保护已就绪 · 管道延迟均在阈值内",
+    "systemWarning": "熔断器已触发，已切换至本地直通模式",
+    "circuitStatusLabel": "熔断状态",
+    "circuitNormal": "正常",
+    "circuitOpen": "已触发",
+    "pipelines": "实时管道",
+    "pipelinesRunning": "{n}/3 条管道运行中",
+    "pipelinesIdle": "所有管道待机",
+    "startAll": "一键启动全部",
+    "stopAll": "停止全部",
+    "openTeleprompter": "提词窗",
+    "openSettings": "设置",
     "hearingChain": "听力链",
     "speakingChain": "说话链",
     "videoChain": "视频链",
+    "hearingDesc": "面试官语音 → 实时中文字幕",
+    "speakingDesc": "你的中文 → 克隆英文语音回放",
+    "videoDesc": "摄像头 → 数字人 → 虚拟摄像头",
+    "phase2": "Phase 2",
+    "latencyMs": "{ms} ms",
     "status": {
-      "idle": "待机",
-      "running": "运行中",
-      "error": "异常",
-      "bypassed": "已降级"
+      "idle": "IDLE",
+      "running": "RUNNING",
+      "error": "ERROR",
+      "bypassed": "BYPASSED"
     },
-    "circuit": {
-      "open": "云端管道已断开，当前为本地直通模式",
-      "halfOpen": "云端管道恢复中…",
-      "emergencyBypass": "紧急降级"
-    },
-    "latency": "延迟 {ms}ms"
+    "version": "v0.1.0",
+    "footerBrand": "StealthCopilot · {version}",
+    "langArrow": "{src} → {dst}"
   },
   "teleprompter": {
     "title": "StealthCopilot",
@@ -185,5 +220,23 @@
     "noResume": "未检测到激活简历，建议功能已禁用",
     "circuitOpenWarning": "云端管道已断开，当前为本地直通模式",
     "emergencyBypass": "紧急降级"
+  },
+  "pipeline": {
+    "virtualMicBlackhole": "虚拟声卡 BlackHole",
+    "xunfeiTranslation": "讯飞实时翻译",
+    "chineseSubtitle": "中文字幕",
+    "chineseAudio": "中文语音",
+    "ragRetrieval": "RAG 检索",
+    "deepseekAnswer": "DeepSeek 回答",
+    "answerSuggestion": "回答建议",
+    "physicalMic": "物理麦克风",
+    "xunfeiAsr": "讯飞 ASR",
+    "deepseekPolish": "DeepSeek 润色",
+    "virtualMic": "虚拟声卡",
+    "physicalCam": "物理摄像头",
+    "simliAvatar": "Simli AI 数字人",
+    "virtualCam": "虚拟摄像头",
+    "optional": "可选",
+    "plus": "+"
   }
 }

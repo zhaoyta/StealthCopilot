@@ -3,9 +3,6 @@
 
 run:
   timeout: 5m
-  # 排除自动生成的文件
-  skip-files:
-    - ".*_generated\\.go$"
 
 linters:
   enable:
@@ -29,6 +26,9 @@ linters-settings:
     local-prefixes: github.com/zhaoyta/stealthcopilot
 
 issues:
+  # 排除自动生成的文件
+  exclude-files:
+    - ".*_generated\\.go$"
   # 排除测试文件中的某些规则
   exclude-rules:
     - path: "_test\\.go$"

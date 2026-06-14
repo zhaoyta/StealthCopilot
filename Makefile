@@ -40,12 +40,12 @@ build-win:
 
 ## lint：运行 Go lint + Vue/TS lint（任一失败则整体失败）
 lint:
-	cd $(APP_DIR) && golangci-lint run ./...
+	cd $(APP_DIR) && PKGS=$$(go list -f '{{.Dir}}' ./... | grep -v '/frontend/node_modules/' | sed "s#^$$(pwd)#.#") && (command -v golangci-lint >/dev/null 2>&1 && golangci-lint run $$PKGS || go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run $$PKGS)
 	cd $(FRONT) && npm run lint
 
 ## test：运行所有 Go 单元测试（含竞态检测）
 test:
-	cd $(APP_DIR) && go test -race -coverprofile=coverage.out ./...
+	cd $(APP_DIR) && go test -race -coverprofile=coverage.out $$(go list ./... | grep -v '/frontend/node_modules/')
 	cd $(APP_DIR) && go tool cover -func=coverage.out
 
 # ─── 提交 & 版本 ─────────────────────────────────────────────────────────────

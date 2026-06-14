@@ -1,3 +1,0 @@
-#!/bin/sh
-# commit-msg: 校验 Conventional Commits 格式
-cd stealthcopilot/frontend && ./node_modules/.bin/commitlint --edit "$1"

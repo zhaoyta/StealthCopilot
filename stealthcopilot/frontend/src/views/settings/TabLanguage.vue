@@ -1,23 +1,15 @@
 <script lang="ts" setup>
-import { reactive, onMounted } from 'vue'
+import { reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Headphones, Mic } from 'lucide-vue-next'
 
 const { t } = useI18n()
 
-// 讯飞支持的语言列表（常用子集）
-const XUNFEI_LANGS = [
-  { code: 'en', label: '英语 (English)' },
-  { code: 'zh', label: '中文 (Chinese)' },
-  { code: 'ja', label: '日语 (Japanese)' },
-  { code: 'ko', label: '韩语 (Korean)' },
-  { code: 'fr', label: '法语 (French)' },
-  { code: 'de', label: '德语 (German)' },
-  { code: 'es', label: '西班牙语 (Spanish)' },
-  { code: 'ru', label: '俄语 (Russian)' },
-  { code: 'ar', label: '阿拉伯语 (Arabic)' },
-  { code: 'pt', label: '葡萄牙语 (Portuguese)' },
-]
+// 讯飞支持的语言代码（常用子集），label 通过 t() 计算以跟随 UI 语言切换
+const XUNFEI_LANG_CODES = ['en', 'zh', 'ja', 'ko', 'fr', 'de', 'es', 'ru', 'ar', 'pt']
+const xunfeiLangs = computed(() =>
+  XUNFEI_LANG_CODES.map(code => ({ code, label: t(`settings.language.langs.${code}`) }))
+)
 
 const config = reactive({
   hearingSource: 'en',
@@ -30,7 +22,7 @@ const msg = reactive({ hearing: '', speaking: '' })
 
 onMounted(async () => {
   try {
-    // @ts-expect-error — Wails 运行时注入，window.go/window.runtime 无类型定义
+    // @ts-expect-error — Wails 运行时注入
     const cfg = await window.go.main.App.GetConfig()
     config.hearingSource  = cfg.hearing_source_lang  || 'en'
     config.hearingTarget  = cfg.hearing_target_lang  || 'zh'
@@ -90,11 +82,10 @@ async function saveSpeaking() {
           <label class="block text-xs text-gray-400 mb-1">{{ t('setup.language.hearingSource') }}</label>
           <select
             v-model="config.hearingSource"
-            class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white
-                   focus:outline-none focus:border-blue-400"
+            class="form-select"
           >
             <option
-              v-for="lang in XUNFEI_LANGS"
+              v-for="lang in xunfeiLangs"
               :key="lang.code"
               :value="lang.code"
             >
@@ -106,11 +97,10 @@ async function saveSpeaking() {
           <label class="block text-xs text-gray-400 mb-1">{{ t('setup.language.hearingTarget') }}</label>
           <select
             v-model="config.hearingTarget"
-            class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white
-                   focus:outline-none focus:border-blue-400"
+            class="form-select"
           >
             <option
-              v-for="lang in XUNFEI_LANGS"
+              v-for="lang in xunfeiLangs"
               :key="lang.code"
               :value="lang.code"
             >
@@ -148,11 +138,10 @@ async function saveSpeaking() {
           <label class="block text-xs text-gray-400 mb-1">{{ t('setup.language.speakingInput') }}</label>
           <select
             v-model="config.speakingInput"
-            class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white
-                   focus:outline-none focus:border-blue-400"
+            class="form-select"
           >
             <option
-              v-for="lang in XUNFEI_LANGS"
+              v-for="lang in xunfeiLangs"
               :key="lang.code"
               :value="lang.code"
             >
@@ -164,11 +153,10 @@ async function saveSpeaking() {
           <label class="block text-xs text-gray-400 mb-1">{{ t('setup.language.speakingOutput') }}</label>
           <select
             v-model="config.speakingOutput"
-            class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white
-                   focus:outline-none focus:border-blue-400"
+            class="form-select"
           >
             <option
-              v-for="lang in XUNFEI_LANGS"
+              v-for="lang in xunfeiLangs"
               :key="lang.code"
               :value="lang.code"
             >

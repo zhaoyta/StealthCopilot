@@ -2,7 +2,7 @@
 // App.vue — 根组件，根据初始化状态决定显示 SetupWizard 或主界面
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Settings as SettingsIcon } from 'lucide-vue-next'
+import i18n from './i18n'
 import SetupWizard from './views/SetupWizard.vue'
 import Dashboard from './views/Dashboard.vue'
 import Settings from './views/Settings.vue'
@@ -23,6 +23,10 @@ onMounted(async () => {
 
   try {
     const cfg = await GetConfig()
+    // 应用用户保存的 UI 语言，空值默认中文
+    if (cfg.ui_locale) {
+      i18n.global.locale.value = cfg.ui_locale as 'zh-CN' | 'en-US'
+    }
     currentView.value = cfg.setup_completed ? 'dashboard' : 'setup'
   } catch {
     // Wails 绑定尚未就绪时（如浏览器直接预览），默认进入 setup
@@ -82,25 +86,11 @@ async function openTeleprompter() {
   />
 
   <!-- 主界面 -->
-  <div
+  <Dashboard
     v-else-if="currentView === 'dashboard'"
-    class="relative"
-  >
-    <Dashboard
-      @open-settings="openSettings"
-      @open-teleprompter="openTeleprompter"
-    />
-    <!-- 导航栏设置入口（叠加在主界面右上角） -->
-    <button
-      class="fixed top-4 right-4 z-50 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm text-gray-300 transition-colors"
-      @click="openSettings"
-    >
-      <SettingsIcon
-        :size="14"
-        class="inline-block mr-1"
-      />{{ t('settings.title') }}
-    </button>
-  </div>
+    @open-settings="openSettings"
+    @open-teleprompter="openTeleprompter"
+  />
 
   <!-- 设置面板（全屏覆盖） -->
   <Settings

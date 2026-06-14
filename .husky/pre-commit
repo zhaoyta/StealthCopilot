@@ -1,0 +1,3 @@
+#!/bin/sh
+# pre-commit: run lint-staged from the repository root hook.
+cd stealthcopilot/frontend && ./node_modules/.bin/lint-staged --config .lintstagedrc.cjs

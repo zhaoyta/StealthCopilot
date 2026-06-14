@@ -3,6 +3,70 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+    .form-select {
+        @apply w-full h-11 appearance-none rounded-lg border border-gray-600/70 bg-gray-900/60 px-3.5 pr-10 text-left text-sm text-gray-100 shadow-inner shadow-black/20 transition-colors duration-150;
+        background-image:
+            linear-gradient(45deg, transparent 50%, rgb(148 163 184) 50%),
+            linear-gradient(135deg, rgb(148 163 184) 50%, transparent 50%),
+            linear-gradient(to right, rgb(55 65 81 / 0.85), rgb(55 65 81 / 0.85));
+        background-position:
+            calc(100% - 18px) 50%,
+            calc(100% - 13px) 50%,
+            calc(100% - 2.75rem) 50%;
+        background-size:
+            5px 5px,
+            5px 5px,
+            1px 1.35rem;
+        background-repeat: no-repeat;
+    }
+
+    .form-select:hover {
+        @apply border-gray-500 bg-gray-800/80;
+    }
+
+    .form-select:focus {
+        @apply border-blue-400 bg-gray-800 outline-none ring-2 ring-blue-400/25;
+    }
+
+    .form-select:disabled {
+        @apply cursor-not-allowed border-gray-700 bg-gray-800/40 text-gray-500;
+    }
+
+    .form-select option {
+        @apply bg-gray-900 text-gray-100;
+    }
+
+    .form-select-compact {
+        @apply h-10;
+    }
+
+    /* 顶部状态栏等紧凑场景使用 */
+    .form-select-xs {
+        @apply appearance-none rounded-md border border-gray-600/70 bg-gray-900/60 px-2.5 pr-7 text-xs text-gray-200 shadow-inner shadow-black/20 transition-colors duration-150 cursor-pointer;
+        background-image:
+            linear-gradient(45deg, transparent 50%, rgb(148 163 184) 50%),
+            linear-gradient(135deg, rgb(148 163 184) 50%, transparent 50%);
+        background-position:
+            calc(100% - 10px) 50%,
+            calc(100% - 6px) 50%;
+        background-size: 4px 4px, 4px 4px;
+        background-repeat: no-repeat;
+    }
+
+    .form-select-xs:hover {
+        @apply border-gray-500 bg-gray-800/80;
+    }
+
+    .form-select-xs:focus {
+        @apply border-blue-400 bg-gray-800 outline-none ring-1 ring-blue-400/25;
+    }
+
+    .form-select-xs option {
+        @apply bg-gray-900 text-gray-100;
+    }
+}
+
 html {
     background-color: rgba(27, 38, 54, 1);
     text-align: center;

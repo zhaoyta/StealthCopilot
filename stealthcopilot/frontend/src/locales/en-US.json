@@ -33,6 +33,7 @@
       "virtualCam": "Virtual Camera (OBS VirtualCam)",
       "install": "Install",
       "installed": "Installed",
+      "missing": "Not Installed",
       "failed": "Failed",
       "recheck": "Re-check"
     },
@@ -114,6 +115,27 @@
       "simli": {
         "key": "Simli API Key",
         "faceId": "Face ID"
+      },
+      "serviceNames": {
+        "xunfei": "iFlytek",
+        "deepseek": "DeepSeek",
+        "elevenlabs": "ElevenLabs",
+        "simli": "Simli AI"
+      }
+    },
+    "language": {
+      "uiLanguage": "UI Language",
+      "langs": {
+        "en": "English",
+        "zh": "Chinese",
+        "ja": "Japanese",
+        "ko": "Korean",
+        "fr": "French",
+        "de": "German",
+        "es": "Spanish",
+        "ru": "Russian",
+        "ar": "Arabic",
+        "pt": "Portuguese"
       }
     },
     "devices": {
@@ -127,7 +149,11 @@
     "resume": {
       "empty": "Drag a resume here or click Upload to select a file",
       "activate": "Set Active",
-      "activeLabel": "Active"
+      "activeLabel": "Active",
+      "statusPending": "Pending",
+      "statusProcessing": "Indexing…",
+      "statusReady": "Ready",
+      "statusError": "Failed"
     },
     "ghost": {
       "opacity": "Opacity",
@@ -151,27 +177,36 @@
     }
   },
   "dashboard": {
-    "title": "StealthCopilot",
-    "placeholder": "Main interface will be implemented in upcoming changes (hearing-chain / speaking-chain / video-chain)",
-    "openTeleprompter": "Open Teleprompter",
-    "openSettings": "Open Settings",
-    "start": "Start Session",
-    "stop": "End Session",
+    "systemNormal": "System Normal",
+    "systemDesc": "Circuit breaker ready · All pipeline latencies within threshold",
+    "systemWarning": "Circuit tripped — switched to local passthrough",
+    "circuitStatusLabel": "Circuit",
+    "circuitNormal": "Normal",
+    "circuitOpen": "Tripped",
+    "pipelines": "Live Pipelines",
+    "pipelinesRunning": "{n}/3 pipelines running",
+    "pipelinesIdle": "All pipelines idle",
+    "startAll": "Start All",
+    "stopAll": "Stop All",
+    "openTeleprompter": "Teleprompter",
+    "openSettings": "Settings",
     "hearingChain": "Hearing Chain",
     "speakingChain": "Speaking Chain",
     "videoChain": "Video Chain",
+    "hearingDesc": "Interviewer audio → real-time subtitles",
+    "speakingDesc": "Your Chinese → cloned English voice output",
+    "videoDesc": "Camera → avatar → virtual camera",
+    "phase2": "Phase 2",
+    "latencyMs": "{ms} ms",
     "status": {
-      "idle": "Idle",
-      "running": "Running",
-      "error": "Error",
-      "bypassed": "Bypassed"
+      "idle": "IDLE",
+      "running": "RUNNING",
+      "error": "ERROR",
+      "bypassed": "BYPASSED"
     },
-    "circuit": {
-      "open": "Cloud pipeline disconnected, now in local bypass mode",
-      "halfOpen": "Reconnecting cloud pipeline…",
-      "emergencyBypass": "Emergency Bypass"
-    },
-    "latency": "{ms}ms latency"
+    "version": "v0.1.0",
+    "footerBrand": "StealthCopilot · {version}",
+    "langArrow": "{src} → {dst}"
   },
   "teleprompter": {
     "title": "StealthCopilot",
@@ -185,5 +220,23 @@
     "noResume": "No active resume detected, suggestion feature disabled",
     "circuitOpenWarning": "Cloud pipeline disconnected — local passthrough active",
     "emergencyBypass": "Emergency Bypass"
+  },
+  "pipeline": {
+    "virtualMicBlackhole": "BlackHole Virtual Mic",
+    "xunfeiTranslation": "iFlytek Translation",
+    "chineseSubtitle": "Chinese Subtitle",
+    "chineseAudio": "Chinese Audio",
+    "ragRetrieval": "RAG Retrieval",
+    "deepseekAnswer": "DeepSeek Answer",
+    "answerSuggestion": "Answer Suggestion",
+    "physicalMic": "Physical Mic",
+    "xunfeiAsr": "iFlytek ASR",
+    "deepseekPolish": "DeepSeek Polish",
+    "virtualMic": "Virtual Mic",
+    "physicalCam": "Physical Camera",
+    "simliAvatar": "Simli AI Avatar",
+    "virtualCam": "Virtual Camera",
+    "optional": "optional",
+    "plus": "+"
   }
 }

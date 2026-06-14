@@ -10,8 +10,9 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/zhaoyta/stealthcopilot/internal/audio"
-	"github.com/zhaoyta/stealthcopilot/internal/tts"
+	"github.com/zhaoyta/stealthcopilot/internal/llm"
 	"github.com/zhaoyta/stealthcopilot/internal/translation"
+	"github.com/zhaoyta/stealthcopilot/internal/tts"
 	"github.com/zhaoyta/stealthcopilot/internal/vad"
 )
 
@@ -37,6 +38,19 @@ type ChainConfig struct {
 	VirtualMicDevice string
 	// SilenceThresholdMs VAD 静音阈值（毫秒），从用户设置读取
 	SilenceThresholdMs int
+	// AudioSink 接收 TTS 音频 chunk，用于驱动视频口型同步链。
+	AudioSink func([]byte)
+
+	// --- DeepSeek 润色配置（可选，PolishEnabled=false 时完全跳过） ---
+
+	// DeepSeekKey DeepSeek API Key；为空时即使 PolishEnabled=true 也跳过润色。
+	DeepSeekKey string
+	// DeepSeekModel DeepSeek 模型名称，如 "deepseek-chat"。
+	DeepSeekModel string
+	// PolishPrompt 润色 Prompt 模板，包含 {input} 占位符。
+	PolishPrompt string
+	// PolishEnabled 为 true 时在讯飞翻译后、ElevenLabs TTS 前调用 DeepSeek 润色。
+	PolishEnabled bool
 }
 
 // Chain 是说话链的主协调器，持有各组件实例和运行状态。
@@ -71,8 +85,11 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 	detector := vad.NewEnergyDetector(threshMs, 40)
 	c.vadDetect = detector
 
-	// 物理麦克风捕获（NullMicProvider 降级）
-	mic := &audio.NullMicProvider{}
+	// 物理麦克风捕获：用户选择设备时使用系统采集；未配置设备时保持静音降级。
+	var mic audio.MicProvider = &audio.NullMicProvider{}
+	if cfg.PhysicalMicDevice != "" {
+		mic = audio.NewSystemMicProvider()
+	}
 	audioStream, err := mic.Start(ctx, cfg.PhysicalMicDevice)
 	if err != nil {
 		cancel()
@@ -91,8 +108,8 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 		ttsProvider = &tts.NullTTSProvider{}
 	}
 
-	// 虚拟麦克风写入（NullVirtualMicWriter 降级）
-	virtualMic := audio.NewNullVirtualMicWriter()
+	// 虚拟麦克风写入：支持可写系统 sink 时使用真实 writer，否则降级为 Null writer。
+	virtualMic := audio.NewSystemVirtualMicWriter(cfg.VirtualMicDevice)
 
 	c.wg.Add(1)
 	go func() {
@@ -103,7 +120,7 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 
 		// VAD 回调：每当检测到完整语音段时触发说话链管道
 		detector.Run(ctx, audioStream, func(seg vad.SpeechSegment) {
-			c.handleSegment(ctx, wailsCtx, seg, xunfei, ttsProvider, virtualMic)
+			c.handleSegment(ctx, wailsCtx, seg, xunfei, ttsProvider, virtualMic, cfg)
 		})
 	}()
 
@@ -130,13 +147,14 @@ func (c *Chain) SetSilenceThreshold(ms int) {
 	}
 }
 
-// handleSegment 处理一段 VAD 检测到的完整语音：翻译 → TTS → 虚拟麦克风写入。
+// handleSegment 处理一段 VAD 检测到的完整语音：翻译 → [DeepSeek润色] → TTS → 虚拟麦克风写入。
 // 流程（时序关键）：
 //  1. 立即 BeginZeroPCM（防止母语泄漏）
 //  2. 调用讯飞翻译 API（约 500ms）
-//  3. 获取译文 → 调用 ElevenLabs TTS 流式合成
-//  4. 首帧到达时 WriteChunk（原子切换 Zero-PCM → TTS 音频）
-//  5. 流结束 → EndTTS（恢复 Idle）
+//  3. [可选] PolishEnabled=true 时调用 DeepSeek 润色（约 1-2s，超时降级使用原文）
+//  4. 获取最终文本 → 调用 ElevenLabs TTS 流式合成
+//  5. 首帧到达时 WriteChunk（原子切换 Zero-PCM → TTS 音频）
+//  6. 流结束 → EndTTS（恢复 Idle）
 func (c *Chain) handleSegment(
 	ctx context.Context,
 	wailsCtx context.Context,
@@ -144,6 +162,7 @@ func (c *Chain) handleSegment(
 	xunfei *translation.XunfeiSpeakProvider,
 	ttsProvider tts.Provider,
 	virtualMic audio.VirtualMicWriter,
+	cfg ChainConfig,
 ) {
 	// 1. 立即开始写 Zero-PCM，阻断母语泄漏
 	virtualMic.BeginZeroPCM()
@@ -158,7 +177,16 @@ func (c *Chain) handleSegment(
 		return
 	}
 
-	// 3. ElevenLabs TTS 流式合成
+	// 3. [可选] DeepSeek 润色：将讯飞翻译结果润色为更流利的英文
+	//    PolishEnabled=true 且 DeepSeekKey 非空时调用；超时/失败时静默降级使用原译文。
+	if cfg.PolishEnabled && cfg.DeepSeekKey != "" {
+		if polished, polishErr := llm.Polish(ctx, cfg.DeepSeekKey, cfg.DeepSeekModel, cfg.PolishPrompt, translatedText); polishErr == nil {
+			translatedText = polished
+		}
+		// polish 出错时 translatedText 保持讯飞翻译原文，不中断流程
+	}
+
+	// 4. ElevenLabs TTS 流式合成
 	audioCh, err := ttsProvider.Synthesize(ctx, translatedText)
 	if err != nil {
 		virtualMic.EndTTS()
@@ -166,7 +194,7 @@ func (c *Chain) handleSegment(
 		return
 	}
 
-	// 4. 流式写入虚拟麦克风（首帧自动切换 Zero-PCM → TTS 音频）
+	// 5. 流式写入虚拟麦克风（首帧自动切换 Zero-PCM → TTS 音频）
 	for chunk := range audioCh {
 		select {
 		case <-ctx.Done():
@@ -174,6 +202,9 @@ func (c *Chain) handleSegment(
 			return
 		default:
 			virtualMic.WriteChunk(chunk)
+			if cfg.AudioSink != nil {
+				cfg.AudioSink(chunk)
+			}
 		}
 	}
 

@@ -84,7 +84,7 @@ onMounted(async () => {
         if (setMap[k]) f.value = '••••••••' // 已设置时显示掩码
       }
       // deepseek model 回显实际值
-      if (svc.name === 'DeepSeek') {
+      if (svc.fields[0].service === 'deepseek') {
         svc.fields[1].value = cfg.deepseek_model || ''
       }
     }
@@ -96,9 +96,18 @@ async function saveField(svc: ServiceConfig, f: typeof svc.fields[0]) {
   saving.value = true
   svc.testStatus = 'untested' // Key 变更后重置测试状态
   try {
-    // @ts-expect-error — Wails 运行时注入，window.go/window.runtime 无类型定义
-    const err = await window.go.main.App.SaveAPIKey({ service: f.service, field: f.field, value: f.value })
-    if (!err) f.value = '••••••••'
+    let err = ''
+    if (f.service === 'deepseek' && f.field === 'model') {
+      // @ts-expect-error — Wails 运行时注入，window.go/window.runtime 无类型定义
+      const cur = await window.go.main.App.GetConfig()
+      // @ts-expect-error — Wails 运行时注入，window.go/window.runtime 无类型定义
+      err = await window.go.main.App.SaveLocalConfig({ ...cur, deepseek_model: f.value })
+    } else {
+      // @ts-expect-error — Wails 运行时注入，window.go/window.runtime 无类型定义
+      err = await window.go.main.App.SaveAPIKey({ service: f.service, field: f.field, value: f.value })
+      if (!err) f.value = '••••••••'
+    }
+    svc.testMsg = err
   } catch { /* 静默处理 */ }
   saving.value = false
 }
@@ -133,13 +142,13 @@ function testStatusClass(s: TestStatus): string {
 
     <div
       v-for="svc in services"
-      :key="svc.name"
+      :key="svc.fields[0].service"
       class="service-card bg-gray-800 rounded-xl p-5 border border-gray-700"
     >
       <!-- 服务标题行 -->
       <div class="flex items-center justify-between mb-4">
         <h3 class="font-semibold text-white">
-          {{ svc.name }}
+          {{ t('settings.apiKeys.serviceNames.' + svc.fields[0].service) }}
         </h3>
         <div class="flex items-center gap-2">
           <span

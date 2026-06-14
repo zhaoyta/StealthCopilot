@@ -23,15 +23,12 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install pnpm
-        run: npm install -g pnpm
-
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
       - name: Install frontend deps
         working-directory: stealthcopilot/frontend
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
       - name: Build macOS app
         working-directory: stealthcopilot
@@ -61,9 +58,6 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install pnpm
-        run: npm install -g pnpm
-
       - name: Install MSYS2 / mingw64 (CGO)
         uses: msys2/setup-msys2@v2
         with:
@@ -77,7 +71,7 @@ jobs:
 
       - name: Install frontend deps
         working-directory: stealthcopilot/frontend
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
       - name: Build Windows app
         working-directory: stealthcopilot

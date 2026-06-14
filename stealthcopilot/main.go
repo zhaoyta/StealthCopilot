@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"os"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -27,10 +28,10 @@ func main() {
 		OnStartup:        app.startup,
 		OnShutdown:       app.shutdown,
 		Mac: &mac.Options{
-			ContentProtection: true,
+			ContentProtection: contentProtectionEnabled(),
 		},
 		Windows: &windows.Options{
-			ContentProtection: true,
+			ContentProtection: contentProtectionEnabled(),
 		},
 		// 通过 app 字段将各服务暴露给前端：
 		// app.ConfigSvc → window.go.config.Service.*
@@ -44,4 +45,8 @@ func main() {
 	if err != nil {
 		println("Error:", err.Error())
 	}
+}
+
+func contentProtectionEnabled() bool {
+	return os.Getenv("SC_DISABLE_CONTENT_PROTECTION") != "1"
 }

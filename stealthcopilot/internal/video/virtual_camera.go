@@ -143,7 +143,6 @@ const (
 // 用于驱动未注册或单元测试场景的降级运行。
 type NullVirtualCameraWriter struct {
 	state atomic.Int32
-	mu    sync.Mutex
 	once  sync.Once
 }
 

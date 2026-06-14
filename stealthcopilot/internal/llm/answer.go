@@ -210,11 +210,10 @@ func (g *AnswerGenerator) appendHistory(sessionID, question, answer string) {
 	}
 	g.historyMu.Lock()
 	defer g.historyMu.Unlock()
-	pairs := append(g.history[sessionID], QAPair{Question: question, Answer: answer})
-	if len(pairs) > historyMaxTurns {
-		pairs = pairs[len(pairs)-historyMaxTurns:]
+	g.history[sessionID] = append(g.history[sessionID], QAPair{Question: question, Answer: answer})
+	if len(g.history[sessionID]) > historyMaxTurns {
+		g.history[sessionID] = g.history[sessionID][len(g.history[sessionID])-historyMaxTurns:]
 	}
-	g.history[sessionID] = pairs
 }
 
 // --- DeepSeek API 数据结构 ---

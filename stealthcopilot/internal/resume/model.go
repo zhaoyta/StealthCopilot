@@ -19,10 +19,10 @@ const (
 
 // Resume 表示一份已上传的简历及其元数据。
 type Resume struct {
-	ID              string          `json:"id"`               // UUID
-	Name            string          `json:"name"`             // 原始文件名
-	FilePath        string          `json:"file_path"`        // 本地存储路径
-	EmbeddingStatus EmbeddingStatus `json:"embedding_status"` // embedding 处理状态
+	ID              string          `json:"id"`                // UUID
+	Name            string          `json:"name"`              // 原始文件名
+	FilePath        string          `json:"file_path"`         // 本地存储路径
+	EmbeddingStatus EmbeddingStatus `json:"embedding_status"`  // embedding 处理状态
 	ErrMsg          string          `json:"err_msg,omitempty"` // 处理失败时的错误信息
 	CreatedAt       time.Time       `json:"created_at"`
 	UpdatedAt       time.Time       `json:"updated_at"`

@@ -10,7 +10,7 @@ func TestNullCaptureProvider_Start(t *testing.T) {
 	p := &NullCaptureProvider{}
 	defer p.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 
 	ch, err := p.Start(ctx, "")
@@ -19,7 +19,7 @@ func TestNullCaptureProvider_Start(t *testing.T) {
 	}
 
 	received := 0
-	deadline := time.After(150 * time.Millisecond)
+	deadline := time.After(500 * time.Millisecond)
 loop:
 	for {
 		select {

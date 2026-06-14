@@ -17,11 +17,11 @@ import (
 
 // Simli API 常量
 const (
-	simliWSBaseURL      = "wss://api.simli.ai/startAudioToVideoSession"
-	simliMaxRetries     = 3
-	simliBaseBackoff    = 1 * time.Second
-	simliMaxBackoff     = 8 * time.Second
-	simliOutputChanCap  = 64
+	simliWSBaseURL     = "wss://api.simli.ai/startAudioToVideoSession"
+	simliMaxRetries    = 3
+	simliBaseBackoff   = 1 * time.Second
+	simliMaxBackoff    = 8 * time.Second
+	simliOutputChanCap = 64
 )
 
 // SimliConfig Simli AI API 连接配置。
@@ -32,20 +32,14 @@ type SimliConfig struct {
 
 // simliInitMsg 建立会话的初始化消息（发送给 Simli WebSocket）。
 type simliInitMsg struct {
-	APIKey  string `json:"apiKey"`
-	FaceID  string `json:"faceId"`
-	SyncAudio bool `json:"syncAudio"`
+	APIKey    string `json:"apiKey"`
+	FaceID    string `json:"faceId"`
+	SyncAudio bool   `json:"syncAudio"`
 }
 
 // simliAudioMsg 音频帧消息（二进制帧；type 字段区分消息类型）。
 // 实际传输为二进制帧：[4字节 PTS int64 big-endian][PCM 数据]
 // 本结构仅用于注释说明；实际序列化见 marshalAudioFrame。
-
-// simliVideoMsg Simli 返回的视频帧消息（JSON 头 + 二进制 JPEG body）。
-type simliVideoMsg struct {
-	PTS  int64  `json:"pts"`            // 对应音频帧的 PTS（毫秒）
-	Data []byte `json:"data,omitempty"` // JPEG 视频帧数据（二进制消息时在后续字节）
-}
 
 // SimliProvider 实现 Provider 接口，通过 Simli AI WebSocket API 做实时口型同步。
 type SimliProvider struct {

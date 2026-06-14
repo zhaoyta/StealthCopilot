@@ -13,12 +13,12 @@ import (
 )
 
 const (
-	elevenLabsBaseURL   = "https://api.elevenlabs.io/v1"
+	elevenLabsBaseURL = "https://api.elevenlabs.io/v1"
 	// outputFormat 指定 PCM 44100Hz 格式，与虚拟麦克风写入采样率一致
-	outputFormat        = "pcm_44100"
+	outputFormat = "pcm_44100"
 	// chunkSize 每次从 HTTP 响应体读取的字节数
-	chunkSize           = 4096
-	elevenLabsTimeout   = 30 * time.Second
+	chunkSize         = 4096
+	elevenLabsTimeout = 30 * time.Second
 )
 
 // VirtualMicSampleRate 是虚拟麦克风和 ElevenLabs 输出共用的采样率（Hz）。
@@ -78,6 +78,7 @@ func (p *ElevenLabsProvider) Synthesize(ctx context.Context, text string) (<-cha
 	httpReq.Header.Set("xi-api-key", p.cfg.APIKey)
 	httpReq.Header.Set("Accept", "audio/pcm")
 
+	//nolint:bodyclose // The streaming body is consumed and closed by the goroutine below.
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("elevenlabs: request: %w", err)

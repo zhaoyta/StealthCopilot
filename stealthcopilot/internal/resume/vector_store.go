@@ -108,19 +108,19 @@ func (vs *vectorStore) Search(query []float32, resumeID string, topK int) ([]Sea
 	defer rows.Close()
 
 	type candidate struct {
-		chunkID   int64
-		resumeID  string
-		text      string
-		score     float64
+		chunkID  int64
+		resumeID string
+		text     string
+		score    float64
 	}
 	var cands []candidate
 
 	for rows.Next() {
 		var (
-			chunkID  int64
-			rID      string
-			text     string
-			blob     []byte
+			chunkID int64
+			rID     string
+			text    string
+			blob    []byte
 		)
 		if err := rows.Scan(&chunkID, &rID, &text, &blob); err != nil {
 			return nil, err

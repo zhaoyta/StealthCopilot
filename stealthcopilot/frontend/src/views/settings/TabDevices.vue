@@ -88,8 +88,7 @@ async function save() {
         <label class="block text-xs text-gray-400 mb-1">{{ t('settings.devices.virtualMic') }}</label>
         <select
           v-model="config.virtualMic"
-          class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white
-                 focus:outline-none focus:border-blue-400"
+          class="form-select"
         >
           <option value="">
             {{ t('settings.devices.select') }}
@@ -109,8 +108,7 @@ async function save() {
         <label class="block text-xs text-gray-400 mb-1">{{ t('settings.devices.physicalMic') }}</label>
         <select
           v-model="config.physicalMic"
-          class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white
-                 focus:outline-none focus:border-blue-400"
+          class="form-select"
         >
           <option value="">
             {{ t('settings.devices.select') }}
@@ -130,8 +128,7 @@ async function save() {
         <label class="block text-xs text-gray-400 mb-1">{{ t('settings.devices.physicalCam') }}</label>
         <select
           v-model="config.physicalCam"
-          class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white
-                 focus:outline-none focus:border-blue-400"
+          class="form-select"
         >
           <option value="">
             {{ t('settings.devices.select') }}
@@ -151,8 +148,7 @@ async function save() {
         <label class="block text-xs text-gray-400 mb-1">{{ t('settings.devices.virtualCam') }}</label>
         <select
           v-model="config.virtualCam"
-          class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white
-                 focus:outline-none focus:border-blue-400"
+          class="form-select"
         >
           <option value="">
             {{ t('settings.devices.select') }}

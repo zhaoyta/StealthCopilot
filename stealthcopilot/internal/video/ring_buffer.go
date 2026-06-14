@@ -176,4 +176,3 @@ func (r *RingBuffer) Drain() {
 	r.audioQueue = nil
 	r.videoQueue = nil
 }
-

@@ -1,0 +1,3 @@
+#!/bin/sh
+# commit-msg: enforce Conventional Commits.
+stealthcopilot/frontend/node_modules/.bin/commitlint --config stealthcopilot/frontend/commitlint.config.cjs --edit "$1"

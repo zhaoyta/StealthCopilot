@@ -4,10 +4,19 @@ package main
 // Wails 只识别 App 上的公开方法，服务的具体方法在此处转发。
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"mime/multipart"
+	"net/http"
+	"time"
+
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/zhaoyta/stealthcopilot/internal/config"
 	"github.com/zhaoyta/stealthcopilot/internal/hearing"
+	"github.com/zhaoyta/stealthcopilot/internal/llm"
 	"github.com/zhaoyta/stealthcopilot/internal/rag"
 	"github.com/zhaoyta/stealthcopilot/internal/resume"
 	"github.com/zhaoyta/stealthcopilot/internal/speaking"
@@ -23,7 +32,14 @@ const (
 	teleprompterWindowHeight = 300
 	mainWindowWidth          = 1024
 	mainWindowHeight         = 768
+	apiConnectionTimeout     = 2 * time.Second
 )
+
+// APIConnectionResult is returned to the settings panel after probing a provider.
+type APIConnectionResult struct {
+	OK      bool   `json:"ok"`
+	Message string `json:"message"`
+}
 
 // ===== Config 相关绑定 =====
 
@@ -37,6 +53,47 @@ func (a *App) SaveAPIKey(req config.SaveAPIKeyRequest) string {
 	return a.ConfigSvc.SaveAPIKey(req)
 }
 
+// TestAPIConnection probes the configured credentials for a provider.
+func (a *App) TestAPIConnection(service string) APIConnectionResult {
+	cfg := a.ConfigSvc.InternalManager().Config
+	client := &http.Client{Timeout: apiConnectionTimeout}
+
+	switch service {
+	case "deepseek":
+		if cfg.DeepSeekKey == "" {
+			return APIConnectionResult{Message: "DeepSeek API Key 未配置"}
+		}
+		req, _ := http.NewRequest(http.MethodGet, "https://api.deepseek.com/models", nil)
+		req.Header.Set("Authorization", "Bearer "+cfg.DeepSeekKey)
+		return probeHTTP(client, req)
+	case "elevenlabs":
+		if cfg.ElevenLabsKey == "" {
+			return APIConnectionResult{Message: "ElevenLabs API Key 未配置"}
+		}
+		req, _ := http.NewRequest(http.MethodGet, "https://api.elevenlabs.io/v1/user", nil)
+		req.Header.Set("xi-api-key", cfg.ElevenLabsKey)
+		return probeHTTP(client, req)
+	case "simli":
+		if cfg.SimliKey == "" {
+			return APIConnectionResult{Message: "Simli API Key 未配置"}
+		}
+		req, _ := http.NewRequest(http.MethodGet, "https://api.simli.ai", nil)
+		req.Header.Set("Authorization", "Bearer "+cfg.SimliKey)
+		result := probeHTTP(client, req)
+		if result.OK || result.Message == "HTTP 404" {
+			return APIConnectionResult{OK: true, Message: "Simli API Key 已配置"}
+		}
+		return result
+	case "xunfei":
+		if cfg.XunfeiAppID == "" || cfg.XunfeiAPIKey == "" || cfg.XunfeiAPISecret == "" {
+			return APIConnectionResult{Message: "讯飞 AppID/API Key/API Secret 未完整配置"}
+		}
+		return APIConnectionResult{OK: true, Message: "讯飞凭证已配置，启动管道时会进行 WebSocket 鉴权"}
+	default:
+		return APIConnectionResult{Message: "未知服务：" + service}
+	}
+}
+
 // SaveLocalConfig 保存非敏感配置（语言、设备、外观等）。
 func (a *App) SaveLocalConfig(req config.SaveLocalConfigRequest) string {
 	return a.ConfigSvc.SaveLocalConfig(req)
@@ -45,6 +102,65 @@ func (a *App) SaveLocalConfig(req config.SaveLocalConfigRequest) string {
 // MarkSetupComplete 标记初始化向导已完成。
 func (a *App) MarkSetupComplete() string {
 	return a.ConfigSvc.MarkSetupComplete()
+}
+
+// CloneVoice uploads a recorded sample to ElevenLabs and stores the returned Voice ID.
+func (a *App) CloneVoice(audioBytes []byte) string {
+	cfg := a.ConfigSvc.InternalManager().Config
+	if cfg.ElevenLabsKey == "" {
+		return "ElevenLabs API Key 未配置"
+	}
+	if len(audioBytes) == 0 {
+		return "录音为空，请重新录制"
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	_ = writer.WriteField("name", fmt.Sprintf("StealthCopilot-%d", time.Now().Unix()))
+	part, err := writer.CreateFormFile("files", "voice.webm")
+	if err != nil {
+		return err.Error()
+	}
+	if _, err := part.Write(audioBytes); err != nil {
+		return err.Error()
+	}
+	if err := writer.Close(); err != nil {
+		return err.Error()
+	}
+
+	req, err := http.NewRequest(http.MethodPost, "https://api.elevenlabs.io/v1/voices/add", &body)
+	if err != nil {
+		return err.Error()
+	}
+	req.Header.Set("xi-api-key", cfg.ElevenLabsKey)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	resp, err := (&http.Client{Timeout: 60 * time.Second}).Do(req)
+	if err != nil {
+		return err.Error()
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Sprintf("ElevenLabs 克隆失败：HTTP %d %s", resp.StatusCode, string(respBody))
+	}
+
+	var payload struct {
+		VoiceID string `json:"voice_id"`
+	}
+	if err := json.Unmarshal(respBody, &payload); err != nil {
+		return "ElevenLabs 返回解析失败：" + err.Error()
+	}
+	if payload.VoiceID == "" {
+		return "ElevenLabs 未返回 Voice ID"
+	}
+
+	return a.ConfigSvc.SaveAPIKey(config.SaveAPIKeyRequest{
+		Service: "elevenlabs",
+		Field:   "voice_id",
+		Value:   payload.VoiceID,
+	})
 }
 
 // GetDefaultPrompts 返回 Go 后端硬编码的默认 Prompt 值。
@@ -91,12 +207,31 @@ func (a *App) EnumerateDevices() system.DeviceList {
 	return a.SystemSvc.EnumerateDevices()
 }
 
+// PickResumeFile 弹出系统文件选择对话框，返回用户选择的文件路径。
+// 限制格式为 PDF 和 Word（.docx）。未选择时返回空字符串。
+func (a *App) PickResumeFile() (string, error) {
+	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "选择简历文件",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "简历（PDF / Word）", Pattern: "*.pdf;*.docx"},
+		},
+	})
+}
+
+// InstallDep 引导安装指定系统依赖（虚拟声卡或虚拟摄像头）。
+// macOS: 虚拟声卡优先通过 Homebrew 在 Terminal 中安装；其余依赖打开官方下载页。
+// Windows: 在浏览器中打开对应的官方下载页。
+func (a *App) InstallDep(key string) system.DepInstallResult {
+	return a.SystemSvc.InstallDep(key)
+}
+
 // ===== Ghost Window 相关绑定 =====
 
 // ShowTeleprompter 请求前端显示提词窗。
 func (a *App) ShowTeleprompter() string {
 	a.teleprompterMu.Lock()
-	if !a.teleprompterVisible {
+	useNative := a.TeleprompterWindow != nil && a.TeleprompterWindow.Available()
+	if !a.teleprompterVisible && !useNative {
 		width, height := runtime.WindowGetSize(a.ctx)
 		x, y := runtime.WindowGetPosition(a.ctx)
 		a.teleprompterWindow = windowSnapshot{
@@ -110,6 +245,13 @@ func (a *App) ShowTeleprompter() string {
 	a.teleprompterVisible = true
 	a.teleprompterMu.Unlock()
 
+	if useNative {
+		if err := a.TeleprompterWindow.Show(); err != nil {
+			return err.Error()
+		}
+		return ""
+	}
+
 	runtime.WindowSetAlwaysOnTop(a.ctx, true)
 	runtime.WindowSetSize(a.ctx, teleprompterWindowWidth, teleprompterWindowHeight)
 	runtime.WindowCenter(a.ctx)
@@ -122,9 +264,18 @@ func (a *App) ShowTeleprompter() string {
 func (a *App) HideTeleprompter() string {
 	a.teleprompterMu.Lock()
 	snapshot := a.teleprompterWindow
+	useNative := a.TeleprompterWindow != nil && a.TeleprompterWindow.Available()
 	a.teleprompterWindow = windowSnapshot{}
 	a.teleprompterVisible = false
 	a.teleprompterMu.Unlock()
+
+	if useNative {
+		if err := a.TeleprompterWindow.Hide(); err != nil {
+			return err.Error()
+		}
+		runtime.EventsEmit(a.ctx, "teleprompter:hide")
+		return ""
+	}
 
 	runtime.WindowSetAlwaysOnTop(a.ctx, false)
 	if snapshot.Saved {
@@ -189,8 +340,36 @@ func (a *App) StartHearingChain() string {
 		RAGPrompt:        cfg.RAGPrompt,
 		VirtualMicDevice: cfg.VirtualMicName,
 		Retriever:        retriever,
+		EventSink:        a.emitTeleprompterEvent,
 	}
 	return a.HearingChain.Start(a.ctx, chainCfg)
+}
+
+func (a *App) emitTeleprompterEvent(eventName string, data ...any) {
+	if a.TeleprompterWindow == nil || !a.TeleprompterWindow.Available() {
+		return
+	}
+	switch eventName {
+	case hearing.EventSubtitle:
+		if len(data) == 0 {
+			return
+		}
+		switch v := data[0].(type) {
+		case hearing.SubtitleEvent:
+			a.TeleprompterWindow.AppendSubtitle(v.Text)
+		case string:
+			a.TeleprompterWindow.AppendSubtitle(v)
+		}
+	case llm.EventAnswerToken:
+		if len(data) == 0 {
+			return
+		}
+		if token, ok := data[0].(string); ok {
+			a.TeleprompterWindow.AppendAnswerToken(token)
+		}
+	case llm.EventAnswerDone:
+		a.TeleprompterWindow.FinishAnswer()
+	}
 }
 
 // StopHearingChain 停止听力链，等待所有 goroutine 退出后返回。
@@ -220,6 +399,7 @@ func (a *App) StartSpeakingChain() string {
 		PhysicalMicDevice:  cfg.PhysicalMicName,
 		VirtualMicDevice:   cfg.VirtualMicName,
 		SilenceThresholdMs: 800,
+		AudioSink:          a.VideoChain.SendAudioChunk,
 	}
 	return a.SpeakingChain.Start(a.ctx, chainCfg)
 }
@@ -244,7 +424,7 @@ func (a *App) StartVideoChain() string {
 	chainCfg := video.ChainConfig{
 		SimliAPIKey:        cfg.SimliKey,
 		SilmiFaceID:        cfg.SimliFaceID,
-		SimliHeartbeatAddr: "",          // Phase 1 暂不配置 UDP 端点，由 Simli 文档确认后填入
+		SimliHeartbeatAddr: "", // Phase 1 暂不配置 UDP 端点，由 Simli 文档确认后填入
 		PhysicalCamDevice:  cfg.PhysicalCamName,
 		VirtualCamDevice:   cfg.VirtualCamName,
 	}
@@ -287,4 +467,30 @@ func (a *App) CheckVirtualCameraDriver() string {
 	default:
 		return "unknown"
 	}
+}
+
+// probeHTTP 先用 HEAD 请求探测（不消耗响应体/API 配额），
+// 服务端返回 405 Method Not Allowed 时降级为原始方法（GET/POST）。
+func probeHTTP(client *http.Client, req *http.Request) APIConnectionResult {
+	headReq, _ := http.NewRequestWithContext(req.Context(), http.MethodHead, req.URL.String(), nil)
+	headReq.Header = req.Header.Clone()
+	if resp, err := client.Do(headReq); err == nil {
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusMethodNotAllowed {
+			if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
+				return APIConnectionResult{OK: true, Message: "连接成功"}
+			}
+			return APIConnectionResult{Message: fmt.Sprintf("HTTP %d", resp.StatusCode)}
+		}
+	}
+	// HEAD 不支持或请求失败，回退到原始方法
+	resp, err := client.Do(req)
+	if err != nil {
+		return APIConnectionResult{Message: err.Error()}
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
+		return APIConnectionResult{OK: true, Message: "连接成功"}
+	}
+	return APIConnectionResult{Message: fmt.Sprintf("HTTP %d", resp.StatusCode)}
 }

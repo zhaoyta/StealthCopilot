@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -21,6 +22,12 @@ type EmbeddingProvider interface {
 	Embed(text string) ([]float32, error)
 	// Ready 检查当前提供者是否可用（Python 环境、模型文件等）。
 	Ready() bool
+}
+
+// PassageEmbeddingProvider can generate document/passage embeddings with the
+// prefix recommended by multilingual-e5. Query-only providers may omit it.
+type PassageEmbeddingProvider interface {
+	EmbedPassage(text string) ([]float32, error)
 }
 
 // PythonBridgeProvider 通过调用 Python 子进程实现 embedding，
@@ -42,6 +49,9 @@ func NewPythonBridgeProvider(scriptPath string) *PythonBridgeProvider {
 
 // Ready 检测 Python3 和 sentence-transformers 是否可用。
 func (p *PythonBridgeProvider) Ready() bool {
+	if _, err := os.Stat(p.scriptPath); err != nil {
+		return false
+	}
 	cmd := exec.Command(p.python, "-c", "import sentence_transformers")
 	return cmd.Run() == nil
 }

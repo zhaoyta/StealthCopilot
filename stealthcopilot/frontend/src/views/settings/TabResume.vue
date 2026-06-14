@@ -40,12 +40,11 @@ async function openFilePicker() {
   uploading.value = true
   errMsg.value = ''
   try {
-    // @ts-expect-error — Wails 运行时注入，window.go/window.runtime 无类型定义
-    const path = await window.runtime.OpenFileDialog({
-      filters: [{ displayName: 'Resume', pattern: '*.pdf;*.docx' }],
-    })
+    // 文件选择对话框必须由 Go 后端弹出（Wails v2 前端 runtime 不提供此 API）
+    // @ts-expect-error — Wails 运行时注入
+    const path: string = await window.go.main.App.PickResumeFile()
     if (!path) { uploading.value = false; return }
-    // @ts-expect-error — Wails 运行时注入，window.go/window.runtime 无类型定义
+    // @ts-expect-error — Wails 运行时注入
     const err = await window.go.main.App.UploadResume(path)
     if (err) errMsg.value = err
     else await loadResumes()
@@ -66,13 +65,13 @@ async function deleteResume(id: string) {
 }
 
 function statusLabel(s: Resume['embedding_status']): string {
-  const map: Record<Resume['embedding_status'], string> = {
-    pending: '待处理',
-    processing: '生成索引中…',
-    ready: '已就绪',
-    error: '处理失败',
+  const keyMap: Record<Resume['embedding_status'], string> = {
+    pending:    'settings.resume.statusPending',
+    processing: 'settings.resume.statusProcessing',
+    ready:      'settings.resume.statusReady',
+    error:      'settings.resume.statusError',
   }
-  return map[s]
+  return t(keyMap[s])
 }
 function statusColor(s: Resume['embedding_status']): string {
   return s === 'ready' ? 'text-green-400' : s === 'error' ? 'text-red-400' : 'text-yellow-400'

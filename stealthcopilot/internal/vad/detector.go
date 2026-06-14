@@ -43,9 +43,9 @@ type Detector interface {
 // 算法：逐帧计算 RMS，能量高于 energyThreshold 判定为语音帧，否则为静音帧；
 // 连续静音帧超过 silenceThresholdMs 且已积累足够语音（minSpeechMs）时触发回调。
 type EnergyDetector struct {
-	silenceMs      atomic.Int64  // 静音阈值（毫秒），支持运行时原子更新
-	energyThresh   float64       // RMS 能量阈值
-	frameDurMs     int           // 每帧时长（ms），用于计算帧数阈值
+	silenceMs    atomic.Int64 // 静音阈值（毫秒），支持运行时原子更新
+	energyThresh float64      // RMS 能量阈值
+	frameDurMs   int          // 每帧时长（ms），用于计算帧数阈值
 }
 
 // NewEnergyDetector 创建能量阈值 VAD 检测器。
@@ -79,10 +79,10 @@ func (d *EnergyDetector) Run(
 	onSegment func(seg SpeechSegment),
 ) {
 	var (
-		speechBuf    []byte        // 累积语音 PCM
-		silenceCount int           // 连续静音帧数
-		speechFrames int           // 已累积语音帧数（用于判断 minSpeechMs）
-		inSpeech     bool          // 是否处于语音段内
+		speechBuf    []byte // 累积语音 PCM
+		silenceCount int    // 连续静音帧数
+		speechFrames int    // 已累积语音帧数（用于判断 minSpeechMs）
+		inSpeech     bool   // 是否处于语音段内
 	)
 	minSpeechFrames := minSpeechMs / d.frameDurMs
 
@@ -101,24 +101,22 @@ func (d *EnergyDetector) Run(
 				silenceCount = 0
 				speechFrames++
 				speechBuf = append(speechBuf, frame...)
-			} else {
-				if inSpeech {
-					silenceCount++
-					speechBuf = append(speechBuf, frame...) // 静音帧也纳入以保持自然尾音
-					threshFrames := int(d.silenceMs.Load()) / d.frameDurMs
-					if silenceCount >= threshFrames && speechFrames >= minSpeechFrames {
-						// 触发回调
-						seg := SpeechSegment{
-							PCM:        speechBuf,
-							DurationMs: (speechFrames + silenceCount) * d.frameDurMs,
-						}
-						onSegment(seg)
-						// 重置状态
-						speechBuf = nil
-						silenceCount = 0
-						speechFrames = 0
-						inSpeech = false
+			} else if inSpeech {
+				silenceCount++
+				speechBuf = append(speechBuf, frame...) // 静音帧也纳入以保持自然尾音
+				threshFrames := int(d.silenceMs.Load()) / d.frameDurMs
+				if silenceCount >= threshFrames && speechFrames >= minSpeechFrames {
+					// 触发回调
+					seg := SpeechSegment{
+						PCM:        speechBuf,
+						DurationMs: (speechFrames + silenceCount) * d.frameDurMs,
 					}
+					onSegment(seg)
+					// 重置状态
+					speechBuf = nil
+					silenceCount = 0
+					speechFrames = 0
+					inSpeech = false
 				}
 			}
 		}

@@ -42,11 +42,11 @@ func TestManager_SaveLocalConfig(t *testing.T) {
 	}
 
 	lc := config.LocalConfig{
-		SetupCompleted:     true,
-		HearingSourceLang:  "ja",
-		HearingTargetLang:  "zh",
-		GhostFontSize:      20,
-		GhostOpacity:       0.5,
+		SetupCompleted:    true,
+		HearingSourceLang: "ja",
+		HearingTargetLang: "zh",
+		GhostFontSize:     20,
+		GhostOpacity:      0.5,
 	}
 	if err := m.SaveLocalConfig(lc); err != nil {
 		t.Fatalf("SaveLocalConfig: %v", err)
