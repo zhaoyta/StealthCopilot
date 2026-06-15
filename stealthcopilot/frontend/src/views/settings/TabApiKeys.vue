@@ -13,6 +13,7 @@ interface ServiceConfig {
     service: string
     field: string
     label: string
+    secret: boolean // true=密钥（掩码显示），false=普通文本（明文显示）
     value: string
     show: boolean
   }[]
@@ -26,9 +27,9 @@ const services = reactive<ServiceConfig[]>([
     testStatus: 'untested',
     testMsg: '',
     fields: [
-      { service: 'xunfei', field: 'app_id',     label: t('settings.apiKeys.xunfei.appId'),     value: '', show: false },
-      { service: 'xunfei', field: 'api_key',    label: t('settings.apiKeys.xunfei.apiKey'),    value: '', show: false },
-      { service: 'xunfei', field: 'api_secret', label: t('settings.apiKeys.xunfei.apiSecret'), value: '', show: false },
+      { service: 'xunfei', field: 'app_id',     label: t('settings.apiKeys.xunfei.appId'),     secret: true,  value: '', show: false },
+      { service: 'xunfei', field: 'api_key',    label: t('settings.apiKeys.xunfei.apiKey'),    secret: true,  value: '', show: false },
+      { service: 'xunfei', field: 'api_secret', label: t('settings.apiKeys.xunfei.apiSecret'), secret: true,  value: '', show: false },
     ],
   },
   {
@@ -36,8 +37,8 @@ const services = reactive<ServiceConfig[]>([
     testStatus: 'untested',
     testMsg: '',
     fields: [
-      { service: 'deepseek', field: 'key',   label: t('settings.apiKeys.deepseek.key'),   value: '', show: false },
-      { service: 'deepseek', field: 'model', label: t('settings.apiKeys.deepseek.model'), value: '', show: false },
+      { service: 'deepseek', field: 'key',   label: t('settings.apiKeys.deepseek.key'),   secret: true,  value: '', show: false },
+      { service: 'deepseek', field: 'model', label: t('settings.apiKeys.deepseek.model'), secret: false, value: '', show: false },
     ],
   },
   {
@@ -45,8 +46,8 @@ const services = reactive<ServiceConfig[]>([
     testStatus: 'untested',
     testMsg: '',
     fields: [
-      { service: 'elevenlabs', field: 'key',      label: t('settings.apiKeys.elevenlabs.key'),    value: '', show: false },
-      { service: 'elevenlabs', field: 'voice_id', label: t('settings.apiKeys.elevenlabs.voiceId'), value: '', show: false },
+      { service: 'elevenlabs', field: 'key',      label: t('settings.apiKeys.elevenlabs.key'),     secret: true,  value: '', show: false },
+      { service: 'elevenlabs', field: 'voice_id', label: t('settings.apiKeys.elevenlabs.voiceId'), secret: false, value: '', show: false },
     ],
   },
   {
@@ -54,8 +55,8 @@ const services = reactive<ServiceConfig[]>([
     testStatus: 'untested',
     testMsg: '',
     fields: [
-      { service: 'simli', field: 'key',     label: t('settings.apiKeys.simli.key'),    value: '', show: false },
-      { service: 'simli', field: 'face_id', label: t('settings.apiKeys.simli.faceId'), value: '', show: false },
+      { service: 'simli', field: 'key',     label: t('settings.apiKeys.simli.key'),    secret: true,  value: '', show: false },
+      { service: 'simli', field: 'face_id', label: t('settings.apiKeys.simli.faceId'), secret: false, value: '', show: false },
     ],
   },
 ])
@@ -185,12 +186,14 @@ function testStatusClass(s: TestStatus): string {
           <div class="flex flex-1 gap-2">
             <input
               v-model="f.value"
-              :type="f.show ? 'text' : 'password'"
+              :type="!f.secret || f.show ? 'text' : 'password'"
               class="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white
                      focus:outline-none focus:border-blue-400 transition-colors"
+              @focus="f.secret && f.value === '••••••••' && (f.value = '')"
               @input="svc.testStatus = 'untested'"
             >
             <button
+              v-if="f.secret"
               class="px-2 py-2 bg-gray-600 hover:bg-gray-500 rounded-lg transition-colors flex items-center"
               @click="f.show = !f.show"
             >
