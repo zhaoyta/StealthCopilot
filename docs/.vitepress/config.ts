@@ -5,6 +5,7 @@ export default defineConfig({
   title: 'StealthCopilot',
   description: '面向跨境求职者的面试辅助工具',
   lang: 'zh-CN',
+  base: '/StealthCopilot/',
 
   themeConfig: {
     nav: [

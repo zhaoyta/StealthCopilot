@@ -16,6 +16,9 @@ jobs:
         with:
           go-version-file: stealthcopilot/go.mod
 
+      - name: Create frontend/dist stub (required for go:embed typecheck)
+        run: mkdir -p stealthcopilot/frontend/dist && touch stealthcopilot/frontend/dist/.gitkeep
+
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
