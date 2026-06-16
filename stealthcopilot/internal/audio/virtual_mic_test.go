@@ -1,6 +1,7 @@
 package audio
 
 import (
+	"reflect"
 	"testing"
 	"time"
 )
@@ -53,4 +54,94 @@ func TestNullVirtualMicWriter_ZeroPCMLoopRuns(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	w.EndTTS()
 	w.Close()
+}
+
+func TestFFmpegVirtualMicArgs_DarwinDefaultOutput(t *testing.T) {
+	got, err := ffmpegVirtualMicArgsForGOOS("darwin", "")
+	if err != nil {
+		t.Fatalf("ffmpegVirtualMicArgsForGOOS(darwin): %v", err)
+	}
+	want := []string{
+		"-hide_banner", "-loglevel", "error",
+		"-nostdin",
+		"-f", "s16le",
+		"-ac", "1",
+		"-ar", "24000",
+		"-i", "pipe:0",
+		"-f", "audiotoolbox",
+		"-",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("darwin args = %#v, want %#v", got, want)
+	}
+}
+
+func TestFFmpegVirtualMicArgs_DarwinDeviceIndex(t *testing.T) {
+	got, err := ffmpegVirtualMicArgsForGOOS("darwin", "2")
+	if err != nil {
+		t.Fatalf("ffmpegVirtualMicArgsForGOOS(darwin): %v", err)
+	}
+	want := []string{
+		"-hide_banner", "-loglevel", "error",
+		"-nostdin",
+		"-f", "s16le",
+		"-ac", "1",
+		"-ar", "24000",
+		"-i", "pipe:0",
+		"-f", "audiotoolbox",
+		"-audio_device_index", "2",
+		"-",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("darwin indexed args = %#v, want %#v", got, want)
+	}
+}
+
+func TestFFmpegVirtualMicArgs_WindowsRequiresNamedDevice(t *testing.T) {
+	if _, err := ffmpegVirtualMicArgsForGOOS("windows", ""); err == nil {
+		t.Fatal("expected error for empty Windows virtual mic device")
+	}
+}
+
+func TestFFmpegVirtualMicArgs_WindowsNamedDevice(t *testing.T) {
+	got, err := ffmpegVirtualMicArgsForGOOS("windows", "VB-Cable")
+	if err != nil {
+		t.Fatalf("ffmpegVirtualMicArgsForGOOS(windows): %v", err)
+	}
+	want := []string{
+		"-hide_banner", "-loglevel", "error",
+		"-nostdin",
+		"-f", "s16le",
+		"-ac", "1",
+		"-ar", "24000",
+		"-i", "pipe:0",
+		"-f", "dshow",
+		"audio=VB-Cable",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("windows args = %#v, want %#v", got, want)
+	}
+}
+
+func TestNewSystemVirtualMicWriterChecked_EmptyDeviceAllowsNull(t *testing.T) {
+	writer, msg := NewSystemVirtualMicWriterChecked("")
+	defer writer.Close()
+	if msg != "" {
+		t.Fatalf("message = %q, want empty", msg)
+	}
+	if _, ok := writer.(*NullVirtualMicWriter); !ok {
+		t.Fatalf("writer = %T, want *NullVirtualMicWriter", writer)
+	}
+}
+
+func TestNewSystemVirtualMicWriterChecked_MissingFFmpegReportsError(t *testing.T) {
+	t.Setenv("PATH", "")
+	writer, msg := NewSystemVirtualMicWriterChecked("1")
+	defer writer.Close()
+	if msg == "" {
+		t.Fatal("expected missing ffmpeg error")
+	}
+	if _, ok := writer.(*NullVirtualMicWriter); !ok {
+		t.Fatalf("writer = %T, want *NullVirtualMicWriter", writer)
+	}
 }

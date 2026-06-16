@@ -1,62 +1,54 @@
-// Package translation 单测：验证纯函数逻辑（帧构建、响应解析、URL 鉴权格式）。
+// Package translation 单测：验证纯函数逻辑（响应解析、RTASR URL 鉴权格式）。
 // 讯飞 WebSocket 连接属于集成测试，不在此覆盖。
 package translation
 
 import (
 	"encoding/base64"
 	"encoding/json"
+	"net/url"
 	"strings"
 	"testing"
 )
 
-// TestBuildContFrame 验证音频中间帧的 base64 编码和状态字段。
-func TestBuildContFrame(t *testing.T) {
-	pcm := []byte{0x01, 0x02, 0x03}
-	msg := buildContFrame(pcm)
-
-	if msg.Data.Status != frameStatusCont {
-		t.Errorf("status = %d, want %d (frameStatusCont)", msg.Data.Status, frameStatusCont)
+func TestXunfeiConfigReady(t *testing.T) {
+	if XunfeiConfigReady(XunfeiConfig{}) {
+		t.Fatal("empty Xunfei config should not be ready")
 	}
-	want := base64.StdEncoding.EncodeToString(pcm)
-	if msg.Data.Audio != want {
-		t.Errorf("audio = %q, want %q", msg.Data.Audio, want)
-	}
-	if msg.Data.Encoding != "raw" {
-		t.Errorf("encoding = %q, want %q", msg.Data.Encoding, "raw")
+	if !XunfeiConfigReady(XunfeiConfig{
+		AppID:      "test-app",
+		APIKey:     "test-key",
+		SourceLang: "zh",
+		TargetLang: "en",
+	}) {
+		t.Fatal("complete Xunfei config should be ready")
 	}
 }
 
-// TestBuildLastFrame 验证最后帧的状态和 audio 为空。
-func TestBuildLastFrame(t *testing.T) {
-	msg := buildLastFrame()
-	if msg.Data.Status != frameStatusLast {
-		t.Errorf("status = %d, want %d (frameStatusLast)", msg.Data.Status, frameStatusLast)
-	}
-	if msg.Data.Audio != "" {
-		t.Errorf("last frame audio should be empty, got %q", msg.Data.Audio)
+func TestBuildXunfeiSigna_DocExample(t *testing.T) {
+	got := buildXunfeiSigna(
+		"595f23df",
+		"d9f4aa7ea6d94faca62cd88a28fd5234",
+		"1512041814",
+	)
+	if got != "IrrzsJeOFk1NGfJHW6SkHUoN9CU=" {
+		t.Fatalf("signa = %q", got)
 	}
 }
 
-// TestParseXunfeiResponse_Valid 验证标准讯飞响应正确解析为 DualResult。
-func TestParseXunfeiResponse_Valid(t *testing.T) {
-	resp := xunfeiResponse{
-		Code: 0,
-		Data: struct {
-			Status int `json:"status"`
-			Result struct {
-				Src   string `json:"src"`
-				Dst   string `json:"dst"`
-				IsEnd int    `json:"is_end"`
-			} `json:"result"`
-		}{
-			Result: struct {
-				Src   string `json:"src"`
-				Dst   string `json:"dst"`
-				IsEnd int    `json:"is_end"`
-			}{Src: "hello", Dst: "你好", IsEnd: 1},
-		},
+func TestNormalizeXunfeiLang(t *testing.T) {
+	for _, lang := range []string{"zh", "zh-CN", "chinese"} {
+		if got := normalizeXunfeiLang(lang); got != "cn" {
+			t.Fatalf("normalizeXunfeiLang(%q) = %q, want cn", lang, got)
+		}
 	}
-	data, _ := json.Marshal(resp)
+	if got := normalizeXunfeiLang("en"); got != "en" {
+		t.Fatalf("normalizeXunfeiLang(en) = %q", got)
+	}
+}
+
+// TestParseXunfeiResponse_Translate 验证 RTASR 开启翻译后的 data 字符串正确解析为 DualResult。
+func TestParseXunfeiResponse_Translate(t *testing.T) {
+	data := marshalXunfeiOuter(`{"biz":"trans","src":"hello","dst":"你好","isEnd":true,"type":0}`)
 	result, ok := parseXunfeiResponse(data)
 	if !ok {
 		t.Fatal("parseXunfeiResponse returned false for valid response")
@@ -68,13 +60,13 @@ func TestParseXunfeiResponse_Valid(t *testing.T) {
 		t.Errorf("DstText = %q, want %q", result.DstText, "你好")
 	}
 	if !result.IsFinal {
-		t.Error("IsFinal should be true when is_end=1")
+		t.Error("IsFinal should be true when isEnd=true")
 	}
 }
 
 // TestParseXunfeiResponse_NonZeroCode 验证 code != 0 时返回 false（API 错误）。
 func TestParseXunfeiResponse_NonZeroCode(t *testing.T) {
-	data := []byte(`{"code":10001,"message":"invalid appid"}`)
+	data := []byte(`{"action":"error","code":"10110","desc":"invalid authorization"}`)
 	_, ok := parseXunfeiResponse(data)
 	if ok {
 		t.Error("should return false for non-zero code")
@@ -83,7 +75,7 @@ func TestParseXunfeiResponse_NonZeroCode(t *testing.T) {
 
 // TestParseXunfeiResponse_EmptyContent 验证 src 和 dst 均为空时返回 false（心跳帧）。
 func TestParseXunfeiResponse_EmptyContent(t *testing.T) {
-	data := []byte(`{"code":0,"data":{"status":1,"result":{"src":"","dst":"","is_end":0}}}`)
+	data := marshalXunfeiOuter(`{"biz":"trans","src":"","dst":"","isEnd":false}`)
 	_, ok := parseXunfeiResponse(data)
 	if ok {
 		t.Error("should return false when both src and dst are empty")
@@ -98,9 +90,9 @@ func TestParseXunfeiResponse_InvalidJSON(t *testing.T) {
 	}
 }
 
-// TestParseXunfeiResponse_NotFinal 验证 is_end=0 时 IsFinal 为 false。
+// TestParseXunfeiResponse_NotFinal 验证 isEnd=false 时 IsFinal 为 false。
 func TestParseXunfeiResponse_NotFinal(t *testing.T) {
-	data := []byte(`{"code":0,"data":{"result":{"src":"hi","dst":"嗨","is_end":0}}}`)
+	data := marshalXunfeiOuter(`{"biz":"trans","src":"hi","dst":"嗨","isEnd":false}`)
 	result, ok := parseXunfeiResponse(data)
 	if !ok {
 		t.Fatal("should parse successfully")
@@ -110,12 +102,27 @@ func TestParseXunfeiResponse_NotFinal(t *testing.T) {
 	}
 }
 
-// TestBuildAuthURL_Format 验证生成的鉴权 URL 包含所有必需参数且格式正确。
+func TestParseXunfeiResponse_ASR(t *testing.T) {
+	data := marshalXunfeiOuter(`{"cn":{"st":{"type":"0","rt":[{"ws":[{"cw":[{"w":"你"}]},{"cw":[{"w":"好"}]}]}]}},"seg_id":1}`)
+	result, ok := parseXunfeiResponse(data)
+	if !ok {
+		t.Fatal("should parse ASR result")
+	}
+	if result.SrcText != "你好" || result.DstText != "你好" {
+		t.Fatalf("result = %#v, want source and target fallback text", result)
+	}
+	if !result.IsFinal {
+		t.Fatal("ASR type=0 should be final")
+	}
+}
+
+// TestBuildAuthURL_Format 验证生成的 RTASR 鉴权 URL 只包含转写参数，不启用昂贵实时翻译。
 func TestBuildAuthURL_Format(t *testing.T) {
 	p := NewXunfeiProvider(XunfeiConfig{
-		AppID:     "test-app",
-		APIKey:    "test-key",
-		APISecret: "test-secret",
+		AppID:      "test-app",
+		APIKey:     "test-key",
+		SourceLang: "cn",
+		TargetLang: "en",
 	})
 	rawURL, err := p.buildAuthURL()
 	if err != nil {
@@ -124,22 +131,35 @@ func TestBuildAuthURL_Format(t *testing.T) {
 	if !strings.HasPrefix(rawURL, xunfeiWSS) {
 		t.Errorf("URL should start with %q, got %q", xunfeiWSS, rawURL)
 	}
-	for _, param := range []string{"authorization=", "date=", "host="} {
-		if !strings.Contains(rawURL, param) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := parsed.Query()
+	for _, param := range []string{"appid", "ts", "signa", "lang"} {
+		if query.Get(param) == "" {
 			t.Errorf("URL missing required parameter %q", param)
 		}
 	}
-	// 验证 authorization 是有效 base64
-	parts := strings.SplitN(rawURL, "?", 2)
-	if len(parts) < 2 {
-		t.Fatal("URL missing query string")
-	}
-	for _, kv := range strings.Split(parts[1], "&") {
-		if strings.HasPrefix(kv, "authorization=") {
-			b64 := strings.TrimPrefix(kv, "authorization=")
-			if _, err := base64.StdEncoding.DecodeString(b64); err != nil {
-				t.Errorf("authorization is not valid base64: %v", err)
-			}
+	for _, param := range []string{"transType", "transStrategy", "targetLang"} {
+		if query.Get(param) != "" {
+			t.Errorf("RTASR URL should not include realtime translation param %q", param)
 		}
 	}
+	if _, err := base64.StdEncoding.DecodeString(query.Get("signa")); err != nil {
+		t.Errorf("signa is not valid base64: %v", err)
+	}
+	if query.Get("lang") != "cn" {
+		t.Errorf("unexpected lang params: %s", query.Encode())
+	}
+}
+
+func marshalXunfeiOuter(inner string) []byte {
+	data, _ := json.Marshal(xunfeiResponse{
+		Action: "result",
+		Code:   json.RawMessage(`"0"`),
+		Data:   inner,
+		Desc:   "success",
+	})
+	return data
 }

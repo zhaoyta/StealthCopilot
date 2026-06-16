@@ -1,17 +1,19 @@
-// Package translation 实现讯飞实时语音翻译 WebSocket 接入。
-// 认证方式：HMAC-SHA256 签名 URL（讯飞 WebSocket 鉴权标准方案）。
-// 单次 WebSocket 连接同时返回 src_text（源语言）和 dst_text（目标语言）双路输出。
+// Package translation 实现讯飞实时语音转写 RTASR WebSocket 接入。
+// RTASR 在 WebSocket URL 中完成签名鉴权，连接后直接发送 16k/16bit/mono PCM binary。
+// 为控制成本，本实现只启用转写，不启用 RTASR 的实时翻译高级功能。
 package translation
 
 import (
 	"context"
 	"crypto/hmac"
-	"crypto/sha256"
+	"crypto/md5"
+	"crypto/sha1"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,16 +21,9 @@ import (
 )
 
 const (
-	xunfeiHost = "itrans.xf-yun.com"
-	xunfeiPath = "/v1/its"
+	xunfeiHost = "rtasr.xfyun.cn"
+	xunfeiPath = "/v1/ws"
 	xunfeiWSS  = "wss://" + xunfeiHost + xunfeiPath
-)
-
-// 音频帧状态常量（讯飞协议）
-const (
-	frameStatusFirst = 0 // 第一帧，携带 common + business 参数
-	frameStatusCont  = 1 // 中间帧，仅携带音频数据
-	frameStatusLast  = 2 // 最后帧，audio 为空，通知服务端结束识别
 )
 
 // 重连策略常量
@@ -40,19 +35,18 @@ const (
 // XunfeiConfig 讯飞 API 连接配置，由 config.AppConfig 注入。
 type XunfeiConfig struct {
 	AppID      string // 讯飞控制台 AppID
-	APIKey     string // 讯飞控制台 APIKey
-	APISecret  string // 讯飞控制台 APISecret
-	SourceLang string // 源语言，如 "en"
-	TargetLang string // 目标语言，如 "zh"
+	APIKey     string // RTASR APIKey，用于 signa 生成
+	SourceLang string // 源语言，如 "cn"、"en"
+	TargetLang string // 目标语言，如 "en"、"cn"
 }
 
-// XunfeiTranslationProvider 实现 Provider 接口，接入讯飞实时语音翻译 WebSocket API。
+// XunfeiTranslationProvider 实现 Provider 接口，接入讯飞 RTASR WebSocket API。
 // 每次 Translate 调用维护一个 WebSocket 长连接，断连时自动指数退避重连。
 type XunfeiTranslationProvider struct {
 	cfg XunfeiConfig
 }
 
-// NewXunfeiProvider 创建讯飞翻译 Provider。
+// NewXunfeiProvider 创建讯飞 RTASR Provider。
 func NewXunfeiProvider(cfg XunfeiConfig) *XunfeiTranslationProvider {
 	return &XunfeiTranslationProvider{cfg: cfg}
 }
@@ -69,6 +63,26 @@ func (p *XunfeiTranslationProvider) Translate(
 
 // Close 无需额外资源释放（连接生命周期由 ctx 控制）。
 func (p *XunfeiTranslationProvider) Close() error { return nil }
+
+// ProbeXunfeiRTASRConnection verifies RTASR credentials with a WebSocket handshake.
+// It closes immediately after the handshake and does not send audio frames.
+func ProbeXunfeiRTASRConnection(ctx context.Context, cfg XunfeiConfig) error {
+	if !XunfeiConfigReady(cfg) {
+		return fmt.Errorf("xunfei_rtasr: incomplete config")
+	}
+	authURL, err := (&XunfeiTranslationProvider{cfg: cfg}).buildAuthURL()
+	if err != nil {
+		return fmt.Errorf("xunfei_rtasr: build auth URL: %w", err)
+	}
+	conn, resp, err := websocket.DefaultDialer.DialContext(ctx, authURL, nil)
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+	if err != nil {
+		return fmt.Errorf("xunfei_rtasr: dial: %w", err)
+	}
+	return conn.Close()
+}
 
 // run 管理 WebSocket 连接生命周期，是 Translate 的主 goroutine。
 // 连接失败时指数退避重连，超过最大次数后关闭 out channel 并退出。
@@ -126,8 +140,8 @@ func (p *XunfeiTranslationProvider) session(
 	// 发送 goroutine 在当前 goroutine 中运行（保持 sendLoop 阻塞直到 ctx 取消或 audioStream 关闭）
 	p.sendLoop(ctx, conn, audioStream)
 
-	// 发送结束帧，通知服务端识别完毕
-	_ = conn.WriteJSON(buildLastFrame())
+	// 发送结束标识，通知服务端识别完毕。
+	_ = writeXunfeiEnd(conn)
 
 	// 等待服务端关闭连接（最多 3s），确保最后的文本结果被接收
 	select {
@@ -137,12 +151,10 @@ func (p *XunfeiTranslationProvider) session(
 	return nil
 }
 
-// sendLoop 从 audioStream 读取 PCM 帧，以 JSON 消息发送给讯飞 WebSocket。
-// 第一帧携带 common + business 参数，后续帧只发送音频数据。
+// sendLoop 从 audioStream 读取 PCM 帧，以 binary message 发送给讯飞 RTASR WebSocket。
 func (p *XunfeiTranslationProvider) sendLoop(
 	ctx context.Context, conn *websocket.Conn, audioStream <-chan []byte,
 ) {
-	first := true
 	for {
 		select {
 		case <-ctx.Done():
@@ -151,14 +163,7 @@ func (p *XunfeiTranslationProvider) sendLoop(
 			if !ok {
 				return
 			}
-			var msg any
-			if first {
-				msg = p.buildFirstFrame(frame)
-				first = false
-			} else {
-				msg = buildContFrame(frame)
-			}
-			if err := conn.WriteJSON(msg); err != nil {
+			if err := writeXunfeiAudio(conn, frame); err != nil {
 				return
 			}
 		}
@@ -186,120 +191,148 @@ func (p *XunfeiTranslationProvider) receiveLoop(conn *websocket.Conn, out chan<-
 
 // --- 消息构造 ---
 
-// xunfeiFirstMsg 是第一帧消息，携带鉴权参数和业务参数。
-type xunfeiFirstMsg struct {
-	Common struct {
-		AppID string `json:"app_id"`
-	} `json:"common"`
-	Business struct {
-		From string `json:"from"`
-		To   string `json:"to"`
-		Ptt  int    `json:"ptt"` // 标点符号：1=保留
-	} `json:"business"`
-	Data xunfeiAudioData `json:"data"`
+func writeXunfeiAudio(conn *websocket.Conn, pcm []byte) error {
+	return conn.WriteMessage(websocket.BinaryMessage, pcm)
 }
 
-// xunfeiContMsg 是中间帧和结束帧消息。
-type xunfeiContMsg struct {
-	Data xunfeiAudioData `json:"data"`
-}
-
-// xunfeiAudioData 携带音频分片（base64 编码的 PCM）。
-type xunfeiAudioData struct {
-	Status   int    `json:"status"`
-	Audio    string `json:"audio"`    // base64(PCM raw)
-	Encoding string `json:"encoding"` // "raw"
-}
-
-func (p *XunfeiTranslationProvider) buildFirstFrame(pcm []byte) xunfeiFirstMsg {
-	msg := xunfeiFirstMsg{}
-	msg.Common.AppID = p.cfg.AppID
-	msg.Business.From = p.cfg.SourceLang
-	msg.Business.To = p.cfg.TargetLang
-	msg.Business.Ptt = 1
-	msg.Data.Status = frameStatusFirst
-	msg.Data.Audio = base64.StdEncoding.EncodeToString(pcm)
-	msg.Data.Encoding = "raw"
-	return msg
-}
-
-func buildContFrame(pcm []byte) xunfeiContMsg {
-	return xunfeiContMsg{Data: xunfeiAudioData{
-		Status:   frameStatusCont,
-		Audio:    base64.StdEncoding.EncodeToString(pcm),
-		Encoding: "raw",
-	}}
-}
-
-func buildLastFrame() xunfeiContMsg {
-	return xunfeiContMsg{Data: xunfeiAudioData{Status: frameStatusLast}}
+func writeXunfeiEnd(conn *websocket.Conn) error {
+	return conn.WriteMessage(websocket.BinaryMessage, []byte(`{"end": true}`))
 }
 
 // --- 响应解析 ---
 
-// xunfeiResponse 是讯飞实时语音翻译 API 响应的 JSON 结构。
-// 字段名基于讯飞 WebSocket 实时语音翻译 API v2（实际字段需以 API 返回为准）。
+// xunfeiResponse 是讯飞 RTASR 外层响应。data 为普通转写 JSON 字符串。
+// 兼容解析开启翻译时的 {"biz":"trans","src":"...","dst":"..."}，但默认不会请求该能力。
 type xunfeiResponse struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-	Sid     string `json:"sid"`
-	Data    struct {
-		Status int `json:"status"`
-		Result struct {
-			Src   string `json:"src"`    // 源语言原文（面试官语言）
-			Dst   string `json:"dst"`    // 目标语言译文（用户语言）
-			IsEnd int    `json:"is_end"` // 1=当前句子已完整（触发意图识别）
-		} `json:"result"`
-	} `json:"data"`
+	Action string          `json:"action"`
+	Code   json.RawMessage `json:"code"`
+	Data   string          `json:"data"`
+	Desc   string          `json:"desc"`
+	Sid    string          `json:"sid"`
+}
+
+type xunfeiTransData struct {
+	Biz   string `json:"biz"`
+	Src   string `json:"src"`
+	Dst   string `json:"dst"`
+	IsEnd bool   `json:"isEnd"`
+	Type  int    `json:"type"`
+}
+
+type xunfeiASRData struct {
+	CN struct {
+		ST struct {
+			Type string `json:"type"`
+			RT   []struct {
+				WS []struct {
+					CW []struct {
+						W string `json:"w"`
+					} `json:"cw"`
+				} `json:"ws"`
+			} `json:"rt"`
+		} `json:"st"`
+	} `json:"cn"`
 }
 
 // parseXunfeiResponse 解析讯飞 WebSocket 响应，转换为 DualResult。
 // code != 0 或内容为空时返回 false（跳过该消息）。
 func parseXunfeiResponse(data []byte) (DualResult, bool) {
 	var resp xunfeiResponse
-	if err := json.Unmarshal(data, &resp); err != nil || resp.Code != 0 {
+	if err := json.Unmarshal(data, &resp); err != nil || !xunfeiCodeOK(resp.Code) {
 		return DualResult{}, false
 	}
-	res := resp.Data.Result
-	if res.Src == "" && res.Dst == "" {
+	if resp.Action != "" && resp.Action != "result" {
 		return DualResult{}, false
 	}
-	return DualResult{
-		SrcText: res.Src,
-		DstText: res.Dst,
-		IsFinal: res.IsEnd == 1,
-	}, true
+	if resp.Data == "" {
+		return DualResult{}, false
+	}
+	if result, ok := parseXunfeiTransData([]byte(resp.Data)); ok {
+		return result, true
+	}
+	return parseXunfeiASRData([]byte(resp.Data))
+}
+
+func xunfeiCodeOK(raw json.RawMessage) bool {
+	if len(raw) == 0 {
+		return false
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s == "0"
+	}
+	var n int
+	if err := json.Unmarshal(raw, &n); err == nil {
+		return n == 0
+	}
+	return false
+}
+
+func parseXunfeiTransData(data []byte) (DualResult, bool) {
+	var trans xunfeiTransData
+	if err := json.Unmarshal(data, &trans); err != nil || trans.Biz != "trans" {
+		return DualResult{}, false
+	}
+	if trans.Src == "" && trans.Dst == "" {
+		return DualResult{}, false
+	}
+	dst := trans.Dst
+	if dst == "" {
+		dst = trans.Src
+	}
+	return DualResult{SrcText: trans.Src, DstText: dst, IsFinal: trans.IsEnd}, true
+}
+
+func parseXunfeiASRData(data []byte) (DualResult, bool) {
+	var asr xunfeiASRData
+	if err := json.Unmarshal(data, &asr); err != nil {
+		return DualResult{}, false
+	}
+	var b strings.Builder
+	for _, rt := range asr.CN.ST.RT {
+		for _, ws := range rt.WS {
+			if len(ws.CW) > 0 {
+				b.WriteString(ws.CW[0].W)
+			}
+		}
+	}
+	text := b.String()
+	if text == "" {
+		return DualResult{}, false
+	}
+	return DualResult{SrcText: text, DstText: text, IsFinal: asr.CN.ST.Type == "0"}, true
 }
 
 // --- URL 鉴权 ---
 
-// buildAuthURL 生成带 HMAC-SHA256 签名的讯飞 WebSocket URL。
-// 签名算法：
-//  1. signatureOrigin = "host: {host}\ndate: {RFC1123}\nGET {path} HTTP/1.1"
-//  2. signature = base64(HMAC-SHA256(signatureOrigin, apiSecret))
-//  3. authorizationOrigin = `api_key="...", algorithm="...", headers="...", signature="..."`
-//  4. authorization = base64(authorizationOrigin)
+// buildAuthURL 生成讯飞 RTASR WebSocket URL。
+// 签名算法：signa = base64(HMAC-SHA1(MD5(appid + ts), api_key))。
 func (p *XunfeiTranslationProvider) buildAuthURL() (string, error) {
-	date := time.Now().UTC().Format(http.TimeFormat) // RFC1123
-	signatureOrigin := strings.Join([]string{
-		"host: " + xunfeiHost,
-		"date: " + date,
-		"GET " + xunfeiPath + " HTTP/1.1",
-	}, "\n")
-
-	mac := hmac.New(sha256.New, []byte(p.cfg.APISecret))
-	mac.Write([]byte(signatureOrigin))
-	signature := base64.StdEncoding.EncodeToString(mac.Sum(nil))
-
-	authOrigin := fmt.Sprintf(
-		`api_key="%s", algorithm="hmac-sha256", headers="host date request-line", signature="%s"`,
-		p.cfg.APIKey, signature,
-	)
-	authorization := base64.StdEncoding.EncodeToString([]byte(authOrigin))
-
+	ts := strconv.FormatInt(time.Now().Unix(), 10)
+	signa := buildXunfeiSigna(p.cfg.AppID, p.cfg.APIKey, ts)
 	params := url.Values{}
-	params.Set("authorization", authorization)
-	params.Set("date", date)
-	params.Set("host", xunfeiHost)
+	params.Set("appid", p.cfg.AppID)
+	params.Set("ts", ts)
+	params.Set("signa", signa)
+	if p.cfg.SourceLang != "" {
+		params.Set("lang", normalizeXunfeiLang(p.cfg.SourceLang))
+	}
 	return xunfeiWSS + "?" + params.Encode(), nil
+}
+
+func buildXunfeiSigna(appID, apiKey, ts string) string {
+	sum := md5.Sum([]byte(appID + ts))
+	md5Hex := hex.EncodeToString(sum[:])
+	mac := hmac.New(sha1.New, []byte(apiKey))
+	mac.Write([]byte(md5Hex))
+	return base64.StdEncoding.EncodeToString(mac.Sum(nil))
+}
+
+func normalizeXunfeiLang(lang string) string {
+	switch strings.ToLower(strings.TrimSpace(lang)) {
+	case "zh", "zh-cn", "chinese":
+		return "cn"
+	default:
+		return strings.TrimSpace(lang)
+	}
 }

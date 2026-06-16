@@ -337,7 +337,7 @@ async function switchLocale(code: 'zh-CN' | 'en-US') {
           <ChevronRight :size="12" class="text-gray-600 flex-shrink-0" />
           <PipelineStep :label="optionalLabel('pipeline.deepseekPolish')" optional />
           <ChevronRight :size="12" class="text-gray-600 flex-shrink-0" />
-          <PipelineStep label="ElevenLabs TTS" />
+          <PipelineStep :label="t('pipeline.xunfeiVoiceClone')" />
           <ChevronRight :size="12" class="text-gray-600 flex-shrink-0" />
           <PipelineStep :label="t('pipeline.virtualMic')" />
         </div>

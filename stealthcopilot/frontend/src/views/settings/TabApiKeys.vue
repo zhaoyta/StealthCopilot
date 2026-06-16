@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { Eye, EyeOff } from 'lucide-vue-next'
 
 const { t } = useI18n()
+const MASKED_VALUE = '••••••••'
 
 type TestStatus = 'untested' | 'testing' | 'ok' | 'fail'
 
@@ -32,7 +33,7 @@ const services = reactive<ServiceConfig[]>([
     ],
   },
   {
-    name: '讯飞机器翻译（新）',
+    name: '讯飞机器翻译',
     testStatus: 'untested',
     testMsg: '',
     fields: [
@@ -51,12 +52,15 @@ const services = reactive<ServiceConfig[]>([
     ],
   },
   {
-    name: 'ElevenLabs',
+    name: '讯飞声音复刻',
     testStatus: 'untested',
     testMsg: '',
     fields: [
-      { service: 'elevenlabs', field: 'key',      label: t('settings.apiKeys.elevenlabs.key'),     secret: true,  value: '', show: false },
-      { service: 'elevenlabs', field: 'voice_id', label: t('settings.apiKeys.elevenlabs.voiceId'), secret: false, value: '', show: false },
+      { service: 'xunfei_tts', field: 'app_id',     label: t('settings.apiKeys.xunfei.ttsAppId'),     secret: true,  value: '', show: false },
+      { service: 'xunfei_tts', field: 'api_key',    label: t('settings.apiKeys.xunfei.ttsApiKey'),    secret: true,  value: '', show: false },
+      { service: 'xunfei_tts', field: 'api_secret', label: t('settings.apiKeys.xunfei.ttsApiSecret'), secret: true,  value: '', show: false },
+      { service: 'xunfei_tts', field: 'asset_id',   label: t('settings.apiKeys.xunfei.ttsAssetId'),   secret: false, value: '', show: false },
+      { service: 'xunfei_tts', field: 'task_id',    label: t('settings.apiKeys.xunfei.ttsTaskId'),    secret: false, value: '', show: false },
     ],
   },
   {
@@ -83,17 +87,20 @@ onMounted(async () => {
       xunfei_mt_app_id: cfg.xunfei_mt_app_id_set,
       xunfei_mt_api_key: cfg.xunfei_mt_api_key_set,
       xunfei_mt_api_secret: cfg.xunfei_mt_api_secret_set,
+      xunfei_tts_app_id: cfg.xunfei_tts_app_id_set,
+      xunfei_tts_api_key: cfg.xunfei_tts_api_key_set,
+      xunfei_tts_api_secret: cfg.xunfei_tts_api_secret_set,
+      xunfei_tts_asset_id: cfg.xunfei_tts_asset_id_set,
+      xunfei_tts_task_id: cfg.xunfei_tts_task_id_set,
       deepseek_key: cfg.deepseek_key_set,
       deepseek_model: !!cfg.deepseek_model,
-      elevenlabs_key: cfg.elevenlabs_key_set,
-      elevenlabs_voice_id: cfg.elevenlabs_voice_id_set,
       simli_key: cfg.simli_key_set,
       simli_face_id: cfg.simli_face_id_set,
     }
     for (const svc of services) {
       for (const f of svc.fields) {
         const k = `${f.service}_${f.field}`
-        if (setMap[k]) f.value = '••••••••' // 已设置时显示掩码
+        if (setMap[k]) f.value = MASKED_VALUE // 已设置时显示掩码
       }
       // deepseek model 回显实际值
       if (svc.fields[0].service === 'deepseek') {
@@ -110,7 +117,7 @@ async function saveService(svc: ServiceConfig) {
   svc.testMsg = ''
   try {
     for (const f of svc.fields) {
-      if (!f.value || f.value === '••••••••') continue
+      if (!f.value || f.value === MASKED_VALUE) continue
       let err = ''
       if (f.service === 'deepseek' && f.field === 'model') {
         // @ts-expect-error — Wails 运行时注入，window.go/window.runtime 无类型定义
@@ -120,7 +127,7 @@ async function saveService(svc: ServiceConfig) {
       } else {
         // @ts-expect-error — Wails 运行时注入，window.go/window.runtime 无类型定义
         err = await window.go.main.App.SaveAPIKey({ service: f.service, field: f.field, value: f.value })
-        if (!err) f.value = '••••••••'
+        if (!err) f.value = MASKED_VALUE
       }
       if (err) { svc.testMsg = err; break }
     }
@@ -147,6 +154,10 @@ function testStatusIcon(s: TestStatus): string {
 }
 function testStatusClass(s: TestStatus): string {
   return s === 'ok' ? 'text-green-400' : s === 'fail' ? 'text-red-400' : 'text-gray-500'
+}
+
+function clearMaskedValue(field: ServiceConfig['fields'][number]) {
+  if (field.value === MASKED_VALUE) field.value = ''
 }
 </script>
 
@@ -200,11 +211,11 @@ function testStatusClass(s: TestStatus): string {
               :type="!f.secret || f.show ? 'text' : 'password'"
               class="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white
                      focus:outline-none focus:border-blue-400 transition-colors"
-              @focus="f.secret && f.value === '••••••••' && (f.value = '')"
+              @focus="clearMaskedValue(f)"
               @input="svc.testStatus = 'untested'"
             >
             <button
-              v-if="f.secret && f.value !== '••••••••'"
+              v-if="f.secret && f.value !== MASKED_VALUE"
               class="px-2 py-2 bg-gray-600 hover:bg-gray-500 rounded-lg transition-colors flex items-center"
               @click="f.show = !f.show"
             >

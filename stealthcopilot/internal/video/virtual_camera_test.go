@@ -21,6 +21,15 @@ func TestNewSystemVirtualCameraWriter_EmptyDevice(t *testing.T) {
 		t.Errorf("expected NullVirtualCameraWriter for empty deviceName, got %T", w)
 	}
 	_ = w.Close()
+
+	checked, msg := NewSystemVirtualCameraWriterChecked("")
+	if _, ok := checked.(*NullVirtualCameraWriter); !ok {
+		t.Errorf("expected checked NullVirtualCameraWriter for empty deviceName, got %T", checked)
+	}
+	if msg != "" {
+		t.Errorf("empty device should not report startup error, got %q", msg)
+	}
+	_ = checked.Close()
 }
 
 // TestNewSystemVirtualCameraWriter_NoSocketOnDarwin 验证 macOS 下 socket 不存在时降级为 Null。
@@ -36,6 +45,15 @@ func TestNewSystemVirtualCameraWriter_NoSocketOnDarwin(t *testing.T) {
 		t.Errorf("expected NullVirtualCameraWriter when socket absent, got %T", w)
 	}
 	_ = w.Close()
+
+	checked, msg := NewSystemVirtualCameraWriterChecked("StealthVirtualCam")
+	if _, ok := checked.(*NullVirtualCameraWriter); !ok {
+		t.Errorf("expected checked NullVirtualCameraWriter when socket absent, got %T", checked)
+	}
+	if msg == "" {
+		t.Error("checked writer should report a startup error when socket is absent")
+	}
+	_ = checked.Close()
 }
 
 // TestDarwinSocketWriter_WriteFrame 验证 macOS socket 写入器通过 UNIX socket 正确发送帧。

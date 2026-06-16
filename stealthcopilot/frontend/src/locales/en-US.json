@@ -54,16 +54,20 @@
     },
     "voice": {
       "title": "Voice Cloning",
-      "desc": "Record ~15 seconds to create your personal English voice clone (requires ElevenLabs API Key)",
+      "desc": "Read the iFlytek training text to create your cloned voice (requires iFlytek VoiceClone keys)",
       "record": "Start Recording",
       "stop": "Stop Recording",
-      "upload": "Upload & Clone",
-      "uploading": "Uploading…",
+      "countdown": "{seconds}s",
+      "upload": "Submit Training",
+      "uploading": "Processing…",
+      "query": "Check Training Status",
+      "submitted": "Training Submitted",
+      "submittedDesc": "iFlytek is training the voice. Check status later; Asset ID will be saved automatically when ready.",
       "done": "Voice cloned successfully",
       "doneDesc": "Your personal voice has been saved. Speaking chain will use the cloned voice.",
       "skipped": "Voice cloning skipped",
-      "skippedDesc": "Speaking chain will fall back to system TTS. You can complete this later in Settings.",
-      "readAloud": "Please read the following text aloud (~15 seconds):",
+      "skippedDesc": "Speaking chain needs a trained voice before real voice output. You can complete this later in Settings.",
+      "readAloud": "Please read the iFlytek training text aloud:",
       "sampleText": "I am a software engineer with extensive experience in designing and implementing distributed systems. In my previous role, I led the migration of a monolithic application to a microservices architecture, which improved scalability by 300%. I am passionate about clean code and believe that good engineering practices are essential for long-term team success.",
       "micError": "Cannot access microphone. Please check system permissions."
     },
@@ -73,8 +77,8 @@
       "summary": "Configuration Summary",
       "xunfei": "iFlytek API (Hearing chain)",
       "deepseek": "DeepSeek API (AI responses)",
-      "elevenlabs": "ElevenLabs API (TTS)",
-      "voiceId": "Voice Clone ID",
+      "xunfeiTts": "iFlytek VoiceClone API (TTS)",
+      "voiceId": "VoiceClone Asset ID",
       "simli": "Simli AI (Lip sync)",
       "hint": "Optional items can be completed later in Settings"
     },
@@ -91,6 +95,7 @@
       "apiKeys": "API Keys",
       "language": "Language",
       "devices": "Devices",
+      "voice": "Voice Clone",
       "resume": "Resume",
       "ghost": "Teleprompter",
       "advanced": "Advanced"
@@ -101,26 +106,31 @@
       "statusFail": "Failed",
       "statusTesting": "Testing…",
       "xunfei": {
-        "appId": "iFlytek App ID",
-        "apiKey": "iFlytek API Key",
-        "apiSecret": "iFlytek API Secret"
+        "rtasrAppId": "RTASR App ID",
+        "rtasrApiKey": "RTASR API Key",
+        "mtAppId": "Machine Translation App ID",
+        "mtApiKey": "Machine Translation API Key",
+        "mtApiSecret": "Machine Translation API Secret",
+        "ttsAppId": "VoiceClone App ID",
+        "ttsApiKey": "VoiceClone API Key",
+        "ttsApiSecret": "VoiceClone API Secret",
+        "ttsAssetId": "VoiceClone Asset ID",
+        "ttsTaskId": "VoiceClone Task ID"
       },
       "deepseek": {
         "key": "DeepSeek API Key",
         "model": "Model"
-      },
-      "elevenlabs": {
-        "key": "ElevenLabs API Key",
-        "voiceId": "Voice ID"
       },
       "simli": {
         "key": "Simli API Key",
         "faceId": "Face ID"
       },
       "serviceNames": {
-        "xunfei": "iFlytek",
+        "xunfei": "iFlytek Bundle",
+        "xunfei_rtasr": "iFlytek RTASR",
+        "xunfei_mt": "iFlytek Machine Translation",
+        "xunfei_tts": "iFlytek VoiceClone",
         "deepseek": "DeepSeek",
-        "elevenlabs": "ElevenLabs",
         "simli": "Simli AI"
       }
     },
@@ -191,7 +201,7 @@
         "xunfei": "Xunfei",
         "deepseek": "DeepSeek",
         "openaiCompatible": "OpenAI Compatible",
-        "elevenlabs": "ElevenLabs",
+        "xunfeiVoiceClone": "iFlytek VoiceClone",
         "simli": "Simli",
         "pythonBridge": "Python Bridge",
         "null": "Disabled / Null"
@@ -254,6 +264,7 @@
     "physicalMic": "Physical Mic",
     "xunfeiAsr": "iFlytek ASR",
     "deepseekPolish": "DeepSeek Polish",
+    "xunfeiVoiceClone": "iFlytek VoiceClone",
     "virtualMic": "Virtual Mic",
     "physicalCam": "Physical Camera",
     "simliAvatar": "Simli AI Avatar",

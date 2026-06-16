@@ -27,12 +27,17 @@ func (s *Service) Startup(_ context.Context) {}
 func (s *Service) GetConfig() FrontendConfig {
 	c := s.manager.Config
 	return FrontendConfig{
-		XunfeiAppIDSet:        c.XunfeiAppID != "",
-		XunfeiAPIKeySet:       c.XunfeiAPIKey != "",
-		XunfeiAPISecretSet:    c.XunfeiAPISecret != "",
+		XunfeiRTASRAppIDSet:   c.XunfeiRTASRAppID != "",
+		XunfeiRTASRAPIKeySet:  c.XunfeiRTASRAPIKey != "",
+		XunfeiMTAppIDSet:      c.XunfeiMTAppID != "",
+		XunfeiMTAPIKeySet:     c.XunfeiMTAPIKey != "",
+		XunfeiMTAPISecretSet:  c.XunfeiMTAPISecret != "",
+		XunfeiTTSAppIDSet:     c.XunfeiTTSAppID != "",
+		XunfeiTTSAPIKeySet:    c.XunfeiTTSAPIKey != "",
+		XunfeiTTSAPISecretSet: c.XunfeiTTSAPISecret != "",
+		XunfeiTTSAssetIDSet:   c.XunfeiTTSAssetID != "",
+		XunfeiTTSTaskIDSet:    c.XunfeiTTSTaskID != "",
 		DeepSeekKeySet:        c.DeepSeekKey != "",
-		ElevenLabsKeySet:      c.ElevenLabsKey != "",
-		ElevenLabsVoiceIDSet:  c.ElevenLabsVoiceID != "",
 		SimliKeySet:           c.SimliKey != "",
 		SimliFaceIDSet:        c.SimliFaceID != "",
 		UILocale:              c.UILocale,

@@ -14,15 +14,26 @@ import (
 // requirements aligned with the rest of the app while avoiding a hard CGO
 // dependency on PortAudio.
 func NewSystemCaptureProvider() CaptureProvider {
+	provider, _ := NewSystemCaptureProviderChecked()
+	return provider
+}
+
+func NewSystemCaptureProviderChecked() (CaptureProvider, string) {
 	if _, err := exec.LookPath("ffmpeg"); err == nil {
-		return &FFmpegCaptureProvider{}
+		return &FFmpegCaptureProvider{}, ""
 	}
-	return &NullCaptureProvider{}
+	return &NullCaptureProvider{}, "ffmpeg 未安装，无法启动真实音频采集"
 }
 
 // NewSystemMicProvider returns the best available microphone provider.
 func NewSystemMicProvider() MicProvider {
-	return &systemMicProvider{capture: NewSystemCaptureProvider()}
+	provider, _ := NewSystemMicProviderChecked()
+	return provider
+}
+
+func NewSystemMicProviderChecked() (MicProvider, string) {
+	capture, msg := NewSystemCaptureProviderChecked()
+	return &systemMicProvider{capture: capture}, msg
 }
 
 type systemMicProvider struct {

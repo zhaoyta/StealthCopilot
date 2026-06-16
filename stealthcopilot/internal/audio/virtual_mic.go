@@ -12,6 +12,9 @@ import (
 // virtualMicState 虚拟麦克风写入状态常量
 type virtualMicState int32
 
+// VirtualMicSampleRate is the PCM rate expected by the speaking-chain output.
+const VirtualMicSampleRate = 24000
+
 const (
 	// micStateIdle 初始状态，无音频写入
 	micStateIdle virtualMicState = iota
@@ -73,10 +76,11 @@ func (w *NullVirtualMicWriter) Close() {
 // zeroPCMLoop 模拟虚拟麦克风的定时帧写入节拍（Zero-PCM 状态下生效）。
 // 生产实现中该 goroutine 会向 portaudio 输出流写入全零缓冲区。
 func (w *NullVirtualMicWriter) zeroPCMLoop() {
-	// 44100Hz，每帧 10ms = 441 样本 × 2 字节 = 882 字节
+	// 24000Hz，每帧 10ms = 240 样本 × 2 字节 = 480 字节
 	const frameDur = 10 * time.Millisecond
 	ticker := time.NewTicker(frameDur)
 	defer ticker.Stop()
+	silence := make([]byte, VirtualMicSampleRate/100*BytesPerSample)
 	for {
 		select {
 		case <-w.done:
@@ -84,7 +88,8 @@ func (w *NullVirtualMicWriter) zeroPCMLoop() {
 		case <-ticker.C:
 			switch virtualMicState(w.state.Load()) {
 			case micStateZeroPCM:
-				// 生产实现：写 882 字节全零到 portaudio 输出流
+				_ = silence
+				// 生产实现：写 882 字节全零到真实输出流
 				// NullWriter：丢弃
 			case micStateTTS:
 				// TTS 音频由 WriteChunk 外部调用写入，此处不重复写入

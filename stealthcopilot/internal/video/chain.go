@@ -77,8 +77,14 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 		return "摄像头启动失败：" + err.Error()
 	}
 
-	// 虚拟摄像头写入器：仅在平台提供可写 sink 时使用真实 writer。
-	vcWriter := NewSystemVirtualCameraWriter(cfg.VirtualCamDevice)
+	// 虚拟摄像头写入器：用户选择设备时必须是真实 writer，不能静默丢帧。
+	vcWriter, writerErr := NewSystemVirtualCameraWriterChecked(cfg.VirtualCamDevice)
+	if writerErr != "" {
+		cancel()
+		_ = cam.Close()
+		c.cancel = nil
+		return writerErr
+	}
 
 	var lipSync lipsync.Provider
 	cloudMode := cfg.LipSyncCloudMode
@@ -156,7 +162,7 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 			if !breaker.IsOpen() {
 				_ = vcWriter.WriteFrame(pair.Video)
 			}
-			// 音频帧（pair.Audio）由说话链/ElevenLabs 直接写虚拟麦克风
+			// 音频帧（pair.Audio）由说话链/TTS 直接写虚拟麦克风
 			// Ring Buffer 对齐仅确保 A/V 时序，不重复写音频
 		}
 	}()

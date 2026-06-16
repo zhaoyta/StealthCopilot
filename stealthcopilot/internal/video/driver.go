@@ -10,6 +10,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
+)
+
+const (
+	darwinDriverBundleName = "StealthVirtualCam.plugin"
+	windowsDriverDLLName   = "StealthVirtualCam.ax"
 )
 
 // DriverInstallResult 驱动注册结果
@@ -31,6 +37,9 @@ func EnsureDriver(bundledDriverPath string) DriverInstallResult {
 	if status == DriverStatusUnsupported {
 		return DriverInstallResult{Status: status, Message: "当前系统不支持虚拟摄像头"}
 	}
+	if strings.TrimSpace(bundledDriverPath) == "" {
+		bundledDriverPath = DefaultBundledDriverPath()
+	}
 
 	// 尝试注册
 	switch runtime.GOOS {
@@ -40,6 +49,45 @@ func EnsureDriver(bundledDriverPath string) DriverInstallResult {
 		return installWinDriver(bundledDriverPath)
 	default:
 		return DriverInstallResult{Status: DriverStatusUnsupported, Message: "不支持的操作系统"}
+	}
+}
+
+// DefaultBundledDriverPath returns the expected driver artifact path next to
+// the running app. Tests and development scripts can override it with
+// STEALTHCOPILOT_VCAM_DRIVER.
+func DefaultBundledDriverPath() string {
+	if override := strings.TrimSpace(os.Getenv("STEALTHCOPILOT_VCAM_DRIVER")); override != "" {
+		return override
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	exe, _ = filepath.EvalSymlinks(exe)
+	switch runtime.GOOS {
+	case "darwin":
+		if resources := macAppResourcesDir(exe); resources != "" {
+			return filepath.Join(resources, "Drivers", darwinDriverBundleName)
+		}
+		return filepath.Join(filepath.Dir(exe), "Drivers", darwinDriverBundleName)
+	case "windows":
+		return filepath.Join(filepath.Dir(exe), "drivers", windowsDriverDLLName)
+	default:
+		return ""
+	}
+}
+
+func macAppResourcesDir(exe string) string {
+	dir := filepath.Dir(exe)
+	for {
+		if filepath.Base(dir) == "Contents" {
+			return filepath.Join(dir, "Resources")
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
 	}
 }
 

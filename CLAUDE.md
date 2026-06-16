@@ -17,10 +17,10 @@ This is a **greenfield project** — the `openspec/specs/prd.md` is the current 
 | Desktop framework | **Wails** (Go + WebView) — dual-platform: macOS + Windows |
 | Audio routing | BlackHole (macOS) / VB-Cable (Windows) — user-installed, no driver bundling |
 | Stealth UI (ghost window) | CGO → `NSWindow` (macOS) / `user32.dll` syscall (Windows) |
-| Hearing chain STT+translate | **讯飞实时语音翻译 API** (single call → `dst_text` Chinese + `src_text` English) |
-| Speaking chain ASR | **讯飞 ASR** (Chinese → text) |
+| Hearing chain STT+translate | **讯飞 RTASR 实时语音转写 + 机器翻译文本接口** (`src` from ASR, `dst` from text translation; MT v1 falls back to v2 on `403 not found`) |
+| Speaking chain ASR | **讯飞 RTASR + 机器翻译文本接口/DeepSeek polish** (Chinese speech → text → target-language text) |
 | LLM | **DeepSeek-V3** (text polish / answer generation) |
-| TTS / voice clone | **ElevenLabs** streaming (English text → personal voice audio) |
+| TTS / voice clone | **讯飞声音复刻** streaming (English text → personal voice audio) |
 | Lip sync | **Simli AI** official SaaS API — **not** self-hosted MuseTalk GPU cluster |
 | Virtual camera output | OBS / CoreMediaIO (macOS) / DirectShow (Windows) |
 | Resume embeddings | `multilingual-e5-large` + local vector store (never uploaded to cloud) |
@@ -34,19 +34,19 @@ This is a **greenfield project** — the `openspec/specs/prd.md` is the current 
 ### Pipeline 1 — Hearing Chain (≤500ms target)
 ```
 Meeting audio → BlackHole/VB-Cable → Go audio capture
-  → 讯飞 Real-time Translation API
-      ├─ dst_text (Chinese) → Ghost subtitle window
-      └─ src_text (English) → RAG (resume embeddings) → DeepSeek answer suggestion → Ghost window
+  → 讯飞 RTASR
+      ├─ src (English) → 机器翻译文本接口 → dst (Chinese) → Ghost subtitle window
+      └─ src (English) → RAG (resume embeddings) → DeepSeek answer suggestion → Ghost window
 ```
 
 ### Pipeline 2 — Speaking Chain (≤1.2s target)
 ```
-Physical mic (Chinese speech) → 讯飞 ASR → Chinese text
-  → DeepSeek-V3 (polish to architect-level English)
-  → ElevenLabs voice clone TTS (streaming)
+Physical mic (Chinese speech) → 讯飞 RTASR → Chinese text
+  → 机器翻译文本接口 → English text → DeepSeek-V3 polish
+  → 讯飞声音复刻 TTS (streaming)
   → Virtual microphone → Interviewer hears fluent English
 ```
-While ElevenLabs generates audio, Go backend writes **zero-PCM chunks** to the virtual mic to suppress Chinese background audio leaking to the interviewer.
+While Xunfei VoiceClone generates audio, Go backend writes **zero-PCM chunks** to the virtual mic to suppress Chinese background audio leaking to the interviewer.
 
 ### Pipeline 3 — Video / Lip Sync (≥30fps, A/V delta ≤40ms)
 ```
@@ -79,7 +79,7 @@ Wails exposes the native window handle — the CGO/syscall stealth hook attaches
 
 ## Settings Panel Modules
 
-1. **API credentials:** 讯飞 (AppID/APIKey/APISecret), DeepSeek (key + model), ElevenLabs (key + Voice ID), Simli AI (key)
+1. **API credentials:** 讯飞 RTASR (AppID/APIKey), 讯飞机器翻译（AppID/APIKey/APISecret）, 讯飞声音复刻（AppID/APIKey/APISecret/Asset ID）, DeepSeek (key + model), Simli AI (key)
 2. **Language config:** Hearing chain source→target language; Speaking chain input→output language (separate dropdowns, 讯飞-supported language pairs)
 3. **Device binding:** Virtual sound card, physical mic, physical camera, virtual camera (dynamically enumerated)
 4. **Resume management:** Local PDF/Word upload → local embedding (never leaves device); multiple resumes, switchable

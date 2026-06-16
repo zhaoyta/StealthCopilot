@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/zhaoyta/stealthcopilot/internal/translation"
 )
 
 func TestChain_StartStop(t *testing.T) {
@@ -56,4 +58,48 @@ func TestChain_SetSilenceThreshold_AfterStart(t *testing.T) {
 	// 运行时更新阈值，不应 panic
 	c.SetSilenceThreshold(600)
 	c.Stop()
+}
+
+func TestChain_StartWithVirtualMicRequiresRealWriter(t *testing.T) {
+	t.Setenv("PATH", "")
+	c := &Chain{}
+	result := c.Start(context.Background(), ChainConfig{
+		SilenceThresholdMs: 400,
+		VirtualMicDevice:   "1",
+	})
+	if result == "" {
+		c.Stop()
+		t.Fatal("expected startup error when virtual mic is configured but ffmpeg is unavailable")
+	}
+}
+
+func TestChain_StartWithPhysicalMicRequiresXunfeiConfig(t *testing.T) {
+	t.Setenv("PATH", "")
+	c := &Chain{}
+	result := c.Start(context.Background(), ChainConfig{
+		SilenceThresholdMs: 400,
+		PhysicalMicDevice:  "0",
+	})
+	if result == "" {
+		c.Stop()
+		t.Fatal("expected startup error for missing Xunfei config")
+	}
+}
+
+func TestChain_StartWithVirtualMicRequiresXunfeiVoiceCloneConfig(t *testing.T) {
+	c := &Chain{}
+	result := c.Start(context.Background(), ChainConfig{
+		SilenceThresholdMs: 400,
+		VirtualMicDevice:   "1",
+		Xunfei: translation.XunfeiSpeakConfig{
+			AppID:      "app",
+			APIKey:     "key",
+			SourceLang: "zh",
+			TargetLang: "en",
+		},
+	})
+	if result == "" {
+		c.Stop()
+		t.Fatal("expected startup error for missing Xunfei VoiceClone config")
+	}
 }

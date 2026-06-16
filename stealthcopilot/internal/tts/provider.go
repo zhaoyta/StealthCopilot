@@ -1,8 +1,10 @@
 // Package tts 定义文字转语音（TTS）Provider 接口。
-// ElevenLabs 流式 TTS 实现在同包的 elevenlabs.go 中提供。
+// 讯飞一句话复刻流式 TTS 实现在同包的 xunfei_voiceclone.go 中提供。
 package tts
 
-import "context"
+import (
+	"context"
+)
 
 // Provider 是 TTS 服务的统一抽象接口。
 // 实现必须支持流式输出，首个音频 chunk 应尽快返回以降低延迟。

@@ -26,23 +26,35 @@ const darwinSocketPath = "/tmp/stealthvcam.sock"
 // NewSystemVirtualCameraWriter 根据当前平台返回最合适的虚拟摄像头写入器。
 // deviceName 为空时直接返回 NullVirtualCameraWriter（未选择设备时不尝试连接）。
 func NewSystemVirtualCameraWriter(deviceName string) VirtualCameraWriter {
+	writer, _ := NewSystemVirtualCameraWriterChecked(deviceName)
+	return writer
+}
+
+// NewSystemVirtualCameraWriterChecked returns a writer plus a readiness message.
+// When deviceName is set, ready=false means the video chain would otherwise
+// discard frames into a Null writer, so callers should surface the error.
+func NewSystemVirtualCameraWriterChecked(deviceName string) (VirtualCameraWriter, string) {
 	if deviceName == "" {
-		return &NullVirtualCameraWriter{}
+		return &NullVirtualCameraWriter{}, ""
 	}
 	switch runtime.GOOS {
 	case "darwin":
-		return newDarwinSocketWriter()
+		writer := newDarwinSocketWriter()
+		if _, ok := writer.(*NullVirtualCameraWriter); ok {
+			return writer, "StealthVirtualCam 驱动未运行：请先安装/重启虚拟摄像头驱动"
+		}
+		return writer, ""
 	case "windows":
 		if _, err := exec.LookPath("ffmpeg"); err != nil {
-			return &NullVirtualCameraWriter{}
+			return &NullVirtualCameraWriter{}, "ffmpeg 未安装，无法写入虚拟摄像头"
 		}
 		w, err := NewFFmpegVirtualCameraWriter(deviceName)
 		if err != nil {
-			return &NullVirtualCameraWriter{}
+			return &NullVirtualCameraWriter{}, "虚拟摄像头写入器启动失败：" + err.Error()
 		}
-		return w
+		return w, ""
 	default:
-		return &NullVirtualCameraWriter{}
+		return &NullVirtualCameraWriter{}, "当前系统不支持虚拟摄像头写入"
 	}
 }
 
