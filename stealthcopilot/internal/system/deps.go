@@ -60,8 +60,8 @@ func checkVirtualMic() DepStatus {
 }
 
 // checkVirtualCam 检测虚拟摄像头是否可用。
-// macOS: 检测 OBS 虚拟摄像头或 Continuity Camera 等 CoreMediaIO 设备。
-// Windows: 检测 OBS-VirtualCam DirectShow 过滤器。
+// macOS: 检测 StealthVirtualCam 或 OBS 虚拟摄像头。
+// Windows: 检测 StealthVirtualCam 或 OBS-VirtualCam DirectShow 过滤器。
 func checkVirtualCam() DepStatus {
 	switch runtime.GOOS {
 	case "darwin":
@@ -105,7 +105,15 @@ func checkMacVirtualCam() DepStatus {
 	// 方法1：system_profiler 直接列出已注册摄像头，是最可靠的地面实况
 	// OBS v28+ 注册为 "OBS Virtual Camera"（系统扩展方式）
 	camOut, _ := exec.Command("system_profiler", "SPCameraDataType").Output()
-	if strings.Contains(strings.ToLower(string(camOut)), "obs") {
+	cameraText := strings.ToLower(string(camOut))
+	if strings.Contains(cameraText, "stealthvirtualcam") || strings.Contains(cameraText, "obs") {
+		return DepStatusInstalled
+	}
+
+	// 方法2：StealthCopilot CoreMediaIO DAL 插件目录
+	dalOut, _ := exec.Command("ls", "/Library/CoreMediaIO/Plug-Ins/DAL/").Output()
+	dalText := strings.ToLower(string(dalOut))
+	if strings.Contains(dalText, "stealthvirtualcam") || strings.Contains(dalText, "stealthcam") {
 		return DepStatusInstalled
 	}
 
@@ -123,8 +131,7 @@ func checkMacVirtualCam() DepStatus {
 	}
 
 	// 方法4：旧版 OBS v27- CoreMediaIO DAL 插件目录
-	dalOut, _ := exec.Command("ls", "/Library/CoreMediaIO/Plug-Ins/DAL/").Output()
-	if strings.Contains(strings.ToLower(string(dalOut)), "obs") {
+	if strings.Contains(dalText, "obs") {
 		return DepStatusInstalled
 	}
 
@@ -132,16 +139,21 @@ func checkMacVirtualCam() DepStatus {
 }
 
 func checkWinVirtualCam() DepStatus {
-	// 检测 OBS VirtualCam DirectShow 过滤器注册情况
+	// 检测 StealthVirtualCam / OBS VirtualCam DirectShow 过滤器注册情况
 	out, err := exec.Command(
+		"reg", "query",
+		`HKLM\SOFTWARE\Classes\CLSID`,
+		"/s", "/f", "StealthVirtualCam",
+	).Output()
+	if err == nil && len(out) > 0 {
+		return DepStatusInstalled
+	}
+	out, err = exec.Command(
 		"reg", "query",
 		`HKLM\SOFTWARE\Classes\CLSID`,
 		"/s", "/f", "OBS Virtual Camera",
 	).Output()
-	if err != nil {
-		return DepStatusMissing
-	}
-	if len(out) > 0 {
+	if err == nil && len(out) > 0 {
 		return DepStatusInstalled
 	}
 	return DepStatusMissing

@@ -6,7 +6,7 @@ package config
 type TranslationProviderType string
 
 const (
-	// TranslationProviderXunfei 使用讯飞实时语音翻译 API。
+	// TranslationProviderXunfei 使用讯飞 RTASR 实时语音转写。
 	TranslationProviderXunfei TranslationProviderType = "xunfei"
 	TranslationProviderNull   TranslationProviderType = "null"
 )
@@ -22,10 +22,10 @@ const (
 type TTSProviderType string
 
 const (
-	// TTSProviderElevenLabs 使用 ElevenLabs 流式 TTS。
-	TTSProviderElevenLabs TTSProviderType = "elevenlabs"
-	TTSProviderSystem     TTSProviderType = "system"
-	TTSProviderNull       TTSProviderType = "null"
+	// TTSProviderXunfeiVoiceClone 使用讯飞一句话复刻流式 TTS。
+	TTSProviderXunfeiVoiceClone TTSProviderType = "xunfei_voiceclone"
+	TTSProviderSystem           TTSProviderType = "system"
+	TTSProviderNull             TTSProviderType = "null"
 )
 
 // LipSyncProviderType 表示口型同步服务提供商类型。
@@ -49,7 +49,7 @@ const (
 // ProviderConfig 持有所有 Provider 类型选择配置。
 // 运行时根据此配置实例化对应的实现。
 type ProviderConfig struct {
-	Translation TranslationProviderType // 翻译服务类型
+	Translation TranslationProviderType // ASR/翻译服务类型
 	LLM         LLMProviderType         // LLM / chat completions 服务类型
 	TTS         TTSProviderType         // TTS 服务类型
 	LipSync     LipSyncProviderType     // 口型同步服务类型
@@ -61,7 +61,7 @@ func DefaultProviderConfig() ProviderConfig {
 	return ProviderConfig{
 		Translation: TranslationProviderXunfei,
 		LLM:         LLMProviderDeepSeek,
-		TTS:         TTSProviderElevenLabs,
+		TTS:         TTSProviderXunfeiVoiceClone,
 		LipSync:     LipSyncProviderSimli,
 		Embedding:   EmbeddingProviderPythonBridge,
 	}

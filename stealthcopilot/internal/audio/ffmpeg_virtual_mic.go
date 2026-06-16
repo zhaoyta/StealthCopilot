@@ -5,31 +5,36 @@ import (
 	"io"
 	"os/exec"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 )
 
-// NewSystemVirtualMicWriter returns a real virtual mic writer when the platform
-// exposes a writable ffmpeg sink. macOS BlackHole is usually selected as an
-// output device by the OS/app rather than written via ffmpeg, so this falls back
-// to Null there until a CoreAudio writer is introduced.
+// NewSystemVirtualMicWriter returns a real virtual mic writer when ffmpeg can
+// expose a writable platform audio sink.
 func NewSystemVirtualMicWriter(deviceName string) VirtualMicWriter {
-	if _, err := exec.LookPath("ffmpeg"); err != nil {
-		return NewNullVirtualMicWriter()
+	writer, _ := NewSystemVirtualMicWriterChecked(deviceName)
+	return writer
+}
+
+func NewSystemVirtualMicWriterChecked(deviceName string) (VirtualMicWriter, string) {
+	if strings.TrimSpace(deviceName) == "" {
+		return NewNullVirtualMicWriter(), ""
 	}
-	if runtime.GOOS != "windows" || deviceName == "" {
-		return NewNullVirtualMicWriter()
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		return NewNullVirtualMicWriter(), "ffmpeg 未安装，无法写入真实虚拟麦克风"
 	}
 	w, err := NewFFmpegVirtualMicWriter(deviceName)
 	if err != nil {
-		return NewNullVirtualMicWriter()
+		return NewNullVirtualMicWriter(), "虚拟麦克风写入器启动失败：" + err.Error()
 	}
-	return w
+	return w, ""
 }
 
-// FFmpegVirtualMicWriter streams PCM into a writable Windows DirectShow audio
-// sink and preserves the Zero-PCM/TTS state machine used by the speaking chain.
+// FFmpegVirtualMicWriter streams PCM into a writable platform audio sink and
+// preserves the Zero-PCM/TTS state machine used by the speaking chain.
 type FFmpegVirtualMicWriter struct {
 	state  atomic.Int32
 	mu     sync.Mutex
@@ -41,18 +46,9 @@ type FFmpegVirtualMicWriter struct {
 }
 
 func NewFFmpegVirtualMicWriter(deviceName string) (*FFmpegVirtualMicWriter, error) {
-	if runtime.GOOS != "windows" {
-		return nil, fmt.Errorf("当前系统不支持直接写入 ffmpeg 虚拟麦克风: %s", runtime.GOOS)
-	}
-	args := []string{
-		"-hide_banner", "-loglevel", "error",
-		"-nostdin",
-		"-f", "s16le",
-		"-ac", "1",
-		"-ar", fmt.Sprintf("%d", SampleRate),
-		"-i", "pipe:0",
-		"-f", "dshow",
-		"audio=" + deviceName,
+	args, err := ffmpegVirtualMicArgs(deviceName)
+	if err != nil {
+		return nil, err
 	}
 	cmd := exec.Command("ffmpeg", args...)
 	stdin, err := cmd.StdinPipe()
@@ -112,7 +108,7 @@ func (w *FFmpegVirtualMicWriter) Close() {
 func (w *FFmpegVirtualMicWriter) zeroPCMLoop() {
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
-	silence := make([]byte, SampleRate/100*BytesPerSample)
+	silence := make([]byte, VirtualMicSampleRate/100*BytesPerSample)
 	for {
 		select {
 		case <-w.done:
@@ -135,4 +131,47 @@ func (w *FFmpegVirtualMicWriter) write(chunk []byte) {
 		return
 	}
 	_, _ = w.stdin.Write(chunk)
+}
+
+func ffmpegVirtualMicArgs(deviceName string) ([]string, error) {
+	return ffmpegVirtualMicArgsForGOOS(runtime.GOOS, deviceName)
+}
+
+func ffmpegVirtualMicArgsForGOOS(goos, deviceName string) ([]string, error) {
+	base := []string{
+		"-hide_banner", "-loglevel", "error",
+		"-nostdin",
+		"-f", "s16le",
+		"-ac", "1",
+		"-ar", fmt.Sprintf("%d", VirtualMicSampleRate),
+		"-i", "pipe:0",
+	}
+
+	switch goos {
+	case "darwin":
+		base = append(base, "-f", "audiotoolbox")
+		if idx, ok := parseAudioDeviceIndex(deviceName); ok {
+			base = append(base, "-audio_device_index", strconv.Itoa(idx))
+		}
+		return append(base, "-"), nil
+	case "windows":
+		if strings.TrimSpace(deviceName) == "" {
+			return nil, fmt.Errorf("Windows 虚拟麦克风设备名称未配置")
+		}
+		return append(base, "-f", "dshow", "audio="+deviceName), nil
+	default:
+		return nil, fmt.Errorf("当前系统不支持直接写入 ffmpeg 虚拟麦克风: %s", goos)
+	}
+}
+
+func parseAudioDeviceIndex(deviceName string) (int, bool) {
+	deviceName = strings.TrimSpace(deviceName)
+	if deviceName == "" {
+		return -1, false
+	}
+	idx, err := strconv.Atoi(deviceName)
+	if err != nil || idx < 0 {
+		return -1, false
+	}
+	return idx, true
 }

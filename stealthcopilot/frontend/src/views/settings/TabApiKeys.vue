@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { Eye, EyeOff } from 'lucide-vue-next'
 
 const { t } = useI18n()
+const MASKED_VALUE = '••••••••'
 
 type TestStatus = 'untested' | 'testing' | 'ok' | 'fail'
 
@@ -13,6 +14,7 @@ interface ServiceConfig {
     service: string
     field: string
     label: string
+    secret: boolean
     value: string
     show: boolean
   }[]
@@ -22,13 +24,34 @@ interface ServiceConfig {
 
 const services = reactive<ServiceConfig[]>([
   {
-    name: '讯飞 (iFlytek)',
+    name: '讯飞 RTASR',
     testStatus: 'untested',
     testMsg: '',
     fields: [
-      { service: 'xunfei', field: 'app_id',     label: t('settings.apiKeys.xunfei.appId'),     value: '', show: false },
-      { service: 'xunfei', field: 'api_key',    label: t('settings.apiKeys.xunfei.apiKey'),    value: '', show: false },
-      { service: 'xunfei', field: 'api_secret', label: t('settings.apiKeys.xunfei.apiSecret'), value: '', show: false },
+      { service: 'xunfei_rtasr', field: 'app_id',  label: t('settings.apiKeys.xunfei.rtasrAppId'),  secret: true, value: '', show: false },
+      { service: 'xunfei_rtasr', field: 'api_key', label: t('settings.apiKeys.xunfei.rtasrApiKey'), secret: true, value: '', show: false },
+    ],
+  },
+  {
+    name: '讯飞机器翻译',
+    testStatus: 'untested',
+    testMsg: '',
+    fields: [
+      { service: 'xunfei_mt', field: 'app_id',     label: t('settings.apiKeys.xunfei.mtAppId'),     secret: true, value: '', show: false },
+      { service: 'xunfei_mt', field: 'api_key',    label: t('settings.apiKeys.xunfei.mtApiKey'),    secret: true, value: '', show: false },
+      { service: 'xunfei_mt', field: 'api_secret', label: t('settings.apiKeys.xunfei.mtApiSecret'), secret: true, value: '', show: false },
+    ],
+  },
+  {
+    name: '讯飞声音复刻',
+    testStatus: 'untested',
+    testMsg: '',
+    fields: [
+      { service: 'xunfei_tts', field: 'app_id',     label: t('settings.apiKeys.xunfei.ttsAppId'),     secret: true,  value: '', show: false },
+      { service: 'xunfei_tts', field: 'api_key',    label: t('settings.apiKeys.xunfei.ttsApiKey'),    secret: true,  value: '', show: false },
+      { service: 'xunfei_tts', field: 'api_secret', label: t('settings.apiKeys.xunfei.ttsApiSecret'), secret: true,  value: '', show: false },
+      { service: 'xunfei_tts', field: 'asset_id',   label: t('settings.apiKeys.xunfei.ttsAssetId'),   secret: false, value: '', show: false },
+      { service: 'xunfei_tts', field: 'task_id',    label: t('settings.apiKeys.xunfei.ttsTaskId'),    secret: false, value: '', show: false },
     ],
   },
   {
@@ -36,17 +59,8 @@ const services = reactive<ServiceConfig[]>([
     testStatus: 'untested',
     testMsg: '',
     fields: [
-      { service: 'deepseek', field: 'key',   label: t('settings.apiKeys.deepseek.key'),   value: '', show: false },
-      { service: 'deepseek', field: 'model', label: t('settings.apiKeys.deepseek.model'), value: '', show: false },
-    ],
-  },
-  {
-    name: 'ElevenLabs',
-    testStatus: 'untested',
-    testMsg: '',
-    fields: [
-      { service: 'elevenlabs', field: 'key',      label: t('settings.apiKeys.elevenlabs.key'),    value: '', show: false },
-      { service: 'elevenlabs', field: 'voice_id', label: t('settings.apiKeys.elevenlabs.voiceId'), value: '', show: false },
+      { service: 'deepseek', field: 'key',   label: t('settings.apiKeys.deepseek.key'),   secret: true,  value: '', show: false },
+      { service: 'deepseek', field: 'model', label: t('settings.apiKeys.deepseek.model'), secret: false, value: '', show: false },
     ],
   },
   {
@@ -54,8 +68,8 @@ const services = reactive<ServiceConfig[]>([
     testStatus: 'untested',
     testMsg: '',
     fields: [
-      { service: 'simli', field: 'key',     label: t('settings.apiKeys.simli.key'),    value: '', show: false },
-      { service: 'simli', field: 'face_id', label: t('settings.apiKeys.simli.faceId'), value: '', show: false },
+      { service: 'simli', field: 'key',     label: t('settings.apiKeys.simli.key'),    secret: true,  value: '', show: false },
+      { service: 'simli', field: 'face_id', label: t('settings.apiKeys.simli.faceId'), secret: false, value: '', show: false },
     ],
   },
 ])
@@ -63,27 +77,30 @@ const services = reactive<ServiceConfig[]>([
 const saving = ref(false)
 
 onMounted(async () => {
-  // 加载已设置状态标记（API Key 原值不回显，仅显示是否已设置）
   try {
     // @ts-expect-error — Wails 运行时注入，window.go/window.runtime 无类型定义
     const cfg = await window.go.main.App.GetConfig()
     const setMap: Record<string, boolean> = {
-      xunfei_app_id: cfg.xunfei_app_id_set,
-      xunfei_api_key: cfg.xunfei_api_key_set,
-      xunfei_api_secret: cfg.xunfei_api_secret_set,
+      xunfei_rtasr_app_id: cfg.xunfei_rtasr_app_id_set,
+      xunfei_rtasr_api_key: cfg.xunfei_rtasr_api_key_set,
+      xunfei_mt_app_id: cfg.xunfei_mt_app_id_set,
+      xunfei_mt_api_key: cfg.xunfei_mt_api_key_set,
+      xunfei_mt_api_secret: cfg.xunfei_mt_api_secret_set,
+      xunfei_tts_app_id: cfg.xunfei_tts_app_id_set,
+      xunfei_tts_api_key: cfg.xunfei_tts_api_key_set,
+      xunfei_tts_api_secret: cfg.xunfei_tts_api_secret_set,
+      xunfei_tts_asset_id: cfg.xunfei_tts_asset_id_set,
+      xunfei_tts_task_id: cfg.xunfei_tts_task_id_set,
       deepseek_key: cfg.deepseek_key_set,
       deepseek_model: !!cfg.deepseek_model,
-      elevenlabs_key: cfg.elevenlabs_key_set,
-      elevenlabs_voice_id: cfg.elevenlabs_voice_id_set,
       simli_key: cfg.simli_key_set,
       simli_face_id: cfg.simli_face_id_set,
     }
     for (const svc of services) {
       for (const f of svc.fields) {
         const k = `${f.service}_${f.field}`
-        if (setMap[k]) f.value = '••••••••' // 已设置时显示掩码
+        if (setMap[k]) f.value = MASKED_VALUE
       }
-      // deepseek model 回显实际值
       if (svc.fields[0].service === 'deepseek') {
         svc.fields[1].value = cfg.deepseek_model || ''
       }
@@ -91,14 +108,13 @@ onMounted(async () => {
   } catch { /* 加载失败静默处理 */ }
 })
 
-// 保存一张服务卡的全部字段（跳过未改动的掩码值）
 async function saveService(svc: ServiceConfig) {
   saving.value = true
   svc.testStatus = 'untested'
   svc.testMsg = ''
   try {
     for (const f of svc.fields) {
-      if (!f.value || f.value === '••••••••') continue
+      if (!f.value || f.value === MASKED_VALUE) continue
       let err = ''
       if (f.service === 'deepseek' && f.field === 'model') {
         // @ts-expect-error — Wails 运行时注入，window.go/window.runtime 无类型定义
@@ -108,7 +124,7 @@ async function saveService(svc: ServiceConfig) {
       } else {
         // @ts-expect-error — Wails 运行时注入，window.go/window.runtime 无类型定义
         err = await window.go.main.App.SaveAPIKey({ service: f.service, field: f.field, value: f.value })
-        if (!err) f.value = '••••••••'
+        if (!err) f.value = MASKED_VALUE
       }
       if (err) { svc.testMsg = err; break }
     }
@@ -133,8 +149,13 @@ async function testConnection(svc: ServiceConfig) {
 function testStatusIcon(s: TestStatus): string {
   return { untested: '○', testing: '⏳', ok: '✅', fail: '❌' }[s]
 }
+
 function testStatusClass(s: TestStatus): string {
   return s === 'ok' ? 'text-green-400' : s === 'fail' ? 'text-red-400' : 'text-gray-500'
+}
+
+function clearMaskedValue(field: ServiceConfig['fields'][number]) {
+  if (field.value === MASKED_VALUE) field.value = ''
 }
 </script>
 
@@ -149,7 +170,6 @@ function testStatusClass(s: TestStatus): string {
       :key="svc.fields[0].service"
       class="service-card bg-gray-800 rounded-xl p-5 border border-gray-700"
     >
-      <!-- 服务标题行 -->
       <div class="flex items-center justify-between mb-4">
         <h3 class="font-semibold text-white">
           {{ t('settings.apiKeys.serviceNames.' + svc.fields[0].service) }}
@@ -174,7 +194,6 @@ function testStatusClass(s: TestStatus): string {
         </div>
       </div>
 
-      <!-- 字段列表 -->
       <div class="space-y-3">
         <div
           v-for="f in svc.fields"
@@ -185,12 +204,14 @@ function testStatusClass(s: TestStatus): string {
           <div class="flex flex-1 gap-2">
             <input
               v-model="f.value"
-              :type="f.show ? 'text' : 'password'"
+              :type="!f.secret || f.show ? 'text' : 'password'"
               class="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white
                      focus:outline-none focus:border-blue-400 transition-colors"
+              @focus="clearMaskedValue(f)"
               @input="svc.testStatus = 'untested'"
             >
             <button
+              v-if="f.secret && f.value !== MASKED_VALUE"
               class="px-2 py-2 bg-gray-600 hover:bg-gray-500 rounded-lg transition-colors flex items-center"
               @click="f.show = !f.show"
             >
@@ -203,7 +224,6 @@ function testStatusClass(s: TestStatus): string {
         </div>
       </div>
 
-      <!-- 每张卡片底部统一保存按钮 -->
       <div class="mt-3 flex justify-center">
         <button
           class="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs transition-colors"
