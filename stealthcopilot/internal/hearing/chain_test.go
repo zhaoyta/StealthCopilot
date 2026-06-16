@@ -70,6 +70,25 @@ func TestChain_StopBeforeStart(t *testing.T) {
 	c.Stop()
 }
 
+func TestChain_StartWithCaptureDeviceRequiresRealCapture(t *testing.T) {
+	t.Setenv("PATH", "")
+	var c Chain
+	result := c.Start(context.Background(), ChainConfig{VirtualMicDevice: "1"})
+	if result == "" {
+		c.Stop()
+		t.Fatal("expected startup error when capture device is configured but ffmpeg is unavailable")
+	}
+}
+
+func TestChain_StartRequiresXunfeiConfigWhenNoInjectedTranslator(t *testing.T) {
+	var c Chain
+	result := c.Start(context.Background(), ChainConfig{})
+	if result == "" {
+		c.Stop()
+		t.Fatal("expected startup error for missing Xunfei config")
+	}
+}
+
 // TestProcessLoop_NonFinalSubtitle 验证 processLoop 对 IsFinal=false 的结果立即推送
 // EventSubtitle 到 emitFn，不触发意图分类或 RAG（nil classifier/retriever/generator 不会 panic）。
 func TestProcessLoop_NonFinalSubtitle(t *testing.T) {

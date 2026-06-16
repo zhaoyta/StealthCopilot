@@ -11,9 +11,13 @@ type TeleprompterContent struct {
 type TeleprompterWindow interface {
 	Show() error
 	Hide() error
+	SetAppearance(fontSize int, opacity float64)
 	AppendSubtitle(text string)
 	AppendAnswerToken(token string)
 	FinishAnswer()
+	SetError(message string)
+	SetCircuitOpen(open bool)
+	Reset()
 	Close() error
 	Available() bool
 }

@@ -1,5 +1,5 @@
 // Package speaking 实现说话链的完整管道协调：
-// 物理麦克风捕获 → VAD 语音段检测 → 讯飞语音翻译 → ElevenLabs 流式 TTS → 虚拟麦克风写入。
+// 物理麦克风捕获 → VAD 语音段检测 → 讯飞 RTASR → 讯飞声音复刻流式 TTS → 虚拟麦克风写入。
 // Chain 由 app_bindings.go 通过 Wails binding 启动和停止。
 package speaking
 
@@ -28,13 +28,15 @@ const (
 
 // ChainConfig 说话链运行时所需的配置和服务依赖。
 type ChainConfig struct {
-	// Xunfei 讯飞翻译 API 配置（复用听力链凭据）
+	// Xunfei 讯飞 RTASR 配置（复用听力链凭据）
 	Xunfei translation.XunfeiSpeakConfig
 	// Translator overrides Xunfei when a different speech translation provider is selected.
 	Translator translation.SpeakProvider
-	// ElevenLabs TTS 配置
-	ElevenLabs tts.ElevenLabsConfig
-	// TTSProvider overrides ElevenLabs when a different TTS provider is selected.
+	// TextTranslator translates recognized speech text into the output language.
+	TextTranslator translation.TextTranslator
+	// XunfeiVoiceClone TTS 配置
+	XunfeiVoiceClone tts.XunfeiVoiceCloneConfig
+	// TTSProvider overrides XunfeiVoiceClone when a different TTS provider is selected.
 	TTSProvider tts.Provider
 	// PhysicalMicDevice 物理麦克风设备名称
 	PhysicalMicDevice string
@@ -55,7 +57,7 @@ type ChainConfig struct {
 	LLMConfig llm.Config
 	// PolishPrompt 润色 Prompt 模板，包含 {input} 占位符。
 	PolishPrompt string
-	// PolishEnabled 为 true 时在讯飞翻译后、ElevenLabs TTS 前调用 DeepSeek 润色。
+	// PolishEnabled 为 true 时在讯飞翻译后、TTS 前调用 DeepSeek 润色。
 	PolishEnabled bool
 }
 
@@ -94,7 +96,13 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 	// 物理麦克风捕获：用户选择设备时使用系统采集；未配置设备时保持静音降级。
 	var mic audio.MicProvider = &audio.NullMicProvider{}
 	if cfg.PhysicalMicDevice != "" {
-		mic = audio.NewSystemMicProvider()
+		var micErr string
+		mic, micErr = audio.NewSystemMicProviderChecked()
+		if micErr != "" {
+			cancel()
+			c.cancel = nil
+			return "物理麦克风启动失败：" + micErr
+		}
 	}
 	audioStream, err := mic.Start(ctx, cfg.PhysicalMicDevice)
 	if err != nil {
@@ -105,21 +113,49 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 
 	translator := cfg.Translator
 	if translator == nil {
-		translator = translation.NewXunfeiSpeakProvider(cfg.Xunfei)
+		if cfg.PhysicalMicDevice != "" && !translation.XunfeiConfigReady(translation.XunfeiConfig(cfg.Xunfei)) {
+			cancel()
+			_ = mic.Close()
+			c.cancel = nil
+			return "讯飞 RTASR 配置不完整：请配置 AppID、API Key 和说话链语言"
+		}
+		if cfg.Xunfei.SourceLang != cfg.Xunfei.TargetLang && cfg.TextTranslator == nil {
+			cancel()
+			_ = mic.Close()
+			c.cancel = nil
+			return "文本翻译 Provider 未配置：跨语言说话链需要机器翻译或 LLM 翻译"
+		}
+		translator = translation.NewXunfeiSpeakProvider(cfg.Xunfei, cfg.TextTranslator)
 	}
 
 	var ttsProvider tts.Provider = cfg.TTSProvider
 	switch {
 	case ttsProvider != nil:
 		// injected provider
-	case cfg.ElevenLabs.APIKey != "" && cfg.ElevenLabs.VoiceID != "":
-		ttsProvider = tts.NewElevenLabsProvider(cfg.ElevenLabs)
+	case tts.XunfeiVoiceCloneConfigReady(cfg.XunfeiVoiceClone):
+		ttsProvider = tts.NewXunfeiVoiceCloneProvider(cfg.XunfeiVoiceClone)
 	default:
+		if cfg.VirtualMicDevice != "" {
+			cancel()
+			_ = mic.Close()
+			c.cancel = nil
+			return "讯飞声音复刻 TTS 配置不完整：请配置 AppID、API Key、API Secret，并完成音色训练获得 Asset ID"
+		}
 		ttsProvider = &tts.NullTTSProvider{}
 	}
 
-	// 虚拟麦克风写入：支持可写系统 sink 时使用真实 writer，否则降级为 Null writer。
-	virtualMic := audio.NewSystemVirtualMicWriter(cfg.VirtualMicDevice)
+	// 虚拟麦克风写入：未配置时允许 Null，用户选择设备时必须是真实 writer。
+	var virtualMic audio.VirtualMicWriter = audio.NewNullVirtualMicWriter()
+	if cfg.VirtualMicDevice != "" {
+		var virtualMicErr string
+		virtualMic, virtualMicErr = audio.NewSystemVirtualMicWriterChecked(cfg.VirtualMicDevice)
+		if virtualMicErr != "" {
+			cancel()
+			_ = mic.Close()
+			c.cancel = nil
+			return virtualMicErr
+		}
+	}
 
 	c.wg.Add(1)
 	go func() {
@@ -160,9 +196,9 @@ func (c *Chain) SetSilenceThreshold(ms int) {
 // handleSegment 处理一段 VAD 检测到的完整语音：翻译 → [DeepSeek润色] → TTS → 虚拟麦克风写入。
 // 流程（时序关键）：
 //  1. 立即 BeginZeroPCM（防止母语泄漏）
-//  2. 调用讯飞翻译 API（约 500ms）
+//  2. 调用讯飞 RTASR 获取源语言文本，并按需通过文本翻译得到目标语言文本
 //  3. [可选] PolishEnabled=true 时调用 DeepSeek 润色（约 1-2s，超时降级使用原文）
-//  4. 获取最终文本 → 调用 ElevenLabs TTS 流式合成
+//  4. 获取最终文本 → 调用 TTS 流式合成
 //  5. 首帧到达时 WriteChunk（原子切换 Zero-PCM → TTS 音频）
 //  6. 流结束 → EndTTS（恢复 Idle）
 func (c *Chain) handleSegment(
@@ -187,7 +223,7 @@ func (c *Chain) handleSegment(
 		return
 	}
 
-	// 3. [可选] DeepSeek 润色：将讯飞翻译结果润色为更流利的英文
+	// 3. [可选] DeepSeek 润色：将目标文本润色为更流利的英文
 	//    PolishEnabled=true 且 DeepSeekKey 非空时调用；超时/失败时静默降级使用原译文。
 	llmCfg := cfg.LLMConfig
 	if llmCfg.APIKey == "" {
@@ -200,10 +236,10 @@ func (c *Chain) handleSegment(
 		if polished, polishErr := llm.PolishWithConfig(ctx, llmCfg, cfg.PolishPrompt, translatedText); polishErr == nil {
 			translatedText = polished
 		}
-		// polish 出错时 translatedText 保持讯飞翻译原文，不中断流程
+		// polish 出错时 translatedText 保持文本翻译原文，不中断流程
 	}
 
-	// 4. ElevenLabs TTS 流式合成
+	// 4. TTS 流式合成
 	audioCh, err := ttsProvider.Synthesize(ctx, translatedText)
 	if err != nil {
 		virtualMic.EndTTS()

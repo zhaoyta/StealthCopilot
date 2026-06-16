@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 )
 
@@ -119,6 +120,7 @@ func parseMacAudioOutputs(raw []byte) []Device {
 	}
 	seen := map[string]bool{}
 	var out []Device
+	nextOutputID := 0
 	var walk func(any)
 	walk = func(v any) {
 		switch node := v.(type) {
@@ -126,7 +128,8 @@ func parseMacAudioOutputs(raw []byte) []Device {
 			name, _ := node["_name"].(string)
 			if name != "" && looksLikeAudioOutput(node) && !seen[name] {
 				seen[name] = true
-				out = append(out, Device{ID: name, Name: name})
+				out = append(out, Device{ID: strconv.Itoa(nextOutputID), Name: name})
+				nextOutputID++
 			}
 			for _, child := range node {
 				walk(child)

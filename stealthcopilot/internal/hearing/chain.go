@@ -1,5 +1,5 @@
 // Package hearing 实现听力链的完整管道协调：
-// 音频捕获 → 讯飞翻译 → 字幕推送 → 意图识别 → RAG 检索 → DeepSeek 流式回答生成。
+// 音频捕获 → 讯飞 RTASR → 字幕推送 → 意图识别 → RAG 检索 → DeepSeek 流式回答生成。
 // Chain 由 app_bindings.go 通过 Wails binding 启动和停止。
 package hearing
 
@@ -33,10 +33,12 @@ type SubtitleEvent struct {
 
 // ChainConfig 听力链运行时所需的 API 配置和服务依赖。
 type ChainConfig struct {
-	// Xunfei 讯飞翻译 API 配置
+	// Xunfei 讯飞 RTASR 配置
 	Xunfei translation.XunfeiConfig
 	// TranslationProvider overrides Xunfei when a different provider is selected.
 	TranslationProvider translation.Provider
+	// TextTranslator translates final ASR text into target-language subtitles.
+	TextTranslator translation.TextTranslator
 	// LLMConfig configures OpenAI-compatible intent classification and answer generation.
 	LLMConfig llm.Config
 	// DeepSeekKey DeepSeek API Key
@@ -81,7 +83,13 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 	// 音频捕获：用户选择设备时使用系统采集；未配置设备时保持静音降级。
 	var captureProvider audio.CaptureProvider = &audio.NullCaptureProvider{}
 	if cfg.VirtualMicDevice != "" {
-		captureProvider = audio.NewSystemCaptureProvider()
+		var captureErr string
+		captureProvider, captureErr = audio.NewSystemCaptureProviderChecked()
+		if captureErr != "" {
+			cancel()
+			c.cancel = nil
+			return "音频捕获启动失败：" + captureErr
+		}
 	}
 	audioStream, err := captureProvider.Start(ctx, cfg.VirtualMicDevice)
 	if err != nil {
@@ -92,13 +100,28 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 
 	translator := cfg.TranslationProvider
 	if translator == nil {
-		translator = translation.NewXunfeiProvider(cfg.Xunfei)
+		if !translation.XunfeiConfigReady(cfg.Xunfei) {
+			cancel()
+			c.cancel = nil
+			return "讯飞 RTASR 配置不完整：请配置 AppID、API Key 和听力链语言"
+		}
+		if cfg.Xunfei.SourceLang != cfg.Xunfei.TargetLang && cfg.TextTranslator == nil {
+			cancel()
+			c.cancel = nil
+			return "文本翻译 Provider 未配置：跨语言字幕需要机器翻译或 LLM 翻译"
+		}
+		translator = translation.NewASRThenTextProvider(
+			translation.NewXunfeiProvider(cfg.Xunfei),
+			cfg.TextTranslator,
+			cfg.Xunfei.SourceLang,
+			cfg.Xunfei.TargetLang,
+		)
 	}
 	resultCh, err := translator.Translate(ctx, audioStream)
 	if err != nil {
 		cancel()
 		c.cancel = nil
-		return "讯飞翻译启动失败：" + err.Error()
+		return "讯飞 RTASR 启动失败：" + err.Error()
 	}
 
 	// 意图分类器

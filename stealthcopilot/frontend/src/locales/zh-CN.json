@@ -53,17 +53,21 @@
       "speakingOutput": "输出语言"
     },
     "voice": {
-      "title": "声音克隆",
-      "desc": "录制约 15 秒语音，用于生成您的专属英文声音（需要 ElevenLabs API Key）",
+      "title": "声音复刻",
+      "desc": "按讯飞训练文本录制一段语音，用于生成您的专属声音（需要讯飞声音复刻密钥）",
       "record": "开始录制",
       "stop": "停止录制",
-      "upload": "上传并克隆",
-      "uploading": "上传中…",
-      "done": "声音克隆成功",
+      "countdown": "{seconds}s",
+      "upload": "提交训练",
+      "uploading": "处理中…",
+      "query": "查询训练状态",
+      "submitted": "训练已提交",
+      "submittedDesc": "讯飞正在训练音色，稍后点击查询训练状态；成功后会自动保存 Asset ID。",
+      "done": "声音复刻成功",
       "doneDesc": "您的专属声音已保存，说话链将使用克隆音色输出",
       "skipped": "已跳过声音克隆",
-      "skippedDesc": "说话链将降级为系统默认 TTS，可稍后在设置中补全",
-      "readAloud": "请大声朗读以下文本（约 15 秒）：",
+      "skippedDesc": "说话链需要完成声音复刻后才能输出真实人声，可稍后在设置中补全",
+      "readAloud": "请大声朗读以下讯飞训练文本：",
       "sampleText": "I am a software engineer with extensive experience in designing and implementing distributed systems. In my previous role, I led the migration of a monolithic application to a microservices architecture, which improved scalability by 300%. I am passionate about clean code and believe that good engineering practices are essential for long-term team success.",
       "micError": "无法访问麦克风，请检查系统权限设置"
     },
@@ -73,8 +77,8 @@
       "summary": "配置项汇总",
       "xunfei": "讯飞 API（听力链）",
       "deepseek": "DeepSeek API（AI 回答）",
-      "elevenlabs": "ElevenLabs API（TTS）",
-      "voiceId": "声音克隆 Voice ID",
+      "xunfeiTts": "讯飞声音复刻 API（TTS）",
+      "voiceId": "声音复刻 Asset ID",
       "simli": "Simli AI（视频口型同步）",
       "hint": "未完成的可选项可随时在设置面板补全"
     },
@@ -91,6 +95,7 @@
       "apiKeys": "服务密钥",
       "language": "语言",
       "devices": "设备",
+      "voice": "声音复刻",
       "resume": "简历",
       "ghost": "提词窗",
       "advanced": "高级"
@@ -101,26 +106,31 @@
       "statusFail": "失败",
       "statusTesting": "测试中…",
       "xunfei": {
-        "appId": "讯飞 App ID",
-        "apiKey": "讯飞 API Key",
-        "apiSecret": "讯飞 API Secret"
+        "rtasrAppId": "RTASR App ID",
+        "rtasrApiKey": "RTASR API Key",
+        "mtAppId": "机器翻译 App ID",
+        "mtApiKey": "机器翻译 API Key",
+        "mtApiSecret": "机器翻译 API Secret",
+        "ttsAppId": "声音复刻 App ID",
+        "ttsApiKey": "声音复刻 API Key",
+        "ttsApiSecret": "声音复刻 API Secret",
+        "ttsAssetId": "声音复刻 Asset ID",
+        "ttsTaskId": "声音复刻 Task ID"
       },
       "deepseek": {
         "key": "DeepSeek API Key",
         "model": "使用模型"
-      },
-      "elevenlabs": {
-        "key": "ElevenLabs API Key",
-        "voiceId": "Voice ID"
       },
       "simli": {
         "key": "Simli API Key",
         "faceId": "Face ID"
       },
       "serviceNames": {
-        "xunfei": "讯飞 (iFlytek)",
+        "xunfei": "讯飞组合",
+        "xunfei_rtasr": "讯飞 RTASR",
+        "xunfei_mt": "讯飞机器翻译",
+        "xunfei_tts": "讯飞声音复刻",
         "deepseek": "DeepSeek",
-        "elevenlabs": "ElevenLabs",
         "simli": "Simli AI"
       }
     },
@@ -191,7 +201,7 @@
         "xunfei": "讯飞",
         "deepseek": "DeepSeek",
         "openaiCompatible": "OpenAI 兼容",
-        "elevenlabs": "ElevenLabs",
+        "xunfeiVoiceClone": "讯飞声音复刻",
         "simli": "Simli",
         "pythonBridge": "Python Bridge",
         "null": "禁用 / Null"
@@ -254,6 +264,7 @@
     "physicalMic": "物理麦克风",
     "xunfeiAsr": "讯飞 ASR",
     "deepseekPolish": "DeepSeek 润色",
+    "xunfeiVoiceClone": "讯飞声音复刻",
     "virtualMic": "虚拟声卡",
     "physicalCam": "物理摄像头",
     "simliAvatar": "Simli AI 数字人",
