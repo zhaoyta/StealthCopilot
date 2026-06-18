@@ -12,7 +12,7 @@ const config = reactive({
   translationProvider: 'xunfei',
   llmProvider: 'deepseek',
   llmBaseURL: 'https://api.deepseek.com/v1',
-  ttsProvider: 'xunfei_voiceclone',
+  ttsProvider: 'system',
   lipsyncProvider: 'simli',
   embeddingProvider: 'python_bridge',
 })
@@ -35,7 +35,7 @@ onMounted(async () => {
     config.translationProvider = cfg.translation_provider || 'xunfei'
     config.llmProvider = cfg.llm_provider || 'deepseek'
     config.llmBaseURL = cfg.llm_base_url || 'https://api.deepseek.com/v1'
-    config.ttsProvider = cfg.tts_provider || 'xunfei_voiceclone'
+    config.ttsProvider = cfg.tts_provider || 'system'
     config.lipsyncProvider = cfg.lipsync_provider || 'simli'
     config.embeddingProvider = cfg.embedding_provider || 'python_bridge'
     defaults.ragPrompt = defs.rag_prompt
@@ -129,6 +129,7 @@ async function save() {
             v-model="config.ttsProvider"
             class="form-select"
           >
+            <option value="system">{{ t('settings.advanced.providerNames.systemTts') }}</option>
             <option value="xunfei_voiceclone">{{ t('settings.advanced.providerNames.xunfeiVoiceClone') }}</option>
             <option value="null">{{ t('settings.advanced.providerNames.null') }}</option>
           </select>

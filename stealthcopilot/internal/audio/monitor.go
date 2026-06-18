@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
+
+	"github.com/zhaoyta/stealthcopilot/internal/diag"
 )
 
 const (
@@ -37,8 +39,10 @@ func (NullMonitorSink) Close() error                        { return nil }
 
 func NewSystemMonitorSink(cfg MonitorConfig) MonitorSink {
 	if !cfg.Enabled {
+		diag.Infof("monitor sink disabled")
 		return NullMonitorSink{}
 	}
+	diag.Infof("monitor sink enabled output=%q rate=%d volume=%d", cfg.OutputDevice, cfg.Rate, cfg.Volume)
 	return &systemSpeechMonitor{
 		outputDevice: cfg.OutputDevice,
 		rate:         clamp(cfg.Rate, -10, 10, DefaultMonitorRate),
@@ -82,11 +86,13 @@ func (m *systemSpeechMonitor) Speak(ctx context.Context, text string) error {
 func (m *systemSpeechMonitor) Close() error { return nil }
 
 func (m *systemSpeechMonitor) speakDarwin(ctx context.Context, text string) error {
-	if idx, ok := parseAudioDeviceIndex(m.outputDevice); ok {
+	if idx, ok := resolveAudioDeviceIndex(m.outputDevice); ok {
 		if _, err := exec.LookPath("ffmpeg"); err == nil {
+			diag.Infof("monitor speak via audiotoolbox output=%q index=%d chars=%d", m.outputDevice, idx, len(text))
 			return m.speakDarwinAudioToolbox(ctx, text, idx)
 		}
 	}
+	diag.Infof("monitor speak via say default output=%q chars=%d", m.outputDevice, len(text))
 	args := []string{"-r", macSpeechRate(m.rate), text}
 	return exec.CommandContext(ctx, "say", args...).Run()
 }

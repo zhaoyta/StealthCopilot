@@ -51,7 +51,8 @@ type FrontendConfig struct {
 
 // SaveAPIKeyRequest 前端传入的 API Key 写入请求。
 // service 取值：xunfei_rtasr / xunfei_mt / xunfei_tts / deepseek / simli
-// field  取值：app_id / api_key / api_secret / key / voice_id / face_id 等
+// field  取值：app_id / api_key / api_secret / key / face_id 等。
+// 声音复刻 task_id / asset_id 只能由训练流程内部写入，不接受前端手填。
 type SaveAPIKeyRequest struct {
 	Service string `json:"service"`
 	Field   string `json:"field"`

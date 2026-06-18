@@ -7,6 +7,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/zhaoyta/stealthcopilot/internal/diag"
 )
 
 // virtualMicState 虚拟麦克风写入状态常量
@@ -47,6 +49,7 @@ type NullVirtualMicWriter struct {
 
 // NewNullVirtualMicWriter 创建 NullVirtualMicWriter 并启动内部 Zero-PCM 定时 goroutine。
 func NewNullVirtualMicWriter() *NullVirtualMicWriter {
+	diag.Warnf("null virtual mic writer started: audio output will be discarded")
 	w := &NullVirtualMicWriter{done: make(chan struct{})}
 	go w.zeroPCMLoop()
 	return w

@@ -20,7 +20,7 @@
     "welcome": {
       "stepLabel": "欢迎",
       "title": "欢迎使用 StealthCopilot",
-      "desc": "在面试中，StealthCopilot 实时帮您听懂面试官的问题、生成专业英文回答，并以您的声音克隆输出——让面试官只看到自信从容的您。",
+      "desc": "在面试中，StealthCopilot 实时帮您听懂面试官的问题、生成专业英文回答，并以您的复刻声音输出——让面试官只看到自信从容的您。",
       "hearingDesc": "实时接收面试官语音，自动翻译并生成中文回答建议",
       "speakingDesc": "您说中文，系统输出流利英文克隆声音",
       "videoDesc": "口型同步真人画面，对屏幕录制完全不可见",
@@ -30,7 +30,8 @@
       "title": "依赖检测",
       "desc": "检测运行所需系统组件，缺失项可一键安装",
       "ffmpeg": "FFmpeg（音视频采集必需）",
-      "virtualMic": "虚拟声卡（BlackHole / VB-Cable）",
+      "virtualMic": "会议音频虚拟通道",
+      "virtualMicHint": "只需选择一次。会议软件的扬声器和麦克风都选这个设备；App 会从这里采集面试官声音，也会把你的目标语言语音写回会议。",
       "virtualCam": "虚拟摄像头（OBS VirtualCam）",
       "install": "一键安装",
       "installed": "已安装",
@@ -40,7 +41,7 @@
     },
     "apiKeys": {
       "title": "配置服务密钥",
-      "desc": "填写各服务的访问密钥，密钥仅存储在系统密钥链（Keychain）中，不上传任何服务器",
+      "desc": "填写必需服务的访问密钥；声音复刻可跳过，默认音色无需配置。密钥仅存储在系统密钥链（Keychain）中，不上传任何服务器",
       "optional": "可选",
       "placeholder": "粘贴密钥…",
       "secureNote": "🔒 密钥加密存储于系统 Keychain，不落明文"
@@ -54,7 +55,10 @@
     },
     "voice": {
       "title": "声音复刻",
-      "desc": "按讯飞训练文本录制一段语音，用于生成您的专属声音（需要讯飞声音复刻密钥）",
+      "desc": "可选：按讯飞训练文本录制一段语音，用于生成您的专属声音；未复刻时使用默认音色",
+      "loading": "正在加载声音复刻状态…",
+      "credentialsRequired": "请先在服务密钥中配置并测试通过讯飞声音复刻 App ID、API Key、API Secret；未通过前可跳过并使用默认音色。",
+      "trainTextError": "训练文本获取失败：{message}。请先完成服务密钥测试，或跳过使用默认音色。",
       "record": "开始录制",
       "stop": "停止录制",
       "countdown": "{seconds}s",
@@ -65,11 +69,13 @@
       "submittedDesc": "讯飞正在训练音色，稍后点击查询训练状态；成功后会自动保存 Asset ID。",
       "done": "声音复刻成功",
       "doneDesc": "您的专属声音已保存，说话链将使用克隆音色输出",
-      "skipped": "已跳过声音克隆",
-      "skippedDesc": "说话链需要完成声音复刻后才能输出真实人声，可稍后在设置中补全",
+      "skipped": "已跳过声音复刻",
+      "skippedDesc": "说话链将使用默认音色输出，可稍后在设置中补全个人复刻音色",
+      "restart": "开始复刻",
       "readAloud": "请大声朗读以下讯飞训练文本：",
       "sampleText": "I am a software engineer with extensive experience in designing and implementing distributed systems. In my previous role, I led the migration of a monolithic application to a microservices architecture, which improved scalability by 300%. I am passionate about clean code and believe that good engineering practices are essential for long-term team success.",
-      "micError": "无法访问麦克风，请检查系统权限设置"
+      "micError": "无法访问麦克风，请检查系统权限设置",
+      "reRecord": "重新录制"
     },
     "done": {
       "title": "初始化完成",
@@ -77,8 +83,9 @@
       "summary": "配置项汇总",
       "xunfei": "讯飞 API（听力链）",
       "deepseek": "DeepSeek API（AI 回答）",
+      "defaultVoice": "默认音色（TTS）",
       "xunfeiTts": "讯飞声音复刻 API（TTS）",
-      "voiceId": "声音复刻 Asset ID",
+      "personalVoice": "个人复刻音色",
       "simli": "Simli AI（视频口型同步）",
       "hint": "未完成的可选项可随时在设置面板补全"
     },
@@ -113,9 +120,7 @@
         "mtApiSecret": "机器翻译 API Secret",
         "ttsAppId": "声音复刻 App ID",
         "ttsApiKey": "声音复刻 API Key",
-        "ttsApiSecret": "声音复刻 API Secret",
-        "ttsAssetId": "声音复刻 Asset ID",
-        "ttsTaskId": "声音复刻 Task ID"
+        "ttsApiSecret": "声音复刻 API Secret"
       },
       "deepseek": {
         "key": "DeepSeek API Key",
@@ -151,14 +156,18 @@
     },
     "devices": {
       "virtualMic": "虚拟声卡（BlackHole / VB-Cable）",
-      "physicalMic": "物理麦克风",
-      "physicalCam": "物理摄像头",
-      "virtualCam": "虚拟摄像头（OBS VirtualCam）",
-      "hearingMonitor": "听力链译文耳机播报",
-      "monitorOutput": "耳机监听输出",
+      "virtualMicHint": "会议软件的扬声器和麦克风都选这个设备；App 会从这里采集面试官声音，也会把你的目标语言语音写回会议。",
+      "physicalMic": "你的说话麦克风",
+      "physicalCam": "你的真实摄像头",
+      "virtualCam": "会议虚拟摄像头",
+      "hearingMonitor": "播放面试官译文到耳机",
+      "monitorOutput": "译文播放设备",
       "systemDefaultOutput": "系统默认输出",
       "monitorVolume": "播报音量",
       "monitorRate": "播报语速",
+      "recommendedVirtualMic": "推荐 · 会议音频虚拟通道（{name}）",
+      "recommendedVirtualCam": "推荐 · StealthCopilot 虚拟摄像头（{name}）",
+      "recommendedMonitorOutput": "推荐 · 译文播放耳机（{name}）",
       "refresh": "重新枚举设备",
       "select": "请选择…"
     },
@@ -201,6 +210,7 @@
         "xunfei": "讯飞",
         "deepseek": "DeepSeek",
         "openaiCompatible": "OpenAI 兼容",
+        "systemTts": "默认音色",
         "xunfeiVoiceClone": "讯飞声音复刻",
         "simli": "Simli",
         "pythonBridge": "Python Bridge",
@@ -209,15 +219,15 @@
     }
   },
   "dashboard": {
-    "systemNormal": "系统正常",
-    "systemDesc": "熔断保护已就绪 · 管道延迟均在阈值内",
-    "systemWarning": "熔断器已触发，已切换至本地直通模式",
-    "circuitStatusLabel": "熔断状态",
-    "circuitNormal": "正常",
-    "circuitOpen": "已触发",
-    "pipelines": "实时管道",
-    "pipelinesRunning": "{n}/3 条管道运行中",
-    "pipelinesIdle": "所有管道待机",
+    "systemNormal": "AI 辅助运行中",
+    "systemDesc": "会议链路正常 · AI 辅助可用",
+    "systemWarning": "部分辅助受限，会议链路仍可继续",
+    "videoDirectNormal": "口型同步",
+    "videoDirectOpen": "视频直连",
+    "videoDirectDesc": "视频链已切到直连：口型同步暂时退出，会议里继续输出你的真实摄像头画面。",
+    "pipelines": "面试链路",
+    "pipelinesRunning": "{n}/3 条链路运行中",
+    "pipelinesIdle": "面试链路待机",
     "startAll": "一键启动全部",
     "stopAll": "停止全部",
     "openTeleprompter": "提词窗",
@@ -225,9 +235,15 @@
     "hearingChain": "听力链",
     "speakingChain": "说话链",
     "videoChain": "视频链",
-    "hearingDesc": "面试官语音 → 实时中文字幕",
-    "speakingDesc": "你的中文 → 克隆英文语音回放",
-    "videoDesc": "摄像头 → 数字人 → 虚拟摄像头",
+    "hearingDesc": "听懂面试官问题，并给出字幕与回答建议",
+    "speakingDesc": "把你的母语回答转换成目标语言语音",
+    "videoDesc": "把摄像头画面同步到会议虚拟摄像头",
+    "businessInput": "业务输入",
+    "userVisible": "你看到",
+    "localOutput": "本地输出",
+    "meetingOutput": "会议输出",
+    "diagnostics": "诊断链路",
+    "channelUnset": "未选择",
     "phase2": "Phase 2",
     "latencyMs": "{ms} ms",
     "status": {
@@ -235,6 +251,34 @@
       "running": "RUNNING",
       "error": "ERROR",
       "bypassed": "BYPASSED"
+    },
+    "preflight": {
+      "modalBlockedTitle": "启动前需要确认配置",
+      "modalBlockedDesc": "下面这些项会导致链路无法正常工作，处理后再启动会更稳。",
+      "modalWarningTitle": "确认继续启动？",
+      "modalWarningDesc": "当前配置可以启动，但部分外挂能力会受限；会议仍可继续使用。",
+      "openSettings": "打开设置",
+      "continueStart": "继续启动",
+      "blockedTitle": "启动前需要先处理：",
+      "warningTitle": "可以启动，但功能会受限：",
+      "ffmpegMissing": "FFmpeg 未安装，音视频采集不可用。",
+      "virtualAudioMissing": "虚拟声卡未安装，会议音频虚拟通道不可用。",
+      "virtualCameraMissing": "虚拟摄像头未安装，会议无法选择处理后的视频画面。",
+      "meetingAudioMissing": "未选择会议音频虚拟通道。",
+      "speakingMicMissing": "未选择你的说话麦克风。",
+      "realCameraMissing": "未选择你的真实摄像头。",
+      "meetingCameraMissing": "未选择会议虚拟摄像头。",
+      "meetingAudioUnavailable": "之前选择的会议音频虚拟通道「{name}」当前不可用，请重新选择。",
+      "speakingMicUnavailable": "之前选择的说话麦克风「{name}」当前不可用，请重新选择。",
+      "realCameraUnavailable": "之前选择的真实摄像头「{name}」当前不可用，请重新选择。",
+      "meetingCameraUnavailable": "之前选择的会议虚拟摄像头「{name}」当前不可用，请重新选择。",
+      "monitorOutputUnavailable": "之前选择的译文播放设备「{name}」当前不可用，请重新选择或改用系统默认输出。",
+      "rtasrMissing": "讯飞 RTASR AppID / API Key 未配置，听力链和说话链无法识别语音。",
+      "mtMissing": "讯飞机器翻译 AppID / API Key / API Secret 未配置，跨语言字幕或发言不可用。",
+      "deepseekMissing": "DeepSeek Key 未配置，回答建议和润色能力会受限。",
+      "ttsMissing": "TTS Provider 被禁用，说话链无法输出目标语言语音。",
+      "voiceCloneMissing": "已选择讯飞声音复刻，但还没有完成音色训练；可先切换为默认音色。",
+      "simliMissing": "Simli Key 或 Face ID 未配置，视频链会使用直连画面，不进行口型同步。"
     },
     "version": "v0.1.0",
     "footerBrand": "StealthCopilot · {version}",
@@ -250,10 +294,76 @@
     "subtitlePlaceholder": "等待面试官字幕…",
     "answerPlaceholder": "回答建议将在这里流式显示。",
     "noResume": "未检测到激活简历，建议功能已禁用",
-    "circuitOpenWarning": "云端管道已断开，当前为本地直通模式",
-    "emergencyBypass": "紧急降级"
+    "circuitOpenWarning": "视频链已切到直连：口型同步暂时退出，会议画面继续输出真实摄像头。",
+    "emergencyBypass": "切到视频直连"
+  },
+  "meetingGuide": {
+    "entry": "会议设置指南",
+    "title": "会议软件设置指南",
+    "subtitle": "飞书、腾讯会议、Zoom、Teams 都按同一套设备路由选择。",
+    "speaker": {
+      "title": "会议扬声器",
+      "desc": "选择 StealthCopilot 绑定的虚拟声卡，让听力链采集面试官声音。"
+    },
+    "mic": {
+      "title": "会议麦克风",
+      "desc": "选择同一个虚拟声卡，让说话链把目标语言语音写回会议。"
+    },
+    "camera": {
+      "title": "会议摄像头",
+      "desc": "选择 StealthCopilot 虚拟摄像头，让视频链输出同步后的画面。"
+    },
+    "routingTitle": "推荐路由",
+    "routes": {
+      "hearing": "会议扬声器 -> 虚拟声卡 -> 听力链",
+      "speaking": "说话链 -> 虚拟声卡 -> 会议麦克风",
+      "video": "视频链 -> 虚拟摄像头 -> 会议摄像头"
+    },
+    "monitorNote": "如果会议扬声器只选虚拟声卡，你本人可能听不到面试官声音。监听输出请选择耳机，或在系统里创建多输出设备，把会议声音同时送到虚拟声卡和耳机。",
+    "feishu": {
+      "title": "飞书会议",
+      "desc": "入会前或会中点击麦克风旁的设备菜单，分别切换麦克风、扬声器和摄像头后测试。"
+    },
+    "tencent": {
+      "title": "腾讯会议",
+      "desc": "进入音频设置或麦克风旁菜单，选择电脑音频，并分别测试麦克风和扬声器。"
+    }
+  },
+  "deviceQuickConfig": {
+    "meetingAudio": {
+      "title": "配置会议音频虚拟通道",
+      "desc": "飞书或腾讯会议的扬声器和麦克风都选择这个设备。"
+    },
+    "physicalMic": {
+      "title": "配置你的说话麦克风",
+      "desc": "App 用它采集你的母语回答，会议软件不要选这个麦克风。"
+    },
+    "monitorOutput": {
+      "title": "配置译文播放",
+      "desc": "把面试官译文播放到你的耳机里，不进入会议麦克风。"
+    },
+    "physicalCamera": {
+      "title": "配置你的摄像头",
+      "desc": "App 用它采集原始画面，再交给视频链处理。"
+    },
+    "virtualCamera": {
+      "title": "配置会议虚拟摄像头",
+      "desc": "飞书或腾讯会议的摄像头选择这个设备。"
+    }
   },
   "pipeline": {
+    "interviewerAudio": "面试官语音",
+    "understandQuestion": "理解问题",
+    "liveSubtitle": "实时字幕",
+    "resumeAnswer": "简历回答建议",
+    "headphoneTranslation": "耳机译文播报",
+    "yourNativeAnswer": "你的母语回答",
+    "targetLanguageSpeech": "目标语言表达",
+    "speechTransformReady": "发言转换就绪",
+    "clonedVoice": "克隆语音",
+    "cameraImage": "你的真实摄像头",
+    "lipSync": "口型同步",
+    "videoSyncStatus": "视频同步状态",
     "virtualMicBlackhole": "虚拟声卡 BlackHole",
     "xunfeiTranslation": "讯飞实时翻译",
     "chineseSubtitle": "中文字幕",
@@ -268,7 +378,7 @@
     "virtualMic": "虚拟声卡",
     "physicalCam": "物理摄像头",
     "simliAvatar": "Simli AI 数字人",
-    "virtualCam": "虚拟摄像头",
+    "virtualCam": "会议虚拟摄像头",
     "optional": "可选",
     "plus": "+"
   }

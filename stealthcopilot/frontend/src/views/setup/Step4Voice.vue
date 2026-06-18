@@ -5,87 +5,111 @@ import { CheckCircle, SkipForward } from 'lucide-vue-next'
 
 const { t } = useI18n()
 
-type VoiceState = 'idle' | 'recording' | 'recorded' | 'uploading' | 'submitted' | 'done' | 'error' | 'skipped'
+type VoiceState = 'loading' | 'idle' | 'blocked' | 'recording' | 'recorded' | 'uploading' | 'submitted' | 'done' | 'failed' | 'error' | 'skipped'
 
-const state = ref<VoiceState>('idle')
+const state = ref<VoiceState>('loading')
 const countdown = ref(30)
 const errorMsg = ref('')
 const statusMsg = ref('')
 const waveformActive = ref(false)
 const sampleText = ref(t('setup.voice.sampleText'))
 
-let audioContext: AudioContext | null = null
-let sourceNode: MediaStreamAudioSourceNode | null = null
-let processorNode: ScriptProcessorNode | null = null
-let mediaStream: MediaStream | null = null
+// 录音产出的 WAV 字节，由 Go binding 返回
+let wavBytes: number[] | null = null
 let countdownTimer: ReturnType<typeof setInterval> | null = null
-let recordedBuffers: Float32Array[] = []
-let recordedLength = 0
-let recordedSampleRate = 44100
-let wavBytes: Uint8Array | null = null
 
-const canUpload = computed(() => state.value === 'recorded')
+const canUpload = computed(() => state.value === 'recorded' && wavBytes != null && wavBytes.length > 0)
 const isDone = computed(() => state.value === 'done' || state.value === 'skipped' || state.value === 'submitted')
+const canRecord = computed(() => state.value === 'idle' || state.value === 'error' || state.value === 'failed')
+const canShowTrainingControls = computed(() => state.value !== 'blocked' && state.value !== 'loading')
 
-onMounted(async () => {
+onMounted(loadVoiceState)
+
+async function loadVoiceState() {
+  state.value = 'loading'
+  errorMsg.value = ''
+  statusMsg.value = ''
   try {
     // @ts-expect-error — Wails 运行时注入，window.go/window.runtime 无类型定义
-    const trainText = await window.go.main.App.GetXunfeiVoiceTrainText()
-    if (trainText?.text) sampleText.value = trainText.text
-  } catch {
-    // 使用内置文案兜底，后端提交时仍会获取讯飞训练文本并校验。
+    const cfg = await window.go.main.App.GetConfig()
+    if (cfg?.xunfei_tts_asset_id_set) {
+      state.value = 'done'
+      statusMsg.value = t('setup.voice.doneDesc')
+    } else if (cfg?.xunfei_tts_task_id_set) {
+      state.value = 'submitted'
+      statusMsg.value = t('setup.voice.submittedDesc')
+    }
+    if (!cfg?.xunfei_tts_app_id_set || !cfg?.xunfei_tts_api_key_set || !cfg?.xunfei_tts_api_secret_set) {
+      state.value = 'blocked'
+      errorMsg.value = t('setup.voice.credentialsRequired')
+      return
+    }
+    if (state.value !== 'done') {
+      // @ts-expect-error — Wails 运行时注入，window.go/window.runtime 无类型定义
+      const trainText = await window.go.main.App.GetXunfeiVoiceTrainText()
+      if (trainText?.text) sampleText.value = trainText.text
+    }
+  } catch (err: unknown) {
+    state.value = 'blocked'
+    errorMsg.value = t('setup.voice.trainTextError', { message: String(err) })
+  } finally {
+    if (state.value === 'loading') state.value = 'idle'
   }
-})
+}
 
 async function startRecording() {
   errorMsg.value = ''
   statusMsg.value = ''
-  recordedBuffers = []
-  recordedLength = 0
   wavBytes = null
   countdown.value = 30
 
-  try {
-    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    audioContext = new AudioContext()
-    recordedSampleRate = audioContext.sampleRate
-    sourceNode = audioContext.createMediaStreamSource(mediaStream)
-    processorNode = audioContext.createScriptProcessor(4096, 1, 1)
-    processorNode.onaudioprocess = (event) => {
-      const input = event.inputBuffer.getChannelData(0)
-      const copy = new Float32Array(input.length)
-      copy.set(input)
-      recordedBuffers.push(copy)
-      recordedLength += copy.length
-    }
-    sourceNode.connect(processorNode)
-    processorNode.connect(audioContext.destination)
-    state.value = 'recording'
-    waveformActive.value = true
+  // @ts-expect-error — Wails 运行时注入
+  const cfg = await window.go.main.App.GetConfig()
+  const deviceName: string = cfg?.physical_mic_name ?? ''
 
-    countdownTimer = setInterval(() => {
-      countdown.value--
-      if (countdown.value <= 0) stopRecording()
-    }, 1000)
-  } catch {
-    errorMsg.value = t('setup.voice.micError')
+  // @ts-expect-error — Wails 运行时注入
+  const errMsg: string = await window.go.main.App.StartVoiceTrainingRecording(deviceName)
+  if (errMsg) {
+    errorMsg.value = errMsg
     state.value = 'error'
+    return
   }
+
+  state.value = 'recording'
+  waveformActive.value = true
+
+  countdownTimer = setInterval(() => {
+    countdown.value--
+    if (countdown.value <= 0) void stopRecording()
+  }, 1000)
 }
 
-function stopRecording() {
+async function stopRecording() {
   if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null }
-  processorNode?.disconnect()
-  sourceNode?.disconnect()
-  mediaStream?.getTracks().forEach(track => track.stop())
-  audioContext?.close()
-  processorNode = null
-  sourceNode = null
-  mediaStream = null
-  audioContext = null
   waveformActive.value = false
-  wavBytes = encodeWav(recordedBuffers, recordedLength, recordedSampleRate)
+
+  // @ts-expect-error — Wails 运行时注入
+  const res: { wav: number[] | null; err_msg: string } = await window.go.main.App.StopVoiceTrainingRecording()
+  if (res.err_msg) {
+    errorMsg.value = res.err_msg
+    state.value = 'error'
+    return
+  }
+  if (!res.wav || res.wav.length === 0) {
+    errorMsg.value = t('setup.voice.micError')
+    state.value = 'error'
+    return
+  }
+  wavBytes = res.wav
   state.value = 'recorded'
+}
+
+function reRecord() {
+  wavBytes = null
+  countdown.value = 30
+  errorMsg.value = ''
+  statusMsg.value = ''
+  state.value = 'idle'
 }
 
 async function uploadAndClone() {
@@ -95,8 +119,8 @@ async function uploadAndClone() {
   statusMsg.value = ''
 
   try {
-    // @ts-expect-error — Wails 运行时注入，window.go/window.runtime 无类型定义
-    const errMsg = await window.go.main.App.CloneVoice(Array.from(wavBytes))
+    // @ts-expect-error — Wails 运行时注入
+    const errMsg = await window.go.main.App.CloneVoice(wavBytes)
     if (errMsg) {
       errorMsg.value = errMsg
       state.value = 'error'
@@ -114,14 +138,21 @@ async function queryStatus() {
   state.value = 'uploading'
   errorMsg.value = ''
   try {
-    // @ts-expect-error — Wails 运行时注入，window.go/window.runtime 无类型定义
+    // @ts-expect-error — Wails 运行时注入
     const result = await window.go.main.App.QueryXunfeiVoiceCloneStatus()
-    if (result.ok) {
-      statusMsg.value = result.message || t('setup.voice.doneDesc')
-      state.value = 'done'
-    } else {
-      statusMsg.value = result.message || ''
-      state.value = 'submitted'
+    statusMsg.value = result.message || ''
+    switch (result.state) {
+      case 'done':
+        state.value = 'done'
+        break
+      case 'failed':
+        state.value = 'failed'
+        errorMsg.value = result.message || ''
+        break
+      case 'submitted':
+      default:
+        state.value = 'submitted'
+        break
     }
   } catch (err: unknown) {
     errorMsg.value = String(err)
@@ -131,52 +162,26 @@ async function queryStatus() {
 
 function skip() {
   if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null }
-  if (state.value === 'recording') stopRecording()
+  if (state.value === 'recording') {
+    // 异步停止，跳过时不关心返回值
+    // @ts-expect-error — Wails 运行时注入
+    void window.go.main.App.StopVoiceTrainingRecording()
+  }
+  wavBytes = null
   state.value = 'skipped'
 }
 
-function encodeWav(buffers: Float32Array[], length: number, sampleRate: number): Uint8Array {
-  const samples = new Float32Array(length)
-  let offset = 0
-  for (const buffer of buffers) {
-    samples.set(buffer, offset)
-    offset += buffer.length
-  }
-  const dataSize = samples.length * 2
-  const wav = new ArrayBuffer(44 + dataSize)
-  const view = new DataView(wav)
-  writeString(view, 0, 'RIFF')
-  view.setUint32(4, 36 + dataSize, true)
-  writeString(view, 8, 'WAVE')
-  writeString(view, 12, 'fmt ')
-  view.setUint32(16, 16, true)
-  view.setUint16(20, 1, true)
-  view.setUint16(22, 1, true)
-  view.setUint32(24, sampleRate, true)
-  view.setUint32(28, sampleRate * 2, true)
-  view.setUint16(32, 2, true)
-  view.setUint16(34, 16, true)
-  writeString(view, 36, 'data')
-  view.setUint32(40, dataSize, true)
-  let pos = 44
-  for (let i = 0; i < samples.length; i++) {
-    const s = Math.max(-1, Math.min(1, samples[i]))
-    view.setInt16(pos, s < 0 ? s * 0x8000 : s * 0x7fff, true)
-    pos += 2
-  }
-  return new Uint8Array(wav)
-}
-
-function writeString(view: DataView, offset: number, value: string) {
-  for (let i = 0; i < value.length; i++) view.setUint8(offset + i, value.charCodeAt(i))
+function restartClone() {
+  wavBytes = null
+  void loadVoiceState()
 }
 
 onUnmounted(() => {
   if (countdownTimer) clearInterval(countdownTimer)
-  mediaStream?.getTracks().forEach(track => track.stop())
-  processorNode?.disconnect()
-  sourceNode?.disconnect()
-  audioContext?.close()
+  if (state.value === 'recording') {
+    // @ts-expect-error — Wails 运行时注入
+    void window.go.main.App.StopVoiceTrainingRecording() // 组件卸载时静默停止
+  }
 })
 </script>
 
@@ -205,18 +210,38 @@ onUnmounted(() => {
         <p class="text-xs text-gray-400 mt-0.5">
           {{ statusMsg || (state === 'skipped' ? t('setup.voice.skippedDesc') : t('setup.voice.doneDesc')) }}
         </p>
+        <button
+          v-if="state === 'skipped'"
+          class="mt-3 px-4 py-1.5 bg-blue-500 hover:bg-blue-600 rounded-lg text-xs font-semibold text-white transition-colors"
+          @click="restartClone"
+        >
+          {{ t('setup.voice.restart') }}
+        </button>
       </div>
     </div>
 
     <template v-if="state !== 'done' && state !== 'skipped'">
-      <div class="sample-text bg-gray-700 rounded-xl p-4 mb-5 text-sm text-gray-200 leading-relaxed">
+      <p
+        v-if="state === 'loading'"
+        class="text-gray-400 text-sm mb-3"
+      >
+        {{ t('setup.voice.loading') }}
+      </p>
+
+      <div
+        v-if="canShowTrainingControls"
+        class="sample-text bg-gray-700 rounded-xl p-4 mb-5 text-sm text-gray-200 leading-relaxed"
+      >
         <p class="text-xs text-gray-500 mb-2">
           {{ t('setup.voice.readAloud') }}
         </p>
         {{ sampleText }}
       </div>
 
-      <div class="waveform flex items-end gap-1 h-12 mb-5 justify-center">
+      <div
+        v-if="canShowTrainingControls"
+        class="waveform flex items-end gap-1 h-12 mb-5 justify-center"
+      >
         <div
           v-for="i in 20"
           :key="i"
@@ -242,28 +267,35 @@ onUnmounted(() => {
 
       <div class="actions flex gap-3 flex-wrap">
         <button
-          v-if="state === 'idle' || state === 'error'"
+          v-if="canRecord && canShowTrainingControls"
           class="px-6 py-2 bg-blue-500 hover:bg-blue-600 rounded-lg font-semibold transition-colors"
           @click="startRecording"
         >
           {{ t('setup.voice.record') }}
         </button>
         <button
-          v-if="state === 'recording'"
+          v-if="state === 'recording' && canShowTrainingControls"
           class="px-6 py-2 bg-red-500 hover:bg-red-600 rounded-lg font-semibold transition-colors"
           @click="stopRecording"
         >
           {{ t('setup.voice.stop') }}
         </button>
         <button
-          v-if="canUpload"
+          v-if="state === 'recorded' && canShowTrainingControls"
+          class="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-lg font-semibold transition-colors"
+          @click="reRecord"
+        >
+          {{ t('setup.voice.reRecord') }}
+        </button>
+        <button
+          v-if="canUpload && canShowTrainingControls"
           class="px-6 py-2 bg-green-500 hover:bg-green-600 rounded-lg font-semibold transition-colors"
           @click="uploadAndClone"
         >
           {{ t('setup.voice.upload') }}
         </button>
         <button
-          v-if="state === 'submitted'"
+          v-if="state === 'submitted' && canShowTrainingControls"
           class="px-6 py-2 bg-green-500 hover:bg-green-600 rounded-lg font-semibold transition-colors"
           @click="queryStatus"
         >

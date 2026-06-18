@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"runtime"
 	"sync"
+
+	"github.com/zhaoyta/stealthcopilot/internal/diag"
 )
 
 // NewSystemCaptureProvider returns the best available audio capture provider.
@@ -65,6 +67,7 @@ func (p *FFmpegCaptureProvider) Start(ctx context.Context, deviceName string) (<
 	if err != nil {
 		return nil, err
 	}
+	diag.Infof("audio capture start device=%q args=%q", deviceName, args)
 
 	runCtx, cancel := context.WithCancel(ctx)
 	cmd := exec.CommandContext(runCtx, "ffmpeg", args...)
@@ -73,12 +76,17 @@ func (p *FFmpegCaptureProvider) Start(ctx context.Context, deviceName string) (<
 		cancel()
 		return nil, err
 	}
-	cmd.Stderr = io.Discard
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		cancel()
+		return nil, err
+	}
 
 	if err := cmd.Start(); err != nil {
 		cancel()
 		return nil, err
 	}
+	diag.Infof("audio capture ffmpeg started pid=%d device=%q", cmd.Process.Pid, deviceName)
 
 	p.mu.Lock()
 	if p.cancel != nil {
@@ -93,20 +101,41 @@ func (p *FFmpegCaptureProvider) Start(ctx context.Context, deviceName string) (<
 		defer close(ch)
 		defer func() {
 			cancel()
-			_ = cmd.Wait()
+			if err := cmd.Wait(); err != nil && runCtx.Err() == nil {
+				diag.Warnf("audio capture ffmpeg exited device=%q err=%v", deviceName, err)
+			} else {
+				diag.Infof("audio capture stopped device=%q", deviceName)
+			}
 		}()
 
+		frameCount := 0
 		for {
 			frame := make([]byte, FrameBytes)
 			if _, err := io.ReadFull(stdout, frame); err != nil {
+				if runCtx.Err() == nil {
+					diag.Warnf("audio capture read ended device=%q frames=%d err=%v", deviceName, frameCount, err)
+				}
 				return
+			}
+			frameCount++
+			if frameCount == 1 || frameCount%100 == 0 {
+				diag.Infof("audio capture frame device=%q frames=%d peak=%d", deviceName, frameCount, pcmPeak(frame))
 			}
 			select {
 			case ch <- frame:
 			case <-runCtx.Done():
 				return
 			default:
+				if frameCount%100 == 0 {
+					diag.Warnf("audio capture frame dropped device=%q frames=%d", deviceName, frameCount)
+				}
 			}
+		}
+	}()
+	go func() {
+		buf, _ := io.ReadAll(stderr)
+		if len(buf) > 0 && runCtx.Err() == nil {
+			diag.Warnf("audio capture ffmpeg stderr device=%q stderr=%q", deviceName, limitLogString(string(buf), 2000))
 		}
 	}()
 
@@ -128,6 +157,13 @@ func (p *FFmpegCaptureProvider) Close() error {
 		_ = cmd.Wait()
 	}
 	return nil
+}
+
+func limitLogString(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "...(truncated)"
 }
 
 func ffmpegAudioCaptureArgs(deviceName string) ([]string, error) {

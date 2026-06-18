@@ -1,14 +1,22 @@
-### Requirement: ElevenLabs 流式 TTS 输出
-系统 SHALL 调用 ElevenLabs 流式 TTS API，使用用户克隆的 Voice ID，将目标语言文本转为音频流，首帧到达即写入虚拟麦克风。
+### Requirement: 默认音色与讯飞声音复刻流式 TTS 输出
+系统 SHALL 支持默认音色和个人复刻音色两种 TTS 输出模式。默认音色无需声音复刻训练；个人复刻音色 SHALL 调用讯飞声音复刻流式 TTS API，使用用户训练完成后获得的 Asset ID，将目标语言文本转为音频流，首帧到达即写入虚拟麦克风。
 
 #### Scenario: 流式首帧即播
-- **WHEN** ElevenLabs 返回第一个音频 chunk
+- **WHEN** 讯飞声音复刻返回第一个音频 chunk
 - **THEN** 立即写入虚拟麦克风开始播放，不等待完整音频
 
 #### Scenario: Zero-PCM 静音保护
-- **WHEN** VAD 触发到 ElevenLabs 首帧到达之间
+- **WHEN** VAD 触发到讯飞声音复刻首帧到达之间
 - **THEN** Go 后端持续向虚拟麦克风写入全零 PCM，面试官听到静音而非用户母语
 
 #### Scenario: TTS 与静音无缝切换
-- **WHEN** ElevenLabs 首帧到达，从 Zero-PCM 切换为 TTS 音频
+- **WHEN** 讯飞声音复刻首帧到达，从 Zero-PCM 切换为 TTS 音频
 - **THEN** 切换无爆音、无断裂，音频连续
+
+#### Scenario: 默认音色输出
+- **WHEN** 用户未完成声音复刻训练或主动选择默认音色
+- **THEN** 说话链使用默认音色合成目标语言音频，并明确显示当前不是个人复刻音色
+
+#### Scenario: 个人复刻音色缺少 Asset ID
+- **WHEN** 用户未完成声音复刻训练或未保存 Asset ID
+- **THEN** 个人复刻音色不可用，应用提示用户先完成声音复刻训练或切换为默认音色

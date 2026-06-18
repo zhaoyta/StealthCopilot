@@ -233,7 +233,7 @@ static void scScrollToBottom(NSTextView *view) {
 	+ (void)setCircuitOpen:(NSNumber *)open {
 		scEnsureWindow();
 		BOOL isOpen = [open boolValue];
-		[scCircuitLabel setStringValue:isOpen ? @"云端管道已断开，当前为本地直通模式" : @""];
+		[scCircuitLabel setStringValue:isOpen ? @"当前为直连模式，会议可继续使用，AI 辅助已暂时退出" : @""];
 	}
 
 	+ (void)reset {

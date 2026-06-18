@@ -30,7 +30,8 @@
       "title": "Dependency Check",
       "desc": "Check required system components. Missing items can be installed with one click.",
       "ffmpeg": "FFmpeg (required for audio/video capture)",
-      "virtualMic": "Virtual Microphone (BlackHole / VB-Cable)",
+      "virtualMic": "Meeting audio virtual channel",
+      "virtualMicHint": "Select this once. In the meeting app, choose the same device for both speaker and microphone; StealthCopilot captures interviewer audio from it and writes your target-language speech back to it.",
       "virtualCam": "Virtual Camera (OBS VirtualCam)",
       "install": "Install",
       "installed": "Installed",
@@ -40,7 +41,7 @@
     },
     "apiKeys": {
       "title": "Configure API Keys",
-      "desc": "Your keys are stored in the system Keychain (encrypted), never uploaded to any server.",
+      "desc": "Enter keys for required services. Voice cloning is optional; the default voice works without it. Keys are stored in the system Keychain and never uploaded.",
       "optional": "optional",
       "placeholder": "Paste key…",
       "secureNote": "🔒 Keys are encrypted in system Keychain, never stored as plain text"
@@ -54,7 +55,10 @@
     },
     "voice": {
       "title": "Voice Cloning",
-      "desc": "Read the iFlytek training text to create your cloned voice (requires iFlytek VoiceClone keys)",
+      "desc": "Optional: read the iFlytek training text to create your personal voice. The default voice is used when cloning is skipped.",
+      "loading": "Loading voice clone status…",
+      "credentialsRequired": "Configure and test the iFlytek VoiceClone App ID, API Key, and API Secret first. You can skip this step and use the default voice.",
+      "trainTextError": "Failed to load training text: {message}. Test the service keys first, or skip and use the default voice.",
       "record": "Start Recording",
       "stop": "Stop Recording",
       "countdown": "{seconds}s",
@@ -66,10 +70,12 @@
       "done": "Voice cloned successfully",
       "doneDesc": "Your personal voice has been saved. Speaking chain will use the cloned voice.",
       "skipped": "Voice cloning skipped",
-      "skippedDesc": "Speaking chain needs a trained voice before real voice output. You can complete this later in Settings.",
+      "skippedDesc": "Speaking chain will use the default voice. You can add a personal cloned voice later in Settings.",
+      "restart": "Start cloning",
       "readAloud": "Please read the iFlytek training text aloud:",
       "sampleText": "I am a software engineer with extensive experience in designing and implementing distributed systems. In my previous role, I led the migration of a monolithic application to a microservices architecture, which improved scalability by 300%. I am passionate about clean code and believe that good engineering practices are essential for long-term team success.",
-      "micError": "Cannot access microphone. Please check system permissions."
+      "micError": "Cannot access microphone. Please check system permissions.",
+      "reRecord": "Re-record"
     },
     "done": {
       "title": "Setup Complete",
@@ -77,8 +83,9 @@
       "summary": "Configuration Summary",
       "xunfei": "iFlytek API (Hearing chain)",
       "deepseek": "DeepSeek API (AI responses)",
+      "defaultVoice": "Default voice (TTS)",
       "xunfeiTts": "iFlytek VoiceClone API (TTS)",
-      "voiceId": "VoiceClone Asset ID",
+      "personalVoice": "Personal cloned voice",
       "simli": "Simli AI (Lip sync)",
       "hint": "Optional items can be completed later in Settings"
     },
@@ -113,9 +120,7 @@
         "mtApiSecret": "Machine Translation API Secret",
         "ttsAppId": "VoiceClone App ID",
         "ttsApiKey": "VoiceClone API Key",
-        "ttsApiSecret": "VoiceClone API Secret",
-        "ttsAssetId": "VoiceClone Asset ID",
-        "ttsTaskId": "VoiceClone Task ID"
+        "ttsApiSecret": "VoiceClone API Secret"
       },
       "deepseek": {
         "key": "DeepSeek API Key",
@@ -151,14 +156,18 @@
     },
     "devices": {
       "virtualMic": "Virtual Microphone (BlackHole / VB-Cable)",
-      "physicalMic": "Physical Microphone",
-      "physicalCam": "Physical Camera",
-      "virtualCam": "Virtual Camera (OBS VirtualCam)",
-      "hearingMonitor": "Hearing translated-audio monitor",
-      "monitorOutput": "Headphone monitor output",
+      "virtualMicHint": "In the meeting app, choose this device for both speaker and microphone; StealthCopilot captures interviewer audio from it and writes your target-language speech back to it.",
+      "physicalMic": "Your speaking microphone",
+      "physicalCam": "Your real camera",
+      "virtualCam": "Meeting virtual camera",
+      "hearingMonitor": "Play interviewer translation to headphones",
+      "monitorOutput": "Translation playback device",
       "systemDefaultOutput": "System Default Output",
       "monitorVolume": "Monitor Volume",
       "monitorRate": "Monitor Rate",
+      "recommendedVirtualMic": "Recommended · meeting audio virtual channel ({name})",
+      "recommendedVirtualCam": "Recommended · StealthCopilot virtual camera ({name})",
+      "recommendedMonitorOutput": "Recommended · translation headphones ({name})",
       "refresh": "Re-enumerate Devices",
       "select": "Select…"
     },
@@ -201,6 +210,7 @@
         "xunfei": "Xunfei",
         "deepseek": "DeepSeek",
         "openaiCompatible": "OpenAI Compatible",
+        "systemTts": "Default Voice",
         "xunfeiVoiceClone": "iFlytek VoiceClone",
         "simli": "Simli",
         "pythonBridge": "Python Bridge",
@@ -209,15 +219,15 @@
     }
   },
   "dashboard": {
-    "systemNormal": "System Normal",
-    "systemDesc": "Circuit breaker ready · All pipeline latencies within threshold",
-    "systemWarning": "Circuit tripped — switched to local passthrough",
-    "circuitStatusLabel": "Circuit",
-    "circuitNormal": "Normal",
-    "circuitOpen": "Tripped",
-    "pipelines": "Live Pipelines",
-    "pipelinesRunning": "{n}/3 pipelines running",
-    "pipelinesIdle": "All pipelines idle",
+    "systemNormal": "AI assist running",
+    "systemDesc": "Meeting route normal · AI assist available",
+    "systemWarning": "Some assistive features are limited. The meeting route can continue.",
+    "videoDirectNormal": "Lip sync",
+    "videoDirectOpen": "Video direct",
+    "videoDirectDesc": "Video chain is in direct mode: lip sync is temporarily off, while your real camera continues into the meeting.",
+    "pipelines": "Interview Flow",
+    "pipelinesRunning": "{n}/3 flows running",
+    "pipelinesIdle": "Interview flow idle",
     "startAll": "Start All",
     "stopAll": "Stop All",
     "openTeleprompter": "Teleprompter",
@@ -225,9 +235,15 @@
     "hearingChain": "Hearing Chain",
     "speakingChain": "Speaking Chain",
     "videoChain": "Video Chain",
-    "hearingDesc": "Interviewer audio → real-time subtitles",
-    "speakingDesc": "Your Chinese → cloned English voice output",
-    "videoDesc": "Camera → avatar → virtual camera",
+    "hearingDesc": "Understand the interviewer and show subtitles plus answer suggestions",
+    "speakingDesc": "Turn your native-language answer into target-language speech",
+    "videoDesc": "Sync camera video into the meeting virtual camera",
+    "businessInput": "Input",
+    "userVisible": "You see",
+    "localOutput": "Local out",
+    "meetingOutput": "Meeting out",
+    "diagnostics": "Diagnostics",
+    "channelUnset": "Not selected",
     "phase2": "Phase 2",
     "latencyMs": "{ms} ms",
     "status": {
@@ -235,6 +251,34 @@
       "running": "RUNNING",
       "error": "ERROR",
       "bypassed": "BYPASSED"
+    },
+    "preflight": {
+      "modalBlockedTitle": "Confirm setup before starting",
+      "modalBlockedDesc": "These items will prevent the chains from working correctly. Fix them before starting for a stable session.",
+      "modalWarningTitle": "Continue starting?",
+      "modalWarningDesc": "The current setup can start, but some assistive features will be limited. The meeting can still continue.",
+      "openSettings": "Open Settings",
+      "continueStart": "Continue Starting",
+      "blockedTitle": "Fix these before starting:",
+      "warningTitle": "You can start, but some features will be limited:",
+      "ffmpegMissing": "FFmpeg is not installed, so audio/video capture is unavailable.",
+      "virtualAudioMissing": "The virtual audio device is not installed, so the meeting audio virtual channel is unavailable.",
+      "virtualCameraMissing": "The virtual camera is not installed, so the meeting cannot select processed video.",
+      "meetingAudioMissing": "Meeting audio virtual channel is not selected.",
+      "speakingMicMissing": "Your speaking microphone is not selected.",
+      "realCameraMissing": "Your real camera is not selected.",
+      "meetingCameraMissing": "Meeting virtual camera is not selected.",
+      "meetingAudioUnavailable": "Previously selected meeting audio virtual channel \"{name}\" is unavailable. Please select it again.",
+      "speakingMicUnavailable": "Previously selected speaking microphone \"{name}\" is unavailable. Please select it again.",
+      "realCameraUnavailable": "Previously selected real camera \"{name}\" is unavailable. Please select it again.",
+      "meetingCameraUnavailable": "Previously selected meeting virtual camera \"{name}\" is unavailable. Please select it again.",
+      "monitorOutputUnavailable": "Previously selected translation playback device \"{name}\" is unavailable. Please select it again or use system default output.",
+      "rtasrMissing": "iFlytek RTASR App ID / API Key is not configured, so hearing and speaking chains cannot recognize speech.",
+      "mtMissing": "iFlytek machine translation App ID / API Key / API Secret is not configured, so cross-language subtitles or speech are unavailable.",
+      "deepseekMissing": "DeepSeek Key is not configured, so answer suggestions and polishing will be limited.",
+      "ttsMissing": "TTS Provider is disabled, so the speaking chain cannot output target-language speech.",
+      "voiceCloneMissing": "iFlytek VoiceClone is selected, but voice training is not complete. You can switch to the default voice first.",
+      "simliMissing": "Simli Key or Face ID is not configured, so the video chain will use direct camera output without lip sync."
     },
     "version": "v0.1.0",
     "footerBrand": "StealthCopilot · {version}",
@@ -250,10 +294,76 @@
     "subtitlePlaceholder": "Waiting for interviewer subtitles...",
     "answerPlaceholder": "Answer suggestions will stream here.",
     "noResume": "No active resume detected, suggestion feature disabled",
-    "circuitOpenWarning": "Cloud pipeline disconnected — local passthrough active",
-    "emergencyBypass": "Emergency Bypass"
+    "circuitOpenWarning": "Video chain is in direct mode: lip sync is temporarily off, while your real camera continues into the meeting.",
+    "emergencyBypass": "Switch to Video Direct"
+  },
+  "meetingGuide": {
+    "entry": "Meeting setup guide",
+    "title": "Meeting App Setup Guide",
+    "subtitle": "Feishu, Tencent Meeting, Zoom, and Teams use the same device routing.",
+    "speaker": {
+      "title": "Meeting speaker",
+      "desc": "Select the virtual audio device bound in StealthCopilot so the hearing chain can capture interviewer audio."
+    },
+    "mic": {
+      "title": "Meeting microphone",
+      "desc": "Select the same virtual audio device so the speaking chain can write target-language speech back into the meeting."
+    },
+    "camera": {
+      "title": "Meeting camera",
+      "desc": "Select the StealthCopilot virtual camera so the video chain outputs the synced video feed."
+    },
+    "routingTitle": "Recommended routing",
+    "routes": {
+      "hearing": "Meeting speaker -> virtual audio device -> hearing chain",
+      "speaking": "Speaking chain -> virtual audio device -> meeting microphone",
+      "video": "Video chain -> virtual camera -> meeting camera"
+    },
+    "monitorNote": "If the meeting speaker only points to the virtual audio device, you may not hear the interviewer. Set monitor output to headphones, or create a system multi-output device that sends meeting audio to both the virtual device and your headphones.",
+    "feishu": {
+      "title": "Feishu Meetings",
+      "desc": "Before or during a meeting, open the device menu beside the microphone and switch microphone, speaker, and camera, then test them."
+    },
+    "tencent": {
+      "title": "Tencent Meeting",
+      "desc": "Open audio settings or the microphone device menu, use computer audio, then test microphone and speaker separately."
+    }
+  },
+  "deviceQuickConfig": {
+    "meetingAudio": {
+      "title": "Configure meeting audio virtual channel",
+      "desc": "Choose this device as both speaker and microphone in Feishu or Tencent Meeting."
+    },
+    "physicalMic": {
+      "title": "Configure your speaking microphone",
+      "desc": "StealthCopilot uses it to capture your native-language answer. Do not select it as the meeting microphone."
+    },
+    "monitorOutput": {
+      "title": "Configure translation playback",
+      "desc": "Play interviewer translations to your headphones without sending them into the meeting microphone."
+    },
+    "physicalCamera": {
+      "title": "Configure your camera",
+      "desc": "StealthCopilot uses it as the raw camera feed before video-chain processing."
+    },
+    "virtualCamera": {
+      "title": "Configure meeting virtual camera",
+      "desc": "Choose this device as the camera in Feishu or Tencent Meeting."
+    }
   },
   "pipeline": {
+    "interviewerAudio": "Interviewer audio",
+    "understandQuestion": "Understand question",
+    "liveSubtitle": "Live subtitles",
+    "resumeAnswer": "Resume answer suggestion",
+    "headphoneTranslation": "Headphone translation",
+    "yourNativeAnswer": "Your native answer",
+    "targetLanguageSpeech": "Target-language speech",
+    "speechTransformReady": "Speech transform ready",
+    "clonedVoice": "Cloned voice",
+    "cameraImage": "Your real camera",
+    "lipSync": "Lip sync",
+    "videoSyncStatus": "Video sync status",
     "virtualMicBlackhole": "BlackHole Virtual Mic",
     "xunfeiTranslation": "iFlytek Translation",
     "chineseSubtitle": "Chinese Subtitle",
@@ -268,7 +378,7 @@
     "virtualMic": "Virtual Mic",
     "physicalCam": "Physical Camera",
     "simliAvatar": "Simli AI Avatar",
-    "virtualCam": "Virtual Camera",
+    "virtualCam": "Meeting virtual camera",
     "optional": "optional",
     "plus": "+"
   }

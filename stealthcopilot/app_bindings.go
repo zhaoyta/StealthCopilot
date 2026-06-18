@@ -15,6 +15,7 @@ import (
 	"github.com/zhaoyta/stealthcopilot/internal/audio"
 	"github.com/zhaoyta/stealthcopilot/internal/circuit"
 	"github.com/zhaoyta/stealthcopilot/internal/config"
+	"github.com/zhaoyta/stealthcopilot/internal/diag"
 	"github.com/zhaoyta/stealthcopilot/internal/hearing"
 	"github.com/zhaoyta/stealthcopilot/internal/lipsync"
 	"github.com/zhaoyta/stealthcopilot/internal/llm"
@@ -40,6 +41,16 @@ const (
 type APIConnectionResult struct {
 	OK      bool   `json:"ok"`
 	Message string `json:"message"`
+}
+
+// VoiceCloneStatusResult returns stable voice training state to the frontend.
+type VoiceCloneStatusResult struct {
+	OK         bool   `json:"ok"`
+	State      string `json:"state"`
+	Message    string `json:"message"`
+	CanRetry   bool   `json:"can_retry"`
+	HasTaskID  bool   `json:"has_task_id"`
+	HasAssetID bool   `json:"has_asset_id"`
 }
 
 // ===== Config 相关绑定 =====
@@ -74,9 +85,13 @@ func (a *App) TestAPIConnection(service string) APIConnectionResult {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), apiConnectionTimeout)
 		defer cancel()
-		_, err := tts.NewXunfeiVoiceCloneClient(xunfeiVoiceCloneConfigFromApp(cfg)).FetchTrainText(ctx)
-		if err != nil {
-			return APIConnectionResult{Message: "讯飞声音复刻训练接口测试失败：" + err.Error()}
+		if err := tts.NewXunfeiVoiceCloneClient(xunfeiVoiceCloneConfigFromApp(cfg)).ProbeToken(ctx); err != nil {
+			detail := fmt.Sprintf("当前保存：App ID %s；API Key %s；API Secret %s",
+				secretLengthHint(cfg.XunfeiTTSAppID),
+				secretLengthHint(cfg.XunfeiTTSAPIKey),
+				secretLengthHint(cfg.XunfeiTTSAPISecret),
+			)
+			return APIConnectionResult{Message: "讯飞声音复刻鉴权失败：" + err.Error() + "。" + detail}
 		}
 		if cfg.XunfeiTTSAssetID == "" {
 			return APIConnectionResult{OK: true, Message: "讯飞声音复刻凭证可用，尚未完成音色训练"}
@@ -184,6 +199,14 @@ func maskedSecretHint(key string) string {
 	return fmt.Sprintf("长度 %d，前4位 %s，后4位 %s", len(key), key[:4], key[len(key)-4:])
 }
 
+func secretLengthHint(key string) string {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return "未保存"
+	}
+	return fmt.Sprintf("长度 %d", len(key))
+}
+
 func looksLikeXunfeiSecret(value string) bool {
 	value = strings.TrimSpace(value)
 	if len(value) < 24 {
@@ -205,14 +228,40 @@ func (a *App) MarkSetupComplete() string {
 	return a.ConfigSvc.MarkSetupComplete()
 }
 
+// StartVoiceTrainingRecording 通过 Go/ffmpeg 开始从物理麦克风录制音频。
+// deviceName 为空时使用默认设备（avfoundation 索引 0）。
+// 返回空字符串表示启动成功，否则为错误描述。
+func (a *App) StartVoiceTrainingRecording(deviceName string) string {
+	if err := a.VoiceRecorder.Start(deviceName); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+// StopVoiceTrainingResult 停止录音的结果，通过 JSON 结构体传给前端避免多返回值歧义。
+type StopVoiceTrainingResult struct {
+	WAV    []byte `json:"wav"`
+	ErrMsg string `json:"err_msg"`
+}
+
+// StopVoiceTrainingRecording 停止录音，返回 WAV 字节和错误描述。
+// err_msg 非空时表示录音失败（含 ffmpeg stderr 诊断信息）。
+func (a *App) StopVoiceTrainingRecording() StopVoiceTrainingResult {
+	wav, err := a.VoiceRecorder.Stop()
+	if err != nil {
+		return StopVoiceTrainingResult{ErrMsg: err.Error()}
+	}
+	return StopVoiceTrainingResult{WAV: wav}
+}
+
 // CloneVoice submits a recorded WAV sample to iFlytek VoiceClone and stores the task ID.
 func (a *App) CloneVoice(audioBytes []byte) string {
 	cfg := a.ConfigSvc.InternalManager().Config
 	if cfg.XunfeiTTSAppID == "" || cfg.XunfeiTTSAPIKey == "" || cfg.XunfeiTTSAPISecret == "" {
 		return "讯飞声音复刻 AppID/API Key/API Secret 未完整配置"
 	}
-	if len(audioBytes) == 0 {
-		return "录音为空，请重新录制"
+	if err := tts.ValidateTrainingWAV(audioBytes); err != nil {
+		return err.Error()
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
@@ -220,11 +269,10 @@ func (a *App) CloneVoice(audioBytes []byte) string {
 	if err != nil {
 		return err.Error()
 	}
-	return a.ConfigSvc.SaveAPIKey(config.SaveAPIKeyRequest{
-		Service: "xunfei_tts",
-		Field:   "task_id",
-		Value:   taskID,
-	})
+	if err := a.ConfigSvc.InternalManager().SaveXunfeiTTSTaskID(taskID); err != nil {
+		return err.Error()
+	}
+	return ""
 }
 
 // GetXunfeiVoiceTrainText returns the required reading text for iFlytek voice training.
@@ -236,27 +284,44 @@ func (a *App) GetXunfeiVoiceTrainText() (tts.XunfeiVoiceTrainText, error) {
 }
 
 // QueryXunfeiVoiceCloneStatus refreshes a submitted iFlytek voice training task.
-func (a *App) QueryXunfeiVoiceCloneStatus() APIConnectionResult {
+func (a *App) QueryXunfeiVoiceCloneStatus() VoiceCloneStatusResult {
 	cfg := a.ConfigSvc.InternalManager().Config
+	base := VoiceCloneStatusResult{
+		State:      tts.TrainStateSubmitted,
+		HasTaskID:  cfg.XunfeiTTSTaskID != "",
+		HasAssetID: cfg.XunfeiTTSAssetID != "",
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), apiConnectionTimeout)
 	defer cancel()
 	result, err := tts.NewXunfeiVoiceCloneClient(xunfeiVoiceCloneConfigFromApp(cfg)).QueryTrainingResult(ctx, cfg.XunfeiTTSTaskID)
 	if err != nil {
-		return APIConnectionResult{Message: "讯飞声音复刻训练状态查询失败：" + err.Error()}
+		base.State = tts.TrainStateFailed
+		base.CanRetry = true
+		base.Message = "讯飞声音复刻训练状态查询失败：" + err.Error()
+		return base
 	}
 	if result.AssetID != "" {
-		if errMsg := a.ConfigSvc.SaveAPIKey(config.SaveAPIKeyRequest{Service: "xunfei_tts", Field: "asset_id", Value: result.AssetID}); errMsg != "" {
-			return APIConnectionResult{Message: errMsg}
+		if err := a.ConfigSvc.InternalManager().SaveXunfeiTTSAssetID(result.AssetID); err != nil {
+			base.State = tts.TrainStateFailed
+			base.CanRetry = true
+			base.Message = err.Error()
+			return base
 		}
+		base.HasAssetID = true
 	}
-	switch result.TrainStatus {
-	case 1:
-		return APIConnectionResult{OK: true, Message: "讯飞声音复刻训练成功，Asset ID 已保存"}
-	case -1, 2:
-		return APIConnectionResult{Message: "讯飞声音复刻训练中，请稍后再查询"}
+	state, canRetry := tts.XunfeiVoiceTrainState(result)
+	base.State = state
+	base.CanRetry = canRetry
+	base.OK = state == tts.TrainStateDone
+	switch state {
+	case tts.TrainStateDone:
+		base.Message = "讯飞声音复刻训练成功，个人复刻音色已可用"
+	case tts.TrainStateSubmitted:
+		base.Message = "讯飞声音复刻训练中，请稍后再查询"
 	default:
-		return APIConnectionResult{Message: "讯飞声音复刻训练失败：" + result.FailedDesc}
+		base.Message = "讯飞声音复刻训练失败：" + result.FailedDesc
 	}
+	return base
 }
 
 // GetDefaultPrompts 返回 Go 后端硬编码的默认 Prompt 值。
@@ -295,12 +360,25 @@ func (a *App) IsEmbeddingReady() bool {
 
 // CheckDeps 检测系统依赖（虚拟声卡、虚拟摄像头）。
 func (a *App) CheckDeps() system.DepsReport {
-	return a.SystemSvc.CheckDeps()
+	report := a.SystemSvc.CheckDeps()
+	diag.Infof("deps ffmpeg=%s virtual_mic=%s virtual_cam=%s", report.FFmpeg, report.VirtualMic, report.VirtualCam)
+	return report
 }
 
 // EnumerateDevices 实时枚举系统音视频设备。
 func (a *App) EnumerateDevices() system.DeviceList {
-	return a.SystemSvc.EnumerateDevices()
+	dl := a.SystemSvc.EnumerateDevices()
+	diag.Infof("devices audio_inputs=%d [%s] audio_outputs=%d [%s] video_inputs=%d [%s]",
+		len(dl.AudioInputs), deviceNames(dl.AudioInputs),
+		len(dl.AudioOutputs), deviceNames(dl.AudioOutputs),
+		len(dl.VideoInputs), deviceNames(dl.VideoInputs),
+	)
+	return dl
+}
+
+// GetDiagnosticLogPath 返回本地诊断日志路径，方便用户排障时定位。
+func (a *App) GetDiagnosticLogPath() string {
+	return diag.Path()
 }
 
 // PickResumeFile 弹出系统文件选择对话框，返回用户选择的文件路径。
@@ -435,6 +513,8 @@ func (a *App) GetStealthStatus() ui.StealthStatus {
 // 返回空字符串表示成功，否则返回错误描述。
 func (a *App) StartHearingChain() string {
 	cfg := a.ConfigSvc.InternalManager().Config
+	diag.Infof("hearing start requested virtual_mic=%q source_lang=%s target_lang=%s monitor_enabled=%t monitor_output=%q translation_provider=%s llm_provider=%s",
+		cfg.VirtualMicName, cfg.HearingSourceLang, cfg.HearingTargetLang, cfg.HearingMonitorEnabled, cfg.MonitorOutputName, cfg.TranslationProvider, cfg.LLMProvider)
 	retriever := rag.NewRetriever(a.ResumeSvc.InternalManager())
 	var translator translation.Provider
 	if cfg.TranslationProvider == config.TranslationProviderNull {
@@ -479,7 +559,12 @@ func (a *App) StartHearingChain() string {
 		Retriever: retriever,
 		EventSink: a.emitTeleprompterEvent,
 	}
-	return a.HearingChain.Start(a.ctx, chainCfg)
+	if err := a.HearingChain.Start(a.ctx, chainCfg); err != "" {
+		diag.Errorf("hearing start failed err=%q", err)
+		return err
+	}
+	diag.Infof("hearing start ok")
+	return ""
 }
 
 func (a *App) emitTeleprompterEvent(eventName string, data ...any) {
@@ -522,16 +607,20 @@ func (a *App) emitTeleprompterEvent(eventName string, data ...any) {
 
 // StopHearingChain 停止听力链，等待所有 goroutine 退出后返回。
 func (a *App) StopHearingChain() {
+	diag.Infof("hearing stop requested")
 	a.HearingChain.Stop()
+	diag.Infof("hearing stop complete")
 }
 
 // ===== Speaking Chain 相关绑定 =====
 
-// StartSpeakingChain 启动说话链管道：麦克风捕获 → VAD → 讯飞翻译 → 讯飞声音复刻 TTS → 虚拟麦克风。
+// StartSpeakingChain 启动说话链管道：麦克风捕获 → VAD → 讯飞翻译 → TTS → 虚拟麦克风。
 // 配置从当前 ConfigSvc 读取；已在运行时先停止再重新启动。
 // 返回空字符串表示成功，否则返回错误描述。
 func (a *App) StartSpeakingChain() string {
 	cfg := a.ConfigSvc.InternalManager().Config
+	diag.Infof("speaking start requested physical_mic=%q virtual_mic=%q input_lang=%s output_lang=%s translation_provider=%s tts_provider=%s polish_enabled=%t",
+		cfg.PhysicalMicName, cfg.VirtualMicName, cfg.SpeakingInputLang, cfg.SpeakingOutputLang, cfg.TranslationProvider, cfg.TTSProvider, cfg.PolishEnabled)
 	var translator translation.SpeakProvider
 	if cfg.TranslationProvider == config.TranslationProviderNull {
 		return "说话链需要真实翻译 Provider，请在高级设置选择讯飞"
@@ -542,14 +631,18 @@ func (a *App) StartSpeakingChain() string {
 	}
 	var ttsProvider tts.Provider
 	switch cfg.TTSProvider {
-	case config.TTSProviderNull, config.TTSProviderSystem:
-		return "说话链需要真实 TTS Provider，请在高级设置选择讯飞声音复刻"
+	case config.TTSProviderNull:
+		return "说话链需要 TTS Provider，请在高级设置选择默认音色或讯飞声音复刻"
+	case config.TTSProviderSystem:
+		ttsProvider = tts.NewSystemProvider()
 	case config.TTSProviderXunfeiVoiceClone:
 		voiceCfg := xunfeiVoiceCloneConfigFromApp(cfg)
 		if !tts.XunfeiVoiceCloneConfigReady(voiceCfg) {
-			return "说话链需要讯飞声音复刻 AppID、API Key、API Secret 和 Asset ID；请先在服务密钥里完成声音训练"
+			return "个人复刻音色需要完成声音复刻训练；也可以在高级设置切换为默认音色"
 		}
 		ttsProvider = tts.NewXunfeiVoiceCloneProvider(voiceCfg)
+	default:
+		ttsProvider = tts.NewSystemProvider()
 	}
 	llmCfg := llm.Config{
 		Provider: string(cfg.LLMProvider),
@@ -583,12 +676,19 @@ func (a *App) StartSpeakingChain() string {
 		PolishPrompt:       cfg.SpeakPolishPrompt,
 		PolishEnabled:      cfg.PolishEnabled,
 	}
-	return a.SpeakingChain.Start(a.ctx, chainCfg)
+	if err := a.SpeakingChain.Start(a.ctx, chainCfg); err != "" {
+		diag.Errorf("speaking start failed err=%q", err)
+		return err
+	}
+	diag.Infof("speaking start ok")
+	return ""
 }
 
 // StopSpeakingChain 停止说话链，等待所有 goroutine 退出后返回。
 func (a *App) StopSpeakingChain() {
+	diag.Infof("speaking stop requested")
 	a.SpeakingChain.Stop()
+	diag.Infof("speaking stop complete")
 }
 
 // SetVADSilenceThreshold 运行时更新 VAD 静音阈值（毫秒），即时生效，无需重启说话链。
@@ -603,6 +703,8 @@ func (a *App) SetVADSilenceThreshold(ms int) {
 // 返回空字符串表示成功，否则返回错误描述。
 func (a *App) StartVideoChain() string {
 	cfg := a.ConfigSvc.InternalManager().Config
+	diag.Infof("video start requested physical_cam=%q virtual_cam=%q lipsync_provider=%s simli_key_set=%t simli_face_set=%t",
+		cfg.PhysicalCamName, cfg.VirtualCamName, cfg.LipSyncProvider, cfg.SimliKey != "", cfg.SimliFaceID != "")
 	var lipSyncProvider lipsync.Provider
 	lipSyncCloudMode := false
 	if cfg.LipSyncProvider == config.LipSyncProviderNull {
@@ -610,23 +712,35 @@ func (a *App) StartVideoChain() string {
 	} else if cfg.LipSyncProvider == config.LipSyncProviderSimli {
 		lipSyncCloudMode = cfg.SimliKey != "" && cfg.SimliFaceID != ""
 	}
-	chainCfg := video.ChainConfig{
-		SimliAPIKey: cfg.SimliKey,
-		SilmiFaceID: cfg.SimliFaceID,
+	simliHeartbeatAddr := ""
+	if lipSyncCloudMode {
 		// Simli 无公开 UDP 端点；改为 HTTP HEAD 探活。
-		// 心跳判断：任何 2xx/3xx/4xx 响应 = 网络连通；5xx 或超时 = 触发熔断。
-		SimliHeartbeatAddr: "https://api.simli.ai",
+		// 心跳判断：任何 2xx/3xx/4xx 响应 = 网络连通；5xx 或超时 = 触发直连模式。
+		// 未配置云端口型同步时不启用心跳，避免一启动视频直通就误显示直连模式。
+		simliHeartbeatAddr = "https://api.simli.ai"
+	}
+	chainCfg := video.ChainConfig{
+		SimliAPIKey:        cfg.SimliKey,
+		SilmiFaceID:        cfg.SimliFaceID,
+		SimliHeartbeatAddr: simliHeartbeatAddr,
 		PhysicalCamDevice:  cfg.PhysicalCamName,
 		VirtualCamDevice:   cfg.VirtualCamName,
 		LipSyncProvider:    lipSyncProvider,
 		LipSyncCloudMode:   lipSyncCloudMode,
 	}
-	return a.VideoChain.Start(a.ctx, chainCfg)
+	if err := a.VideoChain.Start(a.ctx, chainCfg); err != "" {
+		diag.Errorf("video start failed err=%q", err)
+		return err
+	}
+	diag.Infof("video start ok cloud_mode=%t heartbeat=%q", lipSyncCloudMode, simliHeartbeatAddr)
+	return ""
 }
 
 // StopVideoChain 停止视频链，等待所有 goroutine 退出后返回。
 func (a *App) StopVideoChain() {
+	diag.Infof("video stop requested")
 	a.VideoChain.Stop()
+	diag.Infof("video stop complete")
 }
 
 // IsCircuitOpen 返回熔断器当前是否处于 Open（直通）状态，供前端显示警告条。
@@ -660,6 +774,17 @@ func (a *App) CheckVirtualCameraDriver() string {
 	default:
 		return "unknown"
 	}
+}
+
+func deviceNames(devices []system.Device) string {
+	if len(devices) == 0 {
+		return ""
+	}
+	names := make([]string, 0, len(devices))
+	for _, d := range devices {
+		names = append(names, d.Name)
+	}
+	return strings.Join(names, ", ")
 }
 
 // probeHTTP 先用 HEAD 请求探测（不消耗响应体/API 配额），

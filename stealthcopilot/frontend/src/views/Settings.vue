@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Key, Globe, Sliders, FileText, Eye, Settings, Mic } from 'lucide-vue-next'
 import TabApiKeys from './settings/TabApiKeys.vue'
@@ -16,6 +16,12 @@ const { t } = useI18n()
 
 type TabId = 'apiKeys' | 'language' | 'devices' | 'voice' | 'resume' | 'ghost' | 'advanced'
 
+const props = withDefaults(defineProps<{
+  initialTab?: TabId
+}>(), {
+  initialTab: 'apiKeys',
+})
+
 const tabs: { id: TabId; label: string; icon: typeof Key }[] = [
   { id: 'apiKeys',   label: t('settings.tabs.apiKeys'),   icon: Key },
   { id: 'language',  label: t('settings.tabs.language'),  icon: Globe },
@@ -26,7 +32,11 @@ const tabs: { id: TabId; label: string; icon: typeof Key }[] = [
   { id: 'advanced',  label: t('settings.tabs.advanced'),  icon: Settings },
 ]
 
-const activeTab = ref<TabId>('apiKeys')
+const activeTab = ref<TabId>(props.initialTab)
+
+watch(() => props.initialTab, tab => {
+  activeTab.value = tab
+})
 </script>
 
 <template>

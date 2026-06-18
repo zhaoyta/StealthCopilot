@@ -9,7 +9,7 @@
 ## Requirements
 
 ### Requirement: 统一 Keyring 接口
-Go 后端 SHALL 提供统一的 `KeyringStore` 接口封装 go-keyring，调用方不感知平台差异（macOS Keychain / Windows Credential Manager）。所有 API Key 和 Voice ID 通过此接口读写，禁止写入明文配置文件。
+Go 后端 SHALL 提供统一的 `KeyringStore` 接口封装 go-keyring，调用方不感知平台差异（macOS Keychain / Windows Credential Manager）。所有 API Key、Task ID 和 Asset ID 通过此接口读写，禁止写入明文配置文件。
 
 #### Scenario: 跨平台存储
 - **WHEN** Go 后端调用 KeyringStore.Set(key, value)

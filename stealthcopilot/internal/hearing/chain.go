@@ -6,11 +6,13 @@ package hearing
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/zhaoyta/stealthcopilot/internal/audio"
+	"github.com/zhaoyta/stealthcopilot/internal/diag"
 	"github.com/zhaoyta/stealthcopilot/internal/intent"
 	"github.com/zhaoyta/stealthcopilot/internal/llm"
 	"github.com/zhaoyta/stealthcopilot/internal/rag"
@@ -69,6 +71,7 @@ type Chain struct {
 // Start 以给定配置启动听力链。已在运行时幂等（先 Stop 再 Start）。
 // wailsCtx 是 Wails 应用 context，用于 EventsEmit 推送事件。
 func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
+	started := time.Now()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -88,6 +91,7 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 		if captureErr != "" {
 			cancel()
 			c.cancel = nil
+			diag.Errorf("hearing capture provider failed device=%q err=%q", cfg.VirtualMicDevice, captureErr)
 			return "音频捕获启动失败：" + captureErr
 		}
 	}
@@ -95,14 +99,17 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 	if err != nil {
 		cancel()
 		c.cancel = nil
+		diag.Errorf("hearing capture start failed device=%q err=%v", cfg.VirtualMicDevice, err)
 		return "音频捕获启动失败：" + err.Error()
 	}
+	diag.Infof("hearing capture started device=%q", cfg.VirtualMicDevice)
 
 	translator := cfg.TranslationProvider
 	if translator == nil {
 		if !translation.XunfeiConfigReady(cfg.Xunfei) {
 			cancel()
 			c.cancel = nil
+			diag.Errorf("hearing translator config incomplete source_lang=%s target_lang=%s", cfg.Xunfei.SourceLang, cfg.Xunfei.TargetLang)
 			return "讯飞 RTASR 配置不完整：请配置 AppID、API Key 和听力链语言"
 		}
 		if cfg.Xunfei.SourceLang != cfg.Xunfei.TargetLang && cfg.TextTranslator == nil {
@@ -121,8 +128,10 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 	if err != nil {
 		cancel()
 		c.cancel = nil
+		diag.Errorf("hearing translator start failed err=%v", err)
 		return "讯飞 RTASR 启动失败：" + err.Error()
 	}
+	diag.Infof("hearing translator started elapsed=%s", diag.Since(started))
 
 	// 意图分类器
 	llmCfg := cfg.LLMConfig
@@ -150,6 +159,7 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 
 	// session ID：每次 StartHearingChain 创建新 session，避免跨会话混用历史
 	sessionID := uuid.New().String()
+	diag.Infof("hearing session started session=%s monitor_enabled=%t", sessionID, cfg.MonitorConfig.Enabled)
 
 	c.wg.Add(1)
 	go func() {
@@ -171,6 +181,7 @@ func (c *Chain) Stop() {
 	}
 	c.mu.Unlock()
 	c.wg.Wait()
+	diag.Infof("hearing chain stopped")
 }
 
 // processLoop 是听力链的核心处理循环，协调字幕推送、意图识别、RAG 检索和回答生成。
@@ -194,9 +205,11 @@ func (c *Chain) processLoop(
 		case result, ok := <-results:
 			if !ok {
 				// channel 关闭 = 讯飞重连耗尽，通知前端
+				diag.Warnf("hearing result channel closed")
 				emitFn(EventError, "讯飞连接中断，请检查网络或重新启动")
 				return
 			}
+			diag.Infof("hearing result final=%t src_len=%d dst_len=%d", result.IsFinal, len(result.SrcText), len(result.DstText))
 			// 1. 立即推送字幕（dst_text）到提词窗，不等待意图分类
 			subtitle := SubtitleEvent{
 				Text:    result.DstText,
@@ -209,7 +222,11 @@ func (c *Chain) processLoop(
 				c.wg.Add(1)
 				go func() {
 					defer c.wg.Done()
-					_ = monitor.Speak(ctx, dstText)
+					if err := monitor.Speak(ctx, dstText); err != nil {
+						diag.Warnf("hearing monitor speak failed err=%v", err)
+					} else {
+						diag.Infof("hearing monitor spoke chars=%d", len(dstText))
+					}
 				}()
 			}
 
@@ -220,6 +237,7 @@ func (c *Chain) processLoop(
 			srcText := result.SrcText
 			go func() {
 				intentType := classifier.Classify(ctx, srcText)
+				diag.Infof("hearing intent classified intent=%s question_chars=%d", intentType, len(srcText))
 				if intentType == intent.IntentStatement {
 					return // 陈述不触发 RAG（D3：statement → 忽略）
 				}

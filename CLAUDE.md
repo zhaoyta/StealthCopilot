@@ -135,3 +135,6 @@ Wails exposes the native window handle — the CGO/syscall stealth hook attaches
 - **Change 内更新的逻辑必须同步写回对应的 change 文档**（proposal/design/spec/tasks），保持文档与实现一致。
 - **新增功能必须同步更新客户端帮助文档**（`docs/` 目录），说明按产品逻辑撰写，不体现技术名词和技术细节；需要截图的地方用占位符 `[截图：XXX]` 标注。
 - **propose 阶段必须询问用户是否同时生成 UI 原型**，确认后再执行。
+
+### git使用
+- 每次开发需要确认当前分支是否还没创建pr或者有open的pr。如果当前分支有合并的pr或者已关闭的pr，需要重新创建分支

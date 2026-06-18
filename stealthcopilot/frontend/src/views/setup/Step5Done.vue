@@ -19,8 +19,8 @@ onMounted(async () => {
     items.value = [
       { label: t('setup.done.xunfei'), done: cfg.xunfei_rtasr_app_id_set && cfg.xunfei_rtasr_api_key_set && cfg.xunfei_mt_app_id_set && cfg.xunfei_mt_api_key_set && cfg.xunfei_mt_api_secret_set },
       { label: t('setup.done.deepseek'), done: cfg.deepseek_key_set },
-      { label: t('setup.done.xunfeiTts'), done: cfg.xunfei_tts_app_id_set && cfg.xunfei_tts_api_key_set && cfg.xunfei_tts_api_secret_set },
-      { label: t('setup.done.voiceId'), done: cfg.xunfei_tts_asset_id_set },
+      { label: t('setup.done.defaultVoice'), done: true },
+      { label: t('setup.done.personalVoice'), done: cfg.xunfei_tts_asset_id_set },
       { label: t('setup.done.simli'), done: cfg.simli_key_set },
     ]
   } catch {

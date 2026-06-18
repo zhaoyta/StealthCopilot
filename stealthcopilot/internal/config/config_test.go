@@ -31,6 +31,9 @@ func TestManager_DefaultValues(t *testing.T) {
 	if m.Config.SpeakPolishPrompt == "" {
 		t.Error("SpeakPolishPrompt should not be empty")
 	}
+	if m.Config.TTSProvider != config.TTSProviderSystem {
+		t.Errorf("TTSProvider: want %q, got %q", config.TTSProviderSystem, m.Config.TTSProvider)
+	}
 }
 
 // TestManager_SaveLocalConfig 验证 SaveLocalConfig 持久化并同步内存。
@@ -65,6 +68,22 @@ func TestManager_SaveLocalConfig(t *testing.T) {
 	// 验证文件确实写入
 	if _, err := os.Stat(filepath.Join(dir, "config.json")); err != nil {
 		t.Errorf("config.json should exist: %v", err)
+	}
+}
+
+// TestManager_SaveAPIKeyRejectsVoiceCloneState 验证训练状态 ID 不能从通用密钥入口写入。
+func TestManager_SaveAPIKeyRejectsVoiceCloneState(t *testing.T) {
+	dir := t.TempDir()
+	m, err := config.NewManager(dir)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	if err := m.SaveAPIKey("xunfei_tts", "asset_id", "asset"); err == nil {
+		t.Fatal("SaveAPIKey should reject asset_id")
+	}
+	if err := m.SaveAPIKey("xunfei_tts", "task_id", "task"); err == nil {
+		t.Fatal("SaveAPIKey should reject task_id")
 	}
 }
 

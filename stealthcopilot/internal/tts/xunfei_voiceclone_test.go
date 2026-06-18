@@ -65,3 +65,64 @@ func TestBuildXunfeiVoiceCloneSynthesisRequest(t *testing.T) {
 		t.Fatalf("decoded text = %q", decoded)
 	}
 }
+
+func TestXunfeiVoiceTokenRetCodeHint(t *testing.T) {
+	hint := xunfeiVoiceTokenRetCodeHint("000007")
+	if !strings.Contains(hint, "签名校验失败") || !strings.Contains(hint, "官方 demo") {
+		t.Fatalf("hint = %q", hint)
+	}
+}
+
+func TestBuildXunfeiVoiceTokenBodyMatchesOfficialPythonDemo(t *testing.T) {
+	body := buildXunfeiVoiceTokenBody("app", "123456")
+	want := `{"base":{"appid":"app","version":"v1","timestamp":"123456"},"model":"remote"}`
+	if body != want {
+		t.Fatalf("body = %s, want %s", body, want)
+	}
+}
+
+func TestXunfeiVoiceTokenSignMatchesOfficialPythonDemo(t *testing.T) {
+	timestamp := "1710000000000"
+	body := buildXunfeiVoiceTokenBody("appid123", timestamp)
+	wantBody := `{"base":{"appid":"appid123","version":"v1","timestamp":"1710000000000"},"model":"remote"}`
+	if body != wantBody {
+		t.Fatalf("body = %s, want %s", body, wantBody)
+	}
+	sign := xunfeiVoiceTokenSign("key123", timestamp, body)
+	if sign != "923410ed6c83f264f54a1f0549e576d5" {
+		t.Fatalf("sign = %s", sign)
+	}
+}
+
+func TestXunfeiVoiceSignKeyCandidates(t *testing.T) {
+	candidates := xunfeiVoiceSignKeyCandidates(XunfeiVoiceCloneConfig{
+		APIKey:    " key ",
+		APISecret: "c2VjcmV0",
+	})
+	got := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		got = append(got, candidate.value)
+	}
+	want := []string{"key", "c2VjcmV0", "secret"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("candidates = %#v, want %#v", got, want)
+	}
+}
+
+func TestXunfeiVoiceTokenDebugInfoDoesNotExposeSecrets(t *testing.T) {
+	info := xunfeiVoiceTokenDebugInfo(XunfeiVoiceCloneConfig{
+		AppID:     "appid123",
+		APIKey:    "secret-api-key",
+		APISecret: "secret-api-secret",
+	}, `{"body":true}`, []string{"api_key:000007"})
+	for _, secret := range []string{"appid123", "secret-api-key", "secret-api-secret", `{"body":true}`} {
+		if strings.Contains(info, secret) {
+			t.Fatalf("debug info exposes secret %q in %q", secret, info)
+		}
+	}
+	for _, part := range []string{"app_id_len=8", "api_key_len=14", "api_secret_len=17", "token_body_sha256=", "api_key:000007"} {
+		if !strings.Contains(info, part) {
+			t.Fatalf("debug info missing %q in %q", part, info)
+		}
+	}
+}
