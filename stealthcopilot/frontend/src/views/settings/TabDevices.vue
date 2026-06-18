@@ -1,7 +1,8 @@
 <script lang="ts" setup>
 import { reactive, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { RefreshCw } from 'lucide-vue-next'
+import { HelpCircle, RefreshCw } from 'lucide-vue-next'
+import MeetingSetupGuide from '../../components/MeetingSetupGuide.vue'
 
 const { t } = useI18n()
 
@@ -13,6 +14,7 @@ const videoInputs  = ref<DeviceOption[]>([])
 const refreshing   = ref(false)
 const saving       = ref(false)
 const msg          = ref('')
+const showMeetingGuide = ref(false)
 
 const config = reactive({
   virtualMic:  '',
@@ -24,6 +26,31 @@ const config = reactive({
   hearingMonitorVolume: 80,
   hearingMonitorRate: 0,
 })
+
+type DeviceRole = 'meetingAudio' | 'virtualCam' | 'monitorOutput'
+
+function isVirtualAudioDevice(name: string): boolean {
+  const n = name.toLowerCase()
+  return n.includes('blackhole') || n.includes('vb-cable') || n.includes('vb-audio') || n.includes('cable output')
+}
+
+function isVirtualCameraDevice(name: string): boolean {
+  const n = name.toLowerCase()
+  return n.includes('stealthvirtualcam') || n.includes('stealth virtual') || n.includes('obs virtual')
+}
+
+function deviceOptionLabel(device: DeviceOption, role: DeviceRole): string {
+  if (role === 'meetingAudio' && isVirtualAudioDevice(device.name)) {
+    return t('settings.devices.recommendedVirtualMic', { name: device.name })
+  }
+  if (role === 'virtualCam' && isVirtualCameraDevice(device.name)) {
+    return t('settings.devices.recommendedVirtualCam', { name: device.name })
+  }
+  if (role === 'monitorOutput' && device.name.toLowerCase().includes('headphone')) {
+    return t('settings.devices.recommendedMonitorOutput', { name: device.name })
+  }
+  return device.name
+}
 
 async function loadDevices() {
   refreshing.value = true
@@ -83,23 +110,35 @@ async function save() {
       <h2 class="text-base font-semibold text-gray-200">
         {{ t('settings.tabs.devices') }}
       </h2>
-      <button
-        class="flex items-center gap-2 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition-colors"
-        :disabled="refreshing"
-        @click="loadDevices"
-      >
-        <RefreshCw
-          :size="14"
-          :class="refreshing ? 'animate-spin' : ''"
-        />
-        {{ t('settings.devices.refresh') }}
-      </button>
+      <div class="flex items-center gap-2">
+        <button
+          class="flex items-center gap-2 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition-colors"
+          @click="showMeetingGuide = true"
+        >
+          <HelpCircle :size="14" />
+          {{ t('meetingGuide.entry') }}
+        </button>
+        <button
+          class="flex items-center gap-2 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition-colors"
+          :disabled="refreshing"
+          @click="loadDevices"
+        >
+          <RefreshCw
+            :size="14"
+            :class="refreshing ? 'animate-spin' : ''"
+          />
+          {{ t('settings.devices.refresh') }}
+        </button>
+      </div>
     </div>
 
     <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 space-y-4">
-      <!-- 虚拟声卡 -->
+      <!-- 会议音频虚拟通道 -->
       <div>
         <label class="block text-xs text-gray-400 mb-1">{{ t('settings.devices.virtualMic') }}</label>
+        <p class="mb-2 text-[11px] leading-relaxed text-gray-500">
+          {{ t('settings.devices.virtualMicHint') }}
+        </p>
         <select
           v-model="config.virtualMic"
           class="form-select"
@@ -112,7 +151,7 @@ async function save() {
             :key="d.id"
             :value="d.name"
           >
-            {{ d.name }}
+            {{ deviceOptionLabel(d, 'meetingAudio') }}
           </option>
         </select>
       </div>
@@ -162,7 +201,7 @@ async function save() {
               :key="d.id"
               :value="d.name"
             >
-              {{ d.name }}
+              {{ deviceOptionLabel(d, 'monitorOutput') }}
             </option>
           </select>
         </div>
@@ -251,5 +290,10 @@ async function save() {
         {{ t('common.save') }}
       </button>
     </div>
+
+    <MeetingSetupGuide
+      :open="showMeetingGuide"
+      @close="showMeetingGuide = false"
+    />
   </div>
 </template>

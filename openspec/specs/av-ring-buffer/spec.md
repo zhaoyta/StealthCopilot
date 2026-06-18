@@ -4,7 +4,7 @@
 系统 SHALL 使用 Go 环形缓冲区对齐音频帧与 Simli 返回的视频帧时间戳，补偿 Simli API 约 200-400ms 的云端处理延迟，保证输出到虚拟摄像头的音视频帧 delta ≤ 40ms。
 
 #### Scenario: 音频帧入队
-- **WHEN** ElevenLabs TTS 产出 PCM 音频 chunk
+- **WHEN** 讯飞声音复刻 TTS 产出 PCM 音频 chunk
 - **THEN** 音频帧携带 PTS（presentation timestamp，单位 ms）写入音频环形缓冲区
 
 #### Scenario: 视频帧入队

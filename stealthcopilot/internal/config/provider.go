@@ -61,7 +61,7 @@ func DefaultProviderConfig() ProviderConfig {
 	return ProviderConfig{
 		Translation: TranslationProviderXunfei,
 		LLM:         LLMProviderDeepSeek,
-		TTS:         TTSProviderXunfeiVoiceClone,
+		TTS:         TTSProviderSystem,
 		LipSync:     LipSyncProviderSimli,
 		Embedding:   EmbeddingProviderPythonBridge,
 	}

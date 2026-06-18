@@ -10,6 +10,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/zhaoyta/stealthcopilot/internal/diag"
 )
 
 // NewSystemVirtualMicWriter returns a real virtual mic writer when ffmpeg can
@@ -21,15 +23,19 @@ func NewSystemVirtualMicWriter(deviceName string) VirtualMicWriter {
 
 func NewSystemVirtualMicWriterChecked(deviceName string) (VirtualMicWriter, string) {
 	if strings.TrimSpace(deviceName) == "" {
+		diag.Warnf("virtual mic writer using null writer: empty device")
 		return NewNullVirtualMicWriter(), ""
 	}
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		diag.Errorf("virtual mic writer unavailable: ffmpeg missing device=%q", deviceName)
 		return NewNullVirtualMicWriter(), "ffmpeg 未安装，无法写入真实虚拟麦克风"
 	}
 	w, err := NewFFmpegVirtualMicWriter(deviceName)
 	if err != nil {
+		diag.Errorf("virtual mic writer start failed device=%q err=%v", deviceName, err)
 		return NewNullVirtualMicWriter(), "虚拟麦克风写入器启动失败：" + err.Error()
 	}
+	diag.Infof("virtual mic writer ready device=%q", deviceName)
 	return w, ""
 }
 
@@ -37,6 +43,7 @@ func NewSystemVirtualMicWriterChecked(deviceName string) (VirtualMicWriter, stri
 // preserves the Zero-PCM/TTS state machine used by the speaking chain.
 type FFmpegVirtualMicWriter struct {
 	state  atomic.Int32
+	device string
 	mu     sync.Mutex
 	stdin  io.WriteCloser
 	cmd    *exec.Cmd
@@ -50,36 +57,53 @@ func NewFFmpegVirtualMicWriter(deviceName string) (*FFmpegVirtualMicWriter, erro
 	if err != nil {
 		return nil, err
 	}
+	diag.Infof("virtual mic ffmpeg start device=%q args=%q", deviceName, args)
 	cmd := exec.Command("ffmpeg", args...)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
 	}
-	cmd.Stderr = io.Discard
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		_ = stdin.Close()
+		return nil, err
+	}
 	if err := cmd.Start(); err != nil {
 		_ = stdin.Close()
 		return nil, err
 	}
+	diag.Infof("virtual mic ffmpeg started pid=%d device=%q", cmd.Process.Pid, deviceName)
 
 	w := &FFmpegVirtualMicWriter{
-		stdin: stdin,
-		cmd:   cmd,
-		done:  make(chan struct{}),
+		device: deviceName,
+		stdin:  stdin,
+		cmd:    cmd,
+		done:   make(chan struct{}),
 	}
 	go w.zeroPCMLoop()
+	go func() {
+		buf, _ := io.ReadAll(stderr)
+		if len(buf) > 0 {
+			diag.Warnf("virtual mic ffmpeg stderr device=%q stderr=%q", deviceName, limitLogString(string(buf), 2000))
+		}
+	}()
 	return w, nil
 }
 
 func (w *FFmpegVirtualMicWriter) BeginZeroPCM() {
+	diag.Infof("virtual mic begin zero-pcm device=%q", w.device)
 	w.state.Store(int32(micStateZeroPCM))
 }
 
 func (w *FFmpegVirtualMicWriter) WriteChunk(chunk []byte) {
-	w.state.CompareAndSwap(int32(micStateZeroPCM), int32(micStateTTS))
+	if w.state.CompareAndSwap(int32(micStateZeroPCM), int32(micStateTTS)) {
+		diag.Infof("virtual mic first tts chunk device=%q bytes=%d peak=%d", w.device, len(chunk), pcmPeak(chunk))
+	}
 	w.write(chunk)
 }
 
 func (w *FFmpegVirtualMicWriter) EndTTS() {
+	diag.Infof("virtual mic end tts device=%q", w.device)
 	w.state.Store(int32(micStateIdle))
 }
 
@@ -102,6 +126,7 @@ func (w *FFmpegVirtualMicWriter) Close() {
 			}
 			_ = cmd.Wait()
 		}
+		diag.Infof("virtual mic closed device=%q", w.device)
 	})
 }
 
@@ -150,8 +175,14 @@ func ffmpegVirtualMicArgsForGOOS(goos, deviceName string) ([]string, error) {
 	switch goos {
 	case "darwin":
 		base = append(base, "-f", "audiotoolbox")
-		if idx, ok := parseAudioDeviceIndex(deviceName); ok {
+		if strings.TrimSpace(deviceName) == "" {
+			return append(base, "-"), nil
+		}
+		if idx, ok := resolveAudioDeviceIndex(deviceName); ok {
 			base = append(base, "-audio_device_index", strconv.Itoa(idx))
+			diag.Infof("virtual mic darwin output resolved device=%q index=%d", deviceName, idx)
+		} else {
+			return nil, fmt.Errorf("无法解析 AudioToolbox 输出设备：%s", deviceName)
 		}
 		return append(base, "-"), nil
 	case "windows":

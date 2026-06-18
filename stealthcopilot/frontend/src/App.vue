@@ -11,8 +11,10 @@ import { GetConfig, MarkSetupComplete, ShowTeleprompter } from '../wailsjs/go/ma
 
 const { t } = useI18n()
 type View = 'loading' | 'setup' | 'dashboard' | 'settings' | 'teleprompter'
+type SettingsTabId = 'apiKeys' | 'language' | 'devices' | 'voice' | 'resume' | 'ghost' | 'advanced'
 
 const currentView = ref<View>('loading')
+const settingsInitialTab = ref<SettingsTabId>('apiKeys')
 
 onMounted(async () => {
   const previewView = new URLSearchParams(window.location.search).get('view')
@@ -48,7 +50,8 @@ async function onSetupComplete() {
   currentView.value = 'dashboard'
 }
 
-function openSettings() {
+function openSettings(tab: SettingsTabId = 'apiKeys') {
+  settingsInitialTab.value = tab
   currentView.value = 'settings'
 }
 
@@ -95,6 +98,7 @@ async function openTeleprompter() {
   <!-- 设置面板（全屏覆盖） -->
   <Settings
     v-else-if="currentView === 'settings'"
+    :initial-tab="settingsInitialTab"
     @close="closeSettings"
   />
 

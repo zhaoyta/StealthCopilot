@@ -14,16 +14,16 @@ interface KeyField {
   show: boolean
 }
 
-// 必填：讯飞 RTASR、讯飞机器翻译、讯飞声音复刻、DeepSeek；可选：Simli
+// 必填：讯飞 RTASR、讯飞机器翻译、DeepSeek；可选：讯飞声音复刻、Simli
 const fields = reactive<KeyField[]>([
   { service: 'xunfei_rtasr', field: 'app_id', label: t('settings.apiKeys.xunfei.rtasrAppId'), required: true, value: '', show: false },
   { service: 'xunfei_rtasr', field: 'api_key', label: t('settings.apiKeys.xunfei.rtasrApiKey'), required: true, value: '', show: false },
   { service: 'xunfei_mt', field: 'app_id', label: t('settings.apiKeys.xunfei.mtAppId'), required: true, value: '', show: false },
   { service: 'xunfei_mt', field: 'api_key', label: t('settings.apiKeys.xunfei.mtApiKey'), required: true, value: '', show: false },
   { service: 'xunfei_mt', field: 'api_secret', label: t('settings.apiKeys.xunfei.mtApiSecret'), required: true, value: '', show: false },
-  { service: 'xunfei_tts', field: 'app_id', label: t('settings.apiKeys.xunfei.ttsAppId'), required: true, value: '', show: false },
-  { service: 'xunfei_tts', field: 'api_key', label: t('settings.apiKeys.xunfei.ttsApiKey'), required: true, value: '', show: false },
-  { service: 'xunfei_tts', field: 'api_secret', label: t('settings.apiKeys.xunfei.ttsApiSecret'), required: true, value: '', show: false },
+  { service: 'xunfei_tts', field: 'app_id', label: t('settings.apiKeys.xunfei.ttsAppId'), required: false, value: '', show: false },
+  { service: 'xunfei_tts', field: 'api_key', label: t('settings.apiKeys.xunfei.ttsApiKey'), required: false, value: '', show: false },
+  { service: 'xunfei_tts', field: 'api_secret', label: t('settings.apiKeys.xunfei.ttsApiSecret'), required: false, value: '', show: false },
   { service: 'deepseek', field: 'key', label: t('settings.apiKeys.deepseek.key'), required: true, value: '', show: false },
   { service: 'simli', field: 'key', label: t('settings.apiKeys.simli.key'), required: false, value: '', show: false },
 ])

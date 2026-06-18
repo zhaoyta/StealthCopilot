@@ -16,7 +16,7 @@
 - **THEN** 可访问以下页面：
   - 首页（产品简介、快速开始）
   - 架构说明（三管道流程图、技术选型理由）
-  - API Key 配置指南（讯飞/DeepSeek/ElevenLabs/Simli 各服务申请步骤）
+  - API Key 配置指南（讯飞 RTASR/讯飞机器翻译/讯飞声音复刻/DeepSeek/Simli 各服务申请步骤）
   - 隐私说明（数据不上传到第三方云服务）
   - 贡献指南（开发环境搭建、Conventional Commits 规范、CLA 说明）
   - CHANGELOG（从 CHANGELOG.md 自动引用）

@@ -9,7 +9,9 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"github.com/zhaoyta/stealthcopilot/internal/audio"
 	"github.com/zhaoyta/stealthcopilot/internal/config"
+	"github.com/zhaoyta/stealthcopilot/internal/diag"
 	"github.com/zhaoyta/stealthcopilot/internal/hearing"
 	"github.com/zhaoyta/stealthcopilot/internal/resume"
 	"github.com/zhaoyta/stealthcopilot/internal/speaking"
@@ -31,6 +33,7 @@ type App struct {
 	SpeakingChain       *speaking.Chain
 	VideoChain          *video.Chain
 	TeleprompterWindow  ui.TeleprompterWindow
+	VoiceRecorder       *audio.VoiceTrainingRecorder
 	teleprompterMu      sync.RWMutex
 	teleprompterVisible bool
 	teleprompterWindow  windowSnapshot
@@ -58,6 +61,8 @@ func (a *App) startup(ctx context.Context) {
 	a.stealthStatus = ui.StealthStatusUnavailable
 
 	dataDir := appDataDir()
+	diag.Init(dataDir)
+	diag.Infof("startup begin data_dir=%s", dataDir)
 	scriptPath := filepath.Join(dataDir, "embed.py")
 	if err := ensureEmbeddedFile(scriptPath, embeddedEmbedScript, 0o700); err != nil {
 		_, _ = runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
@@ -80,6 +85,19 @@ func (a *App) startup(ctx context.Context) {
 	}
 	a.ConfigSvc = cfgSvc
 	cfgSvc.Startup(ctx)
+	diag.Infof("config loaded setup_completed=%t ui_locale=%s translation_provider=%s tts_provider=%s lipsync_provider=%s virtual_mic=%q physical_mic=%q monitor_enabled=%t monitor_output=%q physical_cam=%q virtual_cam=%q",
+		cfgSvc.InternalManager().Config.SetupCompleted,
+		cfgSvc.InternalManager().Config.UILocale,
+		cfgSvc.InternalManager().Config.TranslationProvider,
+		cfgSvc.InternalManager().Config.TTSProvider,
+		cfgSvc.InternalManager().Config.LipSyncProvider,
+		cfgSvc.InternalManager().Config.VirtualMicName,
+		cfgSvc.InternalManager().Config.PhysicalMicName,
+		cfgSvc.InternalManager().Config.HearingMonitorEnabled,
+		cfgSvc.InternalManager().Config.MonitorOutputName,
+		cfgSvc.InternalManager().Config.PhysicalCamName,
+		cfgSvc.InternalManager().Config.VirtualCamName,
+	)
 
 	// 2. 简历服务（embedding：Python 桥接，不可用时降级为 NullProvider）
 	var embedder resume.EmbeddingProvider
@@ -120,16 +138,22 @@ func (a *App) startup(ctx context.Context) {
 
 	// 7. 原生提词窗（平台不可用时内部为 no-op，ShowTeleprompter 会走 Wails fallback）
 	a.TeleprompterWindow = ui.NewTeleprompterWindow()
+
+	// 8. 声音复刻训练录音器（通过 Go/ffmpeg 访问麦克风，绕过 WKWebView getUserMedia 限制）
+	a.VoiceRecorder = &audio.VoiceTrainingRecorder{}
+	diag.Infof("startup complete")
 }
 
 // shutdown 在 Wails 应用关闭时调用，释放资源。
 func (a *App) shutdown(_ context.Context) {
+	diag.Infof("shutdown begin")
 	if a.TeleprompterWindow != nil {
 		_ = a.TeleprompterWindow.Close()
 	}
 	if a.ResumeSvc != nil {
 		_ = a.ResumeSvc.InternalManager().Close()
 	}
+	diag.Infof("shutdown complete")
 }
 
 // appDataDir 返回平台相关的应用数据目录。

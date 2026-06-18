@@ -16,7 +16,7 @@
 - **THEN** 各 Tab 的输入状态保留，不重置
 
 ### Requirement: API 凭证 Tab
-每个服务（讯飞 / DeepSeek / ElevenLabs / Simli AI）SHALL 提供密码输入框（可切换显示/隐藏）和"连接测试"按钮，测试结果显示"已连接"或"失败"状态徽章。
+每个服务（讯飞 RTASR / 讯飞机器翻译 / 讯飞声音复刻 / DeepSeek / Simli AI）SHALL 提供密码输入框（可切换显示/隐藏）和"连接测试"按钮，测试结果显示"已连接"或"失败"状态徽章。讯飞声音复刻的用户可编辑凭证 SHALL 只有 App ID、API Key、API Secret。Task ID 和 Asset ID 是声音复刻流程产物，SHALL NOT 在服务密钥页提供手填入口。
 
 #### Scenario: 连接测试
 - **WHEN** 用户点击某服务的"连接测试"按钮

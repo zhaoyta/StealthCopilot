@@ -6,10 +6,12 @@ package speaking
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/zhaoyta/stealthcopilot/internal/audio"
+	"github.com/zhaoyta/stealthcopilot/internal/diag"
 	"github.com/zhaoyta/stealthcopilot/internal/llm"
 	"github.com/zhaoyta/stealthcopilot/internal/translation"
 	"github.com/zhaoyta/stealthcopilot/internal/tts"
@@ -72,6 +74,7 @@ type Chain struct {
 // Start 以给定配置启动说话链。已在运行时幂等（先停止后重启）。
 // wailsCtx 是 Wails 应用 context，用于 EventsEmit 推送事件。
 func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
+	started := time.Now()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -92,6 +95,7 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 	// VAD 检测器
 	detector := vad.NewEnergyDetector(threshMs, 40)
 	c.vadDetect = detector
+	diag.Infof("speaking vad initialized silence_threshold_ms=%d", threshMs)
 
 	// 物理麦克风捕获：用户选择设备时使用系统采集；未配置设备时保持静音降级。
 	var mic audio.MicProvider = &audio.NullMicProvider{}
@@ -101,6 +105,7 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 		if micErr != "" {
 			cancel()
 			c.cancel = nil
+			diag.Errorf("speaking mic provider failed device=%q err=%q", cfg.PhysicalMicDevice, micErr)
 			return "物理麦克风启动失败：" + micErr
 		}
 	}
@@ -108,8 +113,10 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 	if err != nil {
 		cancel()
 		c.cancel = nil
+		diag.Errorf("speaking mic start failed device=%q err=%v", cfg.PhysicalMicDevice, err)
 		return "物理麦克风启动失败：" + err.Error()
 	}
+	diag.Infof("speaking mic started device=%q", cfg.PhysicalMicDevice)
 
 	translator := cfg.Translator
 	if translator == nil {
@@ -117,6 +124,7 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 			cancel()
 			_ = mic.Close()
 			c.cancel = nil
+			diag.Errorf("speaking translator config incomplete source_lang=%s target_lang=%s", cfg.Xunfei.SourceLang, cfg.Xunfei.TargetLang)
 			return "讯飞 RTASR 配置不完整：请配置 AppID、API Key 和说话链语言"
 		}
 		if cfg.Xunfei.SourceLang != cfg.Xunfei.TargetLang && cfg.TextTranslator == nil {
@@ -139,6 +147,7 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 			cancel()
 			_ = mic.Close()
 			c.cancel = nil
+			diag.Errorf("speaking tts config incomplete virtual_mic=%q", cfg.VirtualMicDevice)
 			return "讯飞声音复刻 TTS 配置不完整：请配置 AppID、API Key、API Secret，并完成音色训练获得 Asset ID"
 		}
 		ttsProvider = &tts.NullTTSProvider{}
@@ -153,9 +162,11 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 			cancel()
 			_ = mic.Close()
 			c.cancel = nil
+			diag.Errorf("speaking virtual mic writer failed device=%q err=%q", cfg.VirtualMicDevice, virtualMicErr)
 			return virtualMicErr
 		}
 	}
+	diag.Infof("speaking chain started elapsed=%s virtual_mic=%q", diag.Since(started), cfg.VirtualMicDevice)
 
 	c.wg.Add(1)
 	go func() {
@@ -166,6 +177,7 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 
 		// VAD 回调：每当检测到完整语音段时触发说话链管道
 		detector.Run(ctx, audioStream, func(seg vad.SpeechSegment) {
+			diag.Infof("speaking vad segment bytes=%d peak=%d", len(seg.PCM), audioPeak(seg.PCM))
 			c.handleSegment(ctx, wailsCtx, seg, translator, ttsProvider, virtualMic, cfg)
 		})
 	}()
@@ -182,6 +194,7 @@ func (c *Chain) Stop() {
 	}
 	c.mu.Unlock()
 	c.wg.Wait()
+	diag.Infof("speaking chain stopped")
 }
 
 // SetSilenceThreshold 运行时更新 VAD 静音阈值（毫秒），即时生效。
@@ -210,18 +223,22 @@ func (c *Chain) handleSegment(
 	virtualMic audio.VirtualMicWriter,
 	cfg ChainConfig,
 ) {
+	started := time.Now()
 	// 1. 立即开始写 Zero-PCM，阻断母语泄漏
 	virtualMic.BeginZeroPCM()
 	runtime.EventsEmit(wailsCtx, EventSpeakStart)
+	diag.Infof("speaking segment start bytes=%d", len(seg.PCM))
 
 	// 2. 讯飞语音翻译（2s 超时）
 	translatedText, err := translator.Translate(ctx, seg.PCM)
 	if err != nil {
 		// 超时或翻译失败：停止 Zero-PCM，降级（真实麦克风直通由用户手动切换）
 		virtualMic.EndTTS()
+		diag.Warnf("speaking translate failed elapsed=%s err=%v", diag.Since(started), err)
 		runtime.EventsEmit(wailsCtx, EventSpeakError, "语音翻译超时，请检查讯飞 API 配置")
 		return
 	}
+	diag.Infof("speaking translate ok elapsed=%s translated_chars=%d", diag.Since(started), len(translatedText))
 
 	// 3. [可选] DeepSeek 润色：将目标文本润色为更流利的英文
 	//    PolishEnabled=true 且 DeepSeekKey 非空时调用；超时/失败时静默降级使用原译文。
@@ -235,6 +252,9 @@ func (c *Chain) handleSegment(
 	if cfg.PolishEnabled && llmCfg.APIKey != "" {
 		if polished, polishErr := llm.PolishWithConfig(ctx, llmCfg, cfg.PolishPrompt, translatedText); polishErr == nil {
 			translatedText = polished
+			diag.Infof("speaking polish ok chars=%d", len(translatedText))
+		} else {
+			diag.Warnf("speaking polish skipped err=%v", polishErr)
 		}
 		// polish 出错时 translatedText 保持文本翻译原文，不中断流程
 	}
@@ -243,17 +263,27 @@ func (c *Chain) handleSegment(
 	audioCh, err := ttsProvider.Synthesize(ctx, translatedText)
 	if err != nil {
 		virtualMic.EndTTS()
+		diag.Warnf("speaking tts failed err=%v", err)
 		runtime.EventsEmit(wailsCtx, EventSpeakError, "TTS 合成失败："+err.Error())
 		return
 	}
+	diag.Infof("speaking tts stream started chars=%d", len(translatedText))
 
 	// 5. 流式写入虚拟麦克风（首帧自动切换 Zero-PCM → TTS 音频）
+	chunkCount := 0
+	byteCount := 0
 	for chunk := range audioCh {
 		select {
 		case <-ctx.Done():
 			virtualMic.EndTTS()
+			diag.Warnf("speaking tts stream canceled chunks=%d bytes=%d", chunkCount, byteCount)
 			return
 		default:
+			chunkCount++
+			byteCount += len(chunk)
+			if chunkCount == 1 || chunkCount%20 == 0 {
+				diag.Infof("speaking tts chunk chunks=%d bytes=%d last_chunk=%d peak=%d", chunkCount, byteCount, len(chunk), audioPeak(chunk))
+			}
 			virtualMic.WriteChunk(chunk)
 			if cfg.AudioSink != nil {
 				cfg.AudioSink(chunk)
@@ -263,5 +293,10 @@ func (c *Chain) handleSegment(
 
 	// 5. TTS 结束，回到 Idle
 	virtualMic.EndTTS()
+	diag.Infof("speaking segment done elapsed=%s chunks=%d bytes=%d", diag.Since(started), chunkCount, byteCount)
 	runtime.EventsEmit(wailsCtx, EventSpeakDone)
+}
+
+func audioPeak(frame []byte) int {
+	return audio.PCMPeak(frame)
 }

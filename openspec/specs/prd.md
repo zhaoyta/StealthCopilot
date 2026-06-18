@@ -49,12 +49,12 @@
 用户说母语（麦克风）
   → 本地 VAD 检测说话结束
   → 讯飞语音翻译 API（母语语音 → 目标语言文本，单次调用）
-  → ElevenLabs 流式 TTS（目标语言文本 → 用户克隆音色音频）
-  → 虚拟麦克风写入（BlackHole / VB-Cable）→ 面试官听到克隆语音
+  → 默认音色或讯飞声音复刻流式 TTS（目标语言文本 → 默认/个人复刻音色音频）
+  → 虚拟麦克风写入（BlackHole / VB-Cable）→ 面试官听到目标语言语音
 ```
 
 **关键设计：**
-- 等待 ElevenLabs 生成期间，Go 后端持续向虚拟麦克风写入 Zero-PCM 静音块，防止用户母语背景音泄漏给面试官
+- 等待 TTS 生成期间，Go 后端持续向虚拟麦克风写入 Zero-PCM 静音块，防止用户母语背景音泄漏给面试官
 - DeepSeek 润色作为可选开关（设置里"高质量模式"），默认关闭以保证延迟
 - 讯飞语音翻译 API 同时完成 ASR + 翻译，无需两次调用
 
@@ -119,7 +119,7 @@
 | 虚拟摄像头 | 自研捆绑 CoreMediaIO DAL 插件（Mac）+ DirectShow Filter（Win），基于 AkVirtualCamera，首次启动一键安装，不依赖 OBS |
 | 听力链 | 讯飞实时语音翻译 API（WebSocket，src_text + dst_text 双输出） |
 | 说话链 STT | 讯飞语音翻译 API（VAD 触发，母语语音 → 目标语言文本） |
-| 说话链 TTS | ElevenLabs 流式 TTS（克隆音色，用户在 Setup 向导中录制上传） |
+| 说话链 TTS | 默认音色 TTS + 讯飞声音复刻流式 TTS（个人复刻音色为可选增强） |
 | 意图识别 | DeepSeek（轻量分类：question / followup / statement） |
 | 回答生成 | DeepSeek-V3（流式输出，带多轮对话历史） |
 | 简历 Embedding | multilingual-e5-large + 本地向量库 |
@@ -133,7 +133,7 @@
 
 | Tab | 内容 |
 |---|---|
-| API 凭证 | 讯飞（AppID/APIKey/APISecret）、DeepSeek（Key/模型）、ElevenLabs（Key/Voice ID）、Simli AI（Key），各有连通性测试按钮 |
+| API 凭证 | 讯飞 RTASR、讯飞机器翻译、讯飞声音复刻（AppID/APIKey/APISecret）、DeepSeek（Key/模型）、Simli AI（Key），各有连通性测试按钮；Task ID / Asset ID 由声音复刻流程自动保存，不手填 |
 | 语言配置 | 听力链「源语言→目标语言」、说话链「输入语言→输出语言」，独立下拉，讯飞支持的语言对 |
 | 设备绑定 | 虚拟声卡、物理麦克风、物理摄像头、虚拟摄像头，动态枚举 |
 | 简历管理 | 上传 PDF/DOCX，本地 embedding，多份可切换，当前激活标记 |
@@ -146,8 +146,8 @@
 
 1. **欢迎**：产品介绍，约需 3 分钟完成配置
 2. **依赖检测**：检测 BlackHole / 虚拟摄像头驱动是否安装，缺失项一键安装（需一次 admin 授权）
-3. **核心 API Key**：仅填讯飞 + DeepSeek（必填），ElevenLabs / Simli 可稍后补充
-4. **声音克隆录制**：在 app 内录制约 15 秒，上传至用户自己的 ElevenLabs 账户，自动获取 Voice ID
+3. **核心 API Key**：填写讯飞 RTASR、讯飞机器翻译、讯飞声音复刻和 DeepSeek（必填），Simli 可稍后补充
+4. **声音复刻录制**：可跳过并使用默认音色；如需个人复刻音色，则在 app 内按讯飞训练文本录音并提交训练，训练完成后自动保存 Asset ID
 5. **完成**：进入主界面
 
 ---
@@ -184,5 +184,5 @@
 | 阶段 | 目标 |
 |---|---|
 | Phase 1 | Wails 骨架 + 幽灵 UI + 设置面板 + Setup 向导 + 听力链（字幕 + RAG 回答） |
-| Phase 2 | 说话链（VAD + 讯飞翻译 + ElevenLabs TTS + 虚拟麦克风）+ 视频链（Simli AI + 虚拟摄像头 + 熔断） |
+| Phase 2 | 说话链（VAD + 讯飞翻译 + 讯飞声音复刻 TTS + 虚拟麦克风）+ 视频链（Simli AI + 虚拟摄像头 + 熔断） |
 | Phase 3 | SaaS 计费、自营云服务（StealthCloudProvider）、Homebrew/Scoop 分发、开启内测 |

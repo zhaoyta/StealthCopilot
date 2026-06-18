@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: 熔断器与硬件直通降级
-系统 SHALL 实现熔断器，在云端管道（Simli AI / ElevenLabs）不可用时，在 ≤10ms 内切换到真实摄像头 + 真实麦克风直通，面试过程无中断。
+系统 SHALL 实现熔断器，在云端管道（Simli AI / 讯飞声音复刻）不可用时，在 ≤10ms 内切换到真实摄像头 + 真实麦克风直通，面试过程无中断。
 
 #### Scenario: UDP 心跳检测
 - **WHEN** 视频管道激活
@@ -9,7 +9,7 @@
 
 #### Scenario: 心跳丢失触发熔断
 - **WHEN** 连续 3 次心跳（150ms）无响应
-- **THEN** 立即触发熔断：断开 Simli WebSocket，停止 ElevenLabs 输出，清空环形缓冲区，在 ≤10ms 内将真实摄像头帧直通虚拟摄像头，真实麦克风直通虚拟麦克风
+- **THEN** 立即触发熔断：断开 Simli WebSocket，停止讯飞声音复刻输出，清空环形缓冲区，在 ≤10ms 内将真实摄像头帧直通虚拟摄像头，真实麦克风直通虚拟麦克风
 
 #### Scenario: 视频延迟触发熔断
 - **WHEN** 视频帧 PTS 落后音频 PTS 超过 300ms

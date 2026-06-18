@@ -50,8 +50,6 @@ const services = reactive<ServiceConfig[]>([
       { service: 'xunfei_tts', field: 'app_id',     label: t('settings.apiKeys.xunfei.ttsAppId'),     secret: true,  value: '', show: false },
       { service: 'xunfei_tts', field: 'api_key',    label: t('settings.apiKeys.xunfei.ttsApiKey'),    secret: true,  value: '', show: false },
       { service: 'xunfei_tts', field: 'api_secret', label: t('settings.apiKeys.xunfei.ttsApiSecret'), secret: true,  value: '', show: false },
-      { service: 'xunfei_tts', field: 'asset_id',   label: t('settings.apiKeys.xunfei.ttsAssetId'),   secret: false, value: '', show: false },
-      { service: 'xunfei_tts', field: 'task_id',    label: t('settings.apiKeys.xunfei.ttsTaskId'),    secret: false, value: '', show: false },
     ],
   },
   {
@@ -89,8 +87,6 @@ onMounted(async () => {
       xunfei_tts_app_id: cfg.xunfei_tts_app_id_set,
       xunfei_tts_api_key: cfg.xunfei_tts_api_key_set,
       xunfei_tts_api_secret: cfg.xunfei_tts_api_secret_set,
-      xunfei_tts_asset_id: cfg.xunfei_tts_asset_id_set,
-      xunfei_tts_task_id: cfg.xunfei_tts_task_id_set,
       deepseek_key: cfg.deepseek_key_set,
       deepseek_model: !!cfg.deepseek_model,
       simli_key: cfg.simli_key_set,

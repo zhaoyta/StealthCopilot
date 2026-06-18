@@ -168,7 +168,7 @@ func (m *Manager) applyLocalConfig(lc LocalConfig) {
 	m.Config.LLMBaseURL = stringOr(lc.LLMBaseURL, DefaultLLMBaseURL)
 	m.Config.TranslationProvider = translationProviderOr(lc.TranslationProvider, TranslationProviderXunfei)
 	m.Config.LLMProvider = llmProviderOr(lc.LLMProvider, LLMProviderDeepSeek)
-	m.Config.TTSProvider = ttsProviderOr(lc.TTSProvider, TTSProviderXunfeiVoiceClone)
+	m.Config.TTSProvider = ttsProviderOr(lc.TTSProvider, TTSProviderSystem)
 	m.Config.LipSyncProvider = lipSyncProviderOr(lc.LipSyncProvider, LipSyncProviderSimli)
 	m.Config.EmbeddingProvider = embeddingProviderOr(lc.EmbeddingProvider, EmbeddingProviderPythonBridge)
 	m.Config.HearingSourceLang = stringOr(lc.HearingSourceLang, DefaultHearingSourceLang)
@@ -196,6 +196,23 @@ func (m *Manager) applyLocalConfig(lc LocalConfig) {
 func (m *Manager) SaveAPIKey(service, field, value string) error {
 	value = strings.TrimSpace(value)
 	key := service + "_" + field
+	if key == keyXunfeiTTSAssetID || key == keyXunfeiTTSTaskID {
+		return errInternalVoiceCloneField(key)
+	}
+	return m.saveKey(key, value)
+}
+
+// SaveXunfeiTTSTaskID 保存声音复刻训练任务 ID，仅供声音复刻流程内部调用。
+func (m *Manager) SaveXunfeiTTSTaskID(taskID string) error {
+	return m.saveKey(keyXunfeiTTSTaskID, strings.TrimSpace(taskID))
+}
+
+// SaveXunfeiTTSAssetID 保存声音复刻训练完成后的 Asset ID，仅供声音复刻流程内部调用。
+func (m *Manager) SaveXunfeiTTSAssetID(assetID string) error {
+	return m.saveKey(keyXunfeiTTSAssetID, strings.TrimSpace(assetID))
+}
+
+func (m *Manager) saveKey(key, value string) error {
 	if err := m.store.Set(key, value); err != nil {
 		return err
 	}
@@ -229,6 +246,16 @@ func (m *Manager) SaveAPIKey(service, field, value string) error {
 		m.Config.SimliFaceID = value
 	}
 	return nil
+}
+
+type internalVoiceCloneFieldError string
+
+func errInternalVoiceCloneField(key string) error {
+	return internalVoiceCloneFieldError(key)
+}
+
+func (e internalVoiceCloneFieldError) Error() string {
+	return "声音复刻训练状态由系统自动保存，不能在密钥配置中手动填写：" + string(e)
 }
 
 // SaveLocalConfig 将非敏感配置写入磁盘并同步内存。

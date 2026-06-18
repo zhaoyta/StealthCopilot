@@ -27,7 +27,7 @@
 - **THEN** 同时产出 `SrcText`（原文）和 `DstText`（译文）两路输出，通过 channel 或 callback 传递
 
 ### Requirement: TTS Provider 接口
-系统 SHALL 定义 `TTSProvider` Go interface，抽象流式语音合成能力，初始实现为 ElevenLabs，接口支持流式音频输出（chunk by chunk）。
+系统 SHALL 定义 `TTSProvider` Go interface，抽象流式语音合成能力，默认实现为默认音色 TTS，接口支持流式音频输出（chunk by chunk）。
 
 #### Scenario: 流式输出
 - **WHEN** TTSProvider 收到文本输入

@@ -201,7 +201,7 @@ function getRuntime(): { EventsOn: (eventName: string, callback: (...data: any[]
         </button>
       </div>
 
-      <!-- 熔断警告条：circuit:open 时显示橙色提示，提供紧急降级按钮 -->
+      <!-- 视频直连提示：circuit:open 来自视频链，表示口型同步退出但摄像头继续输出 -->
       <div
         v-if="circuitOpen"
         class="flex items-center justify-between gap-2 px-3 py-1.5 bg-orange-500/90 text-white text-xs"

@@ -4,11 +4,11 @@
 系统 SHALL 通过 Simli AI 官方 SaaS API（WebSocket 流式）实现用户真实人脸的口型同步，音频帧与视频帧同步输入，接收口型同步后的视频帧输出。
 
 #### Scenario: 建立 Simli 会话
-- **WHEN** 说话链开始（VAD 触发后 ElevenLabs 首帧到达）
+- **WHEN** 说话链开始（VAD 触发后讯飞声音复刻首帧到达）
 - **THEN** 后端使用 Simli API Key 建立 WebSocket 连接，发送 session 初始化参数（face_id = 用户配置的 Face ID）
 
 #### Scenario: 音频+视频帧输入
-- **WHEN** ElevenLabs TTS 产出 PCM 音频 chunk
+- **WHEN** 讯飞声音复刻 TTS 产出 PCM 音频 chunk
 - **THEN** 同时将该 PCM chunk 和对应时间戳发送给 Simli WebSocket 输入流
 
 #### Scenario: 口型同步帧输出

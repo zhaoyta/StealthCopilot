@@ -6,6 +6,8 @@ package audio
 import (
 	"context"
 	"time"
+
+	"github.com/zhaoyta/stealthcopilot/internal/diag"
 )
 
 // 音频规格常量（PCM 16kHz 16bit mono，40ms/帧）
@@ -40,6 +42,7 @@ type NullCaptureProvider struct{}
 // Start 以 FrameDur 为间隔向 channel 发送零值 PCM 帧，直到 ctx 取消。
 // 消费者慢时丢弃当前帧（非阻塞写），避免 goroutine 泄漏。
 func (n *NullCaptureProvider) Start(ctx context.Context, _ string) (<-chan []byte, error) {
+	diag.Warnf("null audio capture started: silent frames only")
 	ch := make(chan []byte, 8)
 	go func() {
 		defer close(ch)

@@ -3,7 +3,7 @@
 
 #### Scenario: 语音翻译成功
 - **WHEN** VAD 触发并发送音频到讯飞
-- **THEN** 在 500ms 内返回目标语言文本，立即传给 ElevenLabs TTS
+- **THEN** 在 500ms 内返回目标语言文本，立即传给讯飞声音复刻 TTS
 
 #### Scenario: 翻译 API 超时
 - **WHEN** 讯飞 API 超过 2s 未响应
