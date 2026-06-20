@@ -44,6 +44,37 @@ func TestEnergyDetector_SetSilenceThreshold(t *testing.T) {
 	}
 }
 
+func TestEnergyDetector_SetMaxSpeechMs(t *testing.T) {
+	const frameDurMs = 40
+	d := NewEnergyDetector(DefaultSilenceThresholdMs, frameDurMs)
+	d.SetMaxSpeechMs(2400)
+	ch := make(chan []byte, 128)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	segments := make(chan SpeechSegment, 1)
+	go d.Run(ctx, ch, func(seg SpeechSegment) {
+		segments <- seg
+		cancel()
+	})
+
+	for i := 0; i < 2400/frameDurMs+5; i++ {
+		select {
+		case ch <- makePCMFrame(1000):
+		case <-ctx.Done():
+		}
+	}
+
+	select {
+	case seg := <-segments:
+		if seg.DurationMs != 2400 {
+			t.Fatalf("DurationMs = %d, want 2400", seg.DurationMs)
+		}
+	case <-ctx.Done():
+		t.Fatal("expected configured max speech segment")
+	}
+}
+
 func TestEnergyDetector_Run_DetectsSegment(t *testing.T) {
 	const frameDurMs = 40
 	// 静音阈值 120ms = 3 帧
@@ -127,5 +158,71 @@ func TestEnergyDetector_Run_IgnoresShortSpeech(t *testing.T) {
 
 	if called {
 		t.Error("should not trigger segment for speech shorter than minSpeechMs")
+	}
+}
+
+func TestEnergyDetector_Run_CutsLongSpeech(t *testing.T) {
+	const frameDurMs = 40
+	d := NewEnergyDetector(DefaultSilenceThresholdMs, frameDurMs)
+	ch := make(chan []byte, 256)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	segments := make(chan SpeechSegment, 1)
+	go d.Run(ctx, ch, func(seg SpeechSegment) {
+		segments <- seg
+		cancel()
+	})
+
+	for i := 0; i < DefaultMaxSpeechMs/frameDurMs+5; i++ {
+		select {
+		case ch <- makePCMFrame(1000):
+		case <-ctx.Done():
+		}
+	}
+
+	select {
+	case seg := <-segments:
+		if seg.DurationMs != DefaultMaxSpeechMs {
+			t.Fatalf("DurationMs = %d, want %d", seg.DurationMs, DefaultMaxSpeechMs)
+		}
+	case <-ctx.Done():
+		t.Fatal("expected max speech segment")
+	}
+}
+
+func TestEnergyDetector_Run_CountsIntermittentSilenceInDuration(t *testing.T) {
+	const frameDurMs = 40
+	d := NewEnergyDetector(3*frameDurMs, frameDurMs)
+	ch := make(chan []byte, 64)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	segments := make(chan SpeechSegment, 1)
+	go d.Run(ctx, ch, func(seg SpeechSegment) {
+		segments <- seg
+		cancel()
+	})
+
+	for i := 0; i < 5; i++ {
+		ch <- makePCMFrame(1000)
+	}
+	for i := 0; i < 2; i++ {
+		ch <- makeSilenceFrame()
+	}
+	for i := 0; i < 5; i++ {
+		ch <- makePCMFrame(1000)
+	}
+	for i := 0; i < 3; i++ {
+		ch <- makeSilenceFrame()
+	}
+
+	select {
+	case seg := <-segments:
+		if seg.DurationMs != 15*frameDurMs {
+			t.Fatalf("DurationMs = %d, want %d", seg.DurationMs, 15*frameDurMs)
+		}
+	case <-ctx.Done():
+		t.Fatal("expected segment")
 	}
 }

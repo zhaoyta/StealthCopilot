@@ -9,7 +9,7 @@ const config = reactive({
   ragPrompt: '',
   speakPolishPrompt: '',
   polishEnabled: false,
-  translationProvider: 'xunfei',
+  translationProvider: 'xunfei_simult',
   llmProvider: 'deepseek',
   llmBaseURL: 'https://api.deepseek.com/v1',
   ttsProvider: 'system',
@@ -32,7 +32,7 @@ onMounted(async () => {
     config.ragPrompt = cfg.rag_prompt || ''
     config.speakPolishPrompt = cfg.speak_polish_prompt || ''
     config.polishEnabled = cfg.polish_enabled || false
-    config.translationProvider = cfg.translation_provider || 'xunfei'
+    config.translationProvider = cfg.translation_provider || 'xunfei_simult'
     config.llmProvider = cfg.llm_provider || 'deepseek'
     config.llmBaseURL = cfg.llm_base_url || 'https://api.deepseek.com/v1'
     config.ttsProvider = cfg.tts_provider || 'system'
@@ -100,6 +100,7 @@ async function save() {
             v-model="config.translationProvider"
             class="form-select"
           >
+            <option value="xunfei_simult">{{ t('settings.advanced.providerNames.xunfeiSimult') }}</option>
             <option value="xunfei">{{ t('settings.advanced.providerNames.xunfei') }}</option>
             <option value="null">{{ t('settings.advanced.providerNames.null') }}</option>
           </select>

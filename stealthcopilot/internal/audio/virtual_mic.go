@@ -42,9 +42,11 @@ type VirtualMicWriter interface {
 // NullVirtualMicWriter 是虚拟麦克风写入的空实现，丢弃所有音频数据。
 // 用于：portaudio 未安装时的降级运行，以及单元测试。
 type NullVirtualMicWriter struct {
-	state atomic.Int32
-	done  chan struct{}
-	once  sync.Once
+	state     atomic.Int32
+	ttsBytes  atomic.Int64
+	ttsWrites atomic.Int64
+	done      chan struct{}
+	once      sync.Once
 }
 
 // NewNullVirtualMicWriter 创建 NullVirtualMicWriter 并启动内部 Zero-PCM 定时 goroutine。
@@ -57,17 +59,22 @@ func NewNullVirtualMicWriter() *NullVirtualMicWriter {
 
 // BeginZeroPCM 切换到 Zero-PCM 状态（原子写，立即生效）。
 func (w *NullVirtualMicWriter) BeginZeroPCM() {
+	w.ttsBytes.Store(0)
+	w.ttsWrites.Store(0)
 	w.state.Store(int32(micStateZeroPCM))
 }
 
 // WriteChunk 首次调用时原子切换到 TTS 状态，后续写入丢弃（NullWriter 不输出）。
-func (w *NullVirtualMicWriter) WriteChunk(_ []byte) {
+func (w *NullVirtualMicWriter) WriteChunk(chunk []byte) {
 	// 原子 CAS：仅当处于 micStateZeroPCM 时切换到 micStateTTS（防止并发写竞争）
 	w.state.CompareAndSwap(int32(micStateZeroPCM), int32(micStateTTS))
+	w.ttsBytes.Add(int64(len(chunk)))
+	w.ttsWrites.Add(1)
 }
 
 // EndTTS TTS 结束，回到 micStateIdle。
 func (w *NullVirtualMicWriter) EndTTS() {
+	diag.Warnf("null virtual mic discarded tts writes=%d bytes=%d", w.ttsWrites.Load(), w.ttsBytes.Load())
 	w.state.Store(int32(micStateIdle))
 }
 

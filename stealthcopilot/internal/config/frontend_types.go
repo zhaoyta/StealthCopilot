@@ -4,19 +4,17 @@ package config
 // API Key 以掩码形式返回（仅用于显示是否已设置）。
 type FrontendConfig struct {
 	// API Key 是否已设置（true = 已设置，不返回原值）
-	XunfeiRTASRAppIDSet   bool `json:"xunfei_rtasr_app_id_set"`
-	XunfeiRTASRAPIKeySet  bool `json:"xunfei_rtasr_api_key_set"`
-	XunfeiMTAppIDSet      bool `json:"xunfei_mt_app_id_set"`
-	XunfeiMTAPIKeySet     bool `json:"xunfei_mt_api_key_set"`
-	XunfeiMTAPISecretSet  bool `json:"xunfei_mt_api_secret_set"`
-	XunfeiTTSAppIDSet     bool `json:"xunfei_tts_app_id_set"`
-	XunfeiTTSAPIKeySet    bool `json:"xunfei_tts_api_key_set"`
-	XunfeiTTSAPISecretSet bool `json:"xunfei_tts_api_secret_set"`
-	XunfeiTTSAssetIDSet   bool `json:"xunfei_tts_asset_id_set"`
-	XunfeiTTSTaskIDSet    bool `json:"xunfei_tts_task_id_set"`
-	DeepSeekKeySet        bool `json:"deepseek_key_set"`
-	SimliKeySet           bool `json:"simli_key_set"`
-	SimliFaceIDSet        bool `json:"simli_face_id_set"`
+	XunfeiSimultAppIDSet     bool `json:"xunfei_simult_app_id_set"`
+	XunfeiSimultAPIKeySet    bool `json:"xunfei_simult_api_key_set"`
+	XunfeiSimultAPISecretSet bool `json:"xunfei_simult_api_secret_set"`
+	XunfeiTTSAppIDSet        bool `json:"xunfei_tts_app_id_set"`
+	XunfeiTTSAPIKeySet       bool `json:"xunfei_tts_api_key_set"`
+	XunfeiTTSAPISecretSet    bool `json:"xunfei_tts_api_secret_set"`
+	XunfeiTTSAssetIDSet      bool `json:"xunfei_tts_asset_id_set"`
+	XunfeiTTSTaskIDSet       bool `json:"xunfei_tts_task_id_set"`
+	DeepSeekKeySet           bool `json:"deepseek_key_set"`
+	SimliKeySet              bool `json:"simli_key_set"`
+	SimliFaceIDSet           bool `json:"simli_face_id_set"`
 
 	// 非敏感配置（明文）
 	UILocale              string  `json:"ui_locale"` // "zh-CN" | "en-US"
@@ -50,7 +48,7 @@ type FrontendConfig struct {
 }
 
 // SaveAPIKeyRequest 前端传入的 API Key 写入请求。
-// service 取值：xunfei_rtasr / xunfei_mt / xunfei_tts / deepseek / simli
+// service 取值：xunfei_simult / xunfei_tts / deepseek / simli
 // field  取值：app_id / api_key / api_secret / key / face_id 等。
 // 声音复刻 task_id / asset_id 只能由训练流程内部写入，不接受前端手填。
 type SaveAPIKeyRequest struct {

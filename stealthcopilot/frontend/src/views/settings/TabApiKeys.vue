@@ -24,22 +24,13 @@ interface ServiceConfig {
 
 const services = reactive<ServiceConfig[]>([
   {
-    name: '讯飞 RTASR',
+    name: '讯飞同声传译',
     testStatus: 'untested',
     testMsg: '',
     fields: [
-      { service: 'xunfei_rtasr', field: 'app_id',  label: t('settings.apiKeys.xunfei.rtasrAppId'),  secret: true, value: '', show: false },
-      { service: 'xunfei_rtasr', field: 'api_key', label: t('settings.apiKeys.xunfei.rtasrApiKey'), secret: true, value: '', show: false },
-    ],
-  },
-  {
-    name: '讯飞机器翻译',
-    testStatus: 'untested',
-    testMsg: '',
-    fields: [
-      { service: 'xunfei_mt', field: 'app_id',     label: t('settings.apiKeys.xunfei.mtAppId'),     secret: true, value: '', show: false },
-      { service: 'xunfei_mt', field: 'api_key',    label: t('settings.apiKeys.xunfei.mtApiKey'),    secret: true, value: '', show: false },
-      { service: 'xunfei_mt', field: 'api_secret', label: t('settings.apiKeys.xunfei.mtApiSecret'), secret: true, value: '', show: false },
+      { service: 'xunfei_simult', field: 'app_id',     label: t('settings.apiKeys.xunfei.simultAppId'),     secret: true, value: '', show: false },
+      { service: 'xunfei_simult', field: 'api_key',    label: t('settings.apiKeys.xunfei.simultApiKey'),    secret: true, value: '', show: false },
+      { service: 'xunfei_simult', field: 'api_secret', label: t('settings.apiKeys.xunfei.simultApiSecret'), secret: true, value: '', show: false },
     ],
   },
   {
@@ -79,11 +70,9 @@ onMounted(async () => {
     // @ts-expect-error — Wails 运行时注入，window.go/window.runtime 无类型定义
     const cfg = await window.go.main.App.GetConfig()
     const setMap: Record<string, boolean> = {
-      xunfei_rtasr_app_id: cfg.xunfei_rtasr_app_id_set,
-      xunfei_rtasr_api_key: cfg.xunfei_rtasr_api_key_set,
-      xunfei_mt_app_id: cfg.xunfei_mt_app_id_set,
-      xunfei_mt_api_key: cfg.xunfei_mt_api_key_set,
-      xunfei_mt_api_secret: cfg.xunfei_mt_api_secret_set,
+      xunfei_simult_app_id: cfg.xunfei_simult_app_id_set,
+      xunfei_simult_api_key: cfg.xunfei_simult_api_key_set,
+      xunfei_simult_api_secret: cfg.xunfei_simult_api_secret_set,
       xunfei_tts_app_id: cfg.xunfei_tts_app_id_set,
       xunfei_tts_api_key: cfg.xunfei_tts_api_key_set,
       xunfei_tts_api_secret: cfg.xunfei_tts_api_secret_set,

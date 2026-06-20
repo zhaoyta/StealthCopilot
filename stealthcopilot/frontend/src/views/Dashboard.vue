@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Headphones, Mic, Video, Settings, Maximize2, Info, Play, Square, ChevronRight, SlidersHorizontal, AlertTriangle } from 'lucide-vue-next'
+import { Headphones, Mic, Video, Settings, Maximize2, Info, Play, ChevronRight, SlidersHorizontal, AlertTriangle } from 'lucide-vue-next'
 import {
   StartHearingChain,
   StopHearingChain,
@@ -32,23 +32,47 @@ const emit = defineEmits<{
   (e: 'openTeleprompter'): void
 }>()
 
-type ChainStatus = 'idle' | 'running' | 'error'
+type ChainStatus = 'closed' | 'idle' | 'running' | 'error'
+type ChainTarget = 'hearing' | 'speaking' | 'video'
 type DeviceConfigTarget = 'meetingAudio' | 'physicalMic' | 'monitorOutput' | 'physicalCamera' | 'virtualCamera'
+type StepKey = 'asr' | 'trans' | 'tts'
+const STEP_KEYS: StepKey[] = ['asr', 'trans', 'tts']
 
-const hearingStatus = ref<ChainStatus>('idle')
-const speakingStatus = ref<ChainStatus>('idle')
-const videoStatus = ref<ChainStatus>('idle')
+interface StepState {
+  srcText: string
+  dstText: string
+  audioBytes: number
+  isFinal: boolean
+}
+
+interface StepEvent {
+  chain?: 'hearing' | 'speaking'
+  step?: StepKey
+  srcText?: string
+  dstText?: string
+  isFinal?: boolean
+  audioBytes?: number
+}
+
+const hearingStatus = ref<ChainStatus>('closed')
+const speakingStatus = ref<ChainStatus>('closed')
+const videoStatus = ref<ChainStatus>('closed')
 const circuitOpen = ref(false)
 const errorMsg = ref('')
 const startupIssues = ref<string[]>([])
 const startupWarnings = ref<string[]>([])
 const hearingLangPair = ref('')
 const speakingLangPair = ref('')
+const latestSpeakingSourceText = ref('')
+const latestSpeakingTargetText = ref('')
+const hearingSteps = ref<Record<StepKey, StepState>>(emptyStepMap())
+const speakingSteps = ref<Record<StepKey, StepState>>(emptyStepMap())
 const uiLocale = ref<'zh-CN' | 'en-US'>('zh-CN')
 const channelNames = ref<Record<string, string>>({})
 const showMeetingGuide = ref(false)
 const deviceConfigTarget = ref<DeviceConfigTarget | null>(null)
 const showPreflightDialog = ref(false)
+const pendingStartTargets = ref<ChainTarget[]>([])
 
 const runningCount = computed(() =>
   [hearingStatus.value, speakingStatus.value, videoStatus.value].filter(s => s === 'running').length
@@ -64,75 +88,120 @@ function langLabel(code: string): string {
 
 // ===== 听力链控制 =====
 
-async function toggleHearing(on: boolean) {
-  errorMsg.value = ''
-  startupIssues.value = []
-  startupWarnings.value = []
+interface ToggleOptions {
+  preserveMessages?: boolean
+}
+
+async function toggleHearing(on: boolean, options: ToggleOptions = {}) {
+  if (!options.preserveMessages) {
+    errorMsg.value = ''
+    startupIssues.value = []
+    startupWarnings.value = []
+  }
   if (on) {
+    if (!options.preserveMessages) {
+      const canStart = await validateStartupTargets(['hearing'])
+      if (!canStart || startupWarnings.value.length) {
+        pendingStartTargets.value = ['hearing']
+        showPreflightDialog.value = true
+        return
+      }
+    }
+    hearingSteps.value = emptyStepMap()
     const err = await StartHearingChain()
     if (err) { hearingStatus.value = 'error'; errorMsg.value = err; return }
     hearingStatus.value = 'running'
     // 提词窗由用户手动点击右上角按钮打开，不在此处自动弹出
   } else {
     await StopHearingChain()
-    hearingStatus.value = 'idle'
+    hearingStatus.value = 'closed'
     await HideTeleprompter()
   }
 }
 
-async function toggleSpeaking(on: boolean) {
-  errorMsg.value = ''
-  startupIssues.value = []
-  startupWarnings.value = []
+async function toggleSpeaking(on: boolean, options: ToggleOptions = {}) {
+  if (!options.preserveMessages) {
+    errorMsg.value = ''
+    startupIssues.value = []
+    startupWarnings.value = []
+  }
   if (on) {
+    if (!options.preserveMessages) {
+      const canStart = await validateStartupTargets(['speaking'])
+      if (!canStart || startupWarnings.value.length) {
+        pendingStartTargets.value = ['speaking']
+        showPreflightDialog.value = true
+        return
+      }
+    }
+    speakingSteps.value = emptyStepMap()
+    latestSpeakingSourceText.value = ''
+    latestSpeakingTargetText.value = ''
     const err = await StartSpeakingChain()
     if (err) { speakingStatus.value = 'error'; errorMsg.value = err; return }
     speakingStatus.value = 'running'
   } else {
     await StopSpeakingChain()
-    speakingStatus.value = 'idle'
+    speakingStatus.value = 'closed'
   }
 }
 
-async function toggleVideo(on: boolean) {
-  errorMsg.value = ''
-  startupIssues.value = []
-  startupWarnings.value = []
+async function toggleVideo(on: boolean, options: ToggleOptions = {}) {
+  if (!options.preserveMessages) {
+    errorMsg.value = ''
+    startupIssues.value = []
+    startupWarnings.value = []
+  }
   if (on) {
+    if (!options.preserveMessages) {
+      const canStart = await validateStartupTargets(['video'])
+      if (!canStart || startupWarnings.value.length) {
+        pendingStartTargets.value = ['video']
+        showPreflightDialog.value = true
+        return
+      }
+    }
     const err = await StartVideoChain()
     if (err) { videoStatus.value = 'error'; errorMsg.value = err; return }
     videoStatus.value = 'running'
   } else {
     await StopVideoChain()
-    videoStatus.value = 'idle'
+    videoStatus.value = 'closed'
     circuitOpen.value = false
   }
 }
 
 async function startAll() {
-  const canStart = await validateStartAll()
+  const targets: ChainTarget[] = ['hearing', 'speaking', 'video']
+  const canStart = await validateStartupTargets(targets)
   if (!canStart || startupWarnings.value.length) {
+    pendingStartTargets.value = targets
     showPreflightDialog.value = true
     return
   }
-  await runStartAll()
+  await runStartTargets(targets)
 }
 
-async function runStartAll() {
+async function runStartTargets(targets: ChainTarget[]) {
   const warnings = [...startupWarnings.value]
-  if (videoStatus.value !== 'running') await toggleVideo(true)
-  if (speakingStatus.value !== 'running') await toggleSpeaking(true)
-  if (hearingStatus.value !== 'running') await toggleHearing(true)
+  const tasks: Promise<void>[] = []
+  if (targets.includes('hearing') && !chainSwitchOn(hearingStatus.value)) tasks.push(toggleHearing(true, { preserveMessages: true }))
+  if (targets.includes('speaking') && !chainSwitchOn(speakingStatus.value)) tasks.push(toggleSpeaking(true, { preserveMessages: true }))
+  if (targets.includes('video') && !chainSwitchOn(videoStatus.value)) tasks.push(toggleVideo(true, { preserveMessages: true }))
+  await Promise.allSettled(tasks)
   startupWarnings.value = warnings
+  pendingStartTargets.value = []
 }
 
 async function continueStartAll() {
   showPreflightDialog.value = false
-  await runStartAll()
+  const targets = pendingStartTargets.value.length ? [...pendingStartTargets.value] : (['hearing', 'speaking', 'video'] as ChainTarget[])
+  await runStartTargets(targets)
 }
 
 function closePreflightDialog() {
   showPreflightDialog.value = false
+  pendingStartTargets.value = []
 }
 
 function openSettingsFromPreflight() {
@@ -141,9 +210,9 @@ function openSettingsFromPreflight() {
 }
 
 async function stopAll() {
-  if (hearingStatus.value === 'running') await toggleHearing(false)
-  if (speakingStatus.value === 'running') await toggleSpeaking(false)
-  if (videoStatus.value === 'running') await toggleVideo(false)
+  if (chainSwitchOn(hearingStatus.value)) await toggleHearing(false)
+  if (chainSwitchOn(speakingStatus.value)) await toggleSpeaking(false)
+  if (chainSwitchOn(videoStatus.value)) await toggleVideo(false)
 }
 
 async function loadDashboardConfig() {
@@ -151,7 +220,7 @@ async function loadDashboardConfig() {
   uiLocale.value         = (cfg.ui_locale || 'zh-CN') as 'zh-CN' | 'en-US'
   hearingLangPair.value  = `${langLabel(cfg.hearing_source_lang || 'en')} → ${langLabel(cfg.hearing_target_lang || 'zh')}`
   speakingLangPair.value = `${langLabel(cfg.speaking_input_lang || 'zh')} → ${langLabel(cfg.speaking_output_lang || 'en')}`
-  const translationProvider = providerLabel(cfg.translation_provider || 'xunfei')
+  const translationProvider = providerLabel(cfg.translation_provider || 'xunfei_simult')
   const llmProvider = providerLabel(cfg.llm_provider || 'deepseek')
   const ttsProvider = providerLabel(cfg.tts_provider || 'system')
   const lipsyncProvider = providerLabel(cfg.lipsync_provider || 'simli')
@@ -178,7 +247,7 @@ async function loadDashboardConfig() {
   }
 }
 
-async function validateStartAll(): Promise<boolean> {
+async function validateStartupTargets(targets: ChainTarget[]): Promise<boolean> {
   errorMsg.value = ''
   startupIssues.value = []
   startupWarnings.value = []
@@ -190,46 +259,55 @@ async function validateStartAll(): Promise<boolean> {
     const audioInputs = devices.audio_inputs || []
     const audioOutputs = devices.audio_outputs || []
     const videoInputs = devices.video_inputs || []
+    const needsHearing = targets.includes('hearing')
+    const needsSpeaking = targets.includes('speaking')
+    const needsVideo = targets.includes('video')
+    const needsVirtualAudio = needsHearing || needsSpeaking
+    const needsSimult = needsHearing || needsSpeaking
 
-    if (deps.ffmpeg !== 'installed') issues.push(t('dashboard.preflight.ffmpegMissing'))
-    if (deps.virtual_mic !== 'installed') issues.push(t('dashboard.preflight.virtualAudioMissing'))
-    if (deps.virtual_cam !== 'installed') issues.push(t('dashboard.preflight.virtualCameraMissing'))
+    if ((needsVirtualAudio || needsSpeaking) && deps.ffmpeg !== 'installed') issues.push(t('dashboard.preflight.ffmpegMissing'))
+    if (needsVirtualAudio && deps.virtual_mic !== 'installed') issues.push(t('dashboard.preflight.virtualAudioMissing'))
+    if (needsVideo && deps.virtual_cam !== 'installed') issues.push(t('dashboard.preflight.virtualCameraMissing'))
 
-    if (!cfg.virtual_mic_name) issues.push(t('dashboard.preflight.meetingAudioMissing'))
-    if (!cfg.physical_mic_name) issues.push(t('dashboard.preflight.speakingMicMissing'))
-    if (!cfg.physical_cam_name) issues.push(t('dashboard.preflight.realCameraMissing'))
-    if (!cfg.virtual_cam_name) issues.push(t('dashboard.preflight.meetingCameraMissing'))
-    if (cfg.virtual_mic_name && !deviceExists(audioInputs, cfg.virtual_mic_name)) {
+    if (needsVirtualAudio && !cfg.virtual_mic_name) issues.push(t('dashboard.preflight.meetingAudioMissing'))
+    if (needsSpeaking && !cfg.physical_mic_name) issues.push(t('dashboard.preflight.speakingMicMissing'))
+    if (needsVideo && !cfg.physical_cam_name) issues.push(t('dashboard.preflight.realCameraMissing'))
+    if (needsVideo && !cfg.virtual_cam_name) issues.push(t('dashboard.preflight.meetingCameraMissing'))
+    if (needsVirtualAudio && cfg.virtual_mic_name && !deviceExists(audioInputs, cfg.virtual_mic_name)) {
       issues.push(t('dashboard.preflight.meetingAudioUnavailable', { name: cfg.virtual_mic_name }))
     }
-    if (cfg.physical_mic_name && !deviceExists(audioInputs, cfg.physical_mic_name)) {
+    if (needsSpeaking && cfg.physical_mic_name && !deviceExists(audioInputs, cfg.physical_mic_name)) {
       issues.push(t('dashboard.preflight.speakingMicUnavailable', { name: cfg.physical_mic_name }))
     }
-    if (cfg.physical_cam_name && !deviceExists(videoInputs, cfg.physical_cam_name)) {
+    if (needsVideo && cfg.physical_cam_name && !deviceExists(videoInputs, cfg.physical_cam_name)) {
       issues.push(t('dashboard.preflight.realCameraUnavailable', { name: cfg.physical_cam_name }))
     }
-    if (cfg.virtual_cam_name && !deviceExists(videoInputs, cfg.virtual_cam_name)) {
+    if (needsVideo && cfg.virtual_cam_name && !deviceExists(videoInputs, cfg.virtual_cam_name)) {
       issues.push(t('dashboard.preflight.meetingCameraUnavailable', { name: cfg.virtual_cam_name }))
     }
-    if (cfg.hearing_monitor_enabled && cfg.monitor_output_name && !deviceExists(audioOutputs, cfg.monitor_output_name)) {
+    if (needsVideo && cfg.physical_cam_name && cfg.virtual_cam_name &&
+      normalizeDeviceName(cfg.physical_cam_name) === normalizeDeviceName(cfg.virtual_cam_name)) {
+      issues.push(t('dashboard.preflight.cameraLoop', { name: cfg.virtual_cam_name }))
+    }
+    if (needsHearing && cfg.hearing_monitor_enabled && cfg.monitor_output_name && !deviceExists(audioOutputs, cfg.monitor_output_name)) {
       issues.push(t('dashboard.preflight.monitorOutputUnavailable', { name: cfg.monitor_output_name }))
     }
 
-    if (!cfg.xunfei_rtasr_app_id_set || !cfg.xunfei_rtasr_api_key_set) {
-      issues.push(t('dashboard.preflight.rtasrMissing'))
+    if (needsSimult && (!cfg.xunfei_simult_app_id_set || !cfg.xunfei_simult_api_key_set || !cfg.xunfei_simult_api_secret_set)) {
+      issues.push(t('dashboard.preflight.simultMissing'))
     }
-    const needsHearingTranslation = (cfg.hearing_source_lang || 'en') !== (cfg.hearing_target_lang || 'zh')
-    const needsSpeakingTranslation = (cfg.speaking_input_lang || 'zh') !== (cfg.speaking_output_lang || 'en')
-    if ((needsHearingTranslation || needsSpeakingTranslation) &&
-      (!cfg.xunfei_mt_app_id_set || !cfg.xunfei_mt_api_key_set || !cfg.xunfei_mt_api_secret_set)) {
-      issues.push(t('dashboard.preflight.mtMissing'))
+    if (needsSpeaking && !isXunfeiSimultPairSupported(cfg.speaking_input_lang || 'zh', cfg.speaking_output_lang || 'en')) {
+      issues.push(t('dashboard.preflight.simultLangUnsupported', {
+        src: langLabel(cfg.speaking_input_lang || 'zh'),
+        dst: langLabel(cfg.speaking_output_lang || 'en'),
+      }))
     }
-    if (!cfg.deepseek_key_set) warnings.push(t('dashboard.preflight.deepseekMissing'))
-    if (cfg.tts_provider === 'null') issues.push(t('dashboard.preflight.ttsMissing'))
-    if (cfg.tts_provider === 'xunfei_voiceclone' && !cfg.xunfei_tts_asset_id_set) {
+    if (needsHearing && !cfg.deepseek_key_set) warnings.push(t('dashboard.preflight.deepseekMissing'))
+    if (needsSpeaking && cfg.tts_provider === 'null') issues.push(t('dashboard.preflight.ttsMissing'))
+    if (needsSpeaking && cfg.tts_provider === 'xunfei_voiceclone' && !cfg.xunfei_tts_asset_id_set) {
       issues.push(t('dashboard.preflight.voiceCloneMissing'))
     }
-    if (cfg.lipsync_provider === 'simli' && (!cfg.simli_key_set || !cfg.simli_face_id_set)) {
+    if (needsVideo && cfg.lipsync_provider === 'simli' && (!cfg.simli_key_set || !cfg.simli_face_id_set)) {
       warnings.push(t('dashboard.preflight.simliMissing'))
     }
 
@@ -251,6 +329,17 @@ function deviceExists(devices: Array<{ name?: string }>, name: string): boolean 
   return devices.some(device => normalizeDeviceName(device.name || '') === expected)
 }
 
+function normalizeSimultLang(lang: string): string {
+  const value = lang.trim().toLowerCase().replace('_', '-')
+  if (value === 'zh' || value === 'zh-cn' || value === 'cn') return 'cn'
+  if (value === 'en' || value === 'en-us') return 'en'
+  return value
+}
+
+function isXunfeiSimultPairSupported(sourceLang: string, targetLang: string): boolean {
+  return normalizeSimultLang(sourceLang) === 'cn' && normalizeSimultLang(targetLang) === 'en'
+}
+
 function normalizeDeviceName(name: string): string {
   return name.trim().toLowerCase()
 }
@@ -265,6 +354,9 @@ onMounted(async () => {
     hearingStatus.value = 'error'
     errorMsg.value = msg
   })
+  EventsOn('hearing:step', (event: StepEvent) => {
+    applyStepEvent(hearingSteps.value, event)
+  })
   // speaking:* 事件：Phase 2 说话链状态，提前注册备用
   EventsOn('speaking:start', () => { speakingStatus.value = 'running' })
   EventsOn('speaking:done',  () => { speakingStatus.value = 'idle'    })
@@ -272,28 +364,77 @@ onMounted(async () => {
     speakingStatus.value = 'error'
     errorMsg.value = msg
   })
+  EventsOn('speaking:result', (result: { srcText?: string; dstText?: string } | string) => {
+    if (typeof result === 'string') {
+      latestSpeakingTargetText.value = result
+      return
+    }
+    latestSpeakingSourceText.value = result?.srcText || ''
+    latestSpeakingTargetText.value = result?.dstText || ''
+  })
+  EventsOn('speaking:step', (event: StepEvent) => {
+    applyStepEvent(speakingSteps.value, event)
+  })
   try { await loadDashboardConfig() } catch { /* 静默 */ }
 })
 onUnmounted(() => {
   EventsOff('circuit:open')
   EventsOff('circuit:closed')
   EventsOff('hearing:error')
+  EventsOff('hearing:step')
   EventsOff('speaking:start')
   EventsOff('speaking:done')
   EventsOff('speaking:error')
+  EventsOff('speaking:result')
+  EventsOff('speaking:step')
 })
 
 // ===== 工具函数 =====
 
 function statusBadgeClass(s: ChainStatus) {
   if (s === 'running') return 'bg-green-500/20 text-green-400 border border-green-500/40'
+  if (s === 'idle')    return 'bg-blue-500/15 text-blue-300 border border-blue-500/30'
   if (s === 'error')   return 'bg-red-500/20 text-red-400 border border-red-500/40'
   return 'bg-gray-600/40 text-gray-400 border border-gray-600/40'
+}
+
+function chainSwitchOn(s: ChainStatus): boolean {
+  return s === 'running' || s === 'idle'
 }
 
 // 为 optional 步骤拼装带括号注释的 label
 function optionalLabel(key: string): string {
   return `${t(key)} (${t('pipeline.optional')})`
+}
+
+function emptyStepMap(): Record<StepKey, StepState> {
+  return {
+    asr: { srcText: '', dstText: '', audioBytes: 0, isFinal: false },
+    trans: { srcText: '', dstText: '', audioBytes: 0, isFinal: false },
+    tts: { srcText: '', dstText: '', audioBytes: 0, isFinal: false },
+  }
+}
+
+function applyStepEvent(target: Record<StepKey, StepState>, event: StepEvent) {
+  if (!event?.step || !target[event.step]) return
+  target[event.step] = {
+    srcText: event.srcText || target[event.step].srcText,
+    dstText: event.dstText || target[event.step].dstText,
+    audioBytes: event.audioBytes || target[event.step].audioBytes,
+    isFinal: !!event.isFinal,
+  }
+}
+
+function stepMainText(key: StepKey, step: StepState): string {
+  if (key === 'asr') return step.srcText
+  if (key === 'trans') return step.dstText || step.srcText
+  return step.dstText || (step.audioBytes ? t('dashboard.stepAudioReady', { bytes: step.audioBytes }) : '')
+}
+
+function stepMetaText(key: StepKey, step: StepState): string {
+  if (key === 'tts' && step.audioBytes) return t('dashboard.stepAudioBytes', { bytes: step.audioBytes })
+  if (step.audioBytes) return t('dashboard.stepAudioBytes', { bytes: step.audioBytes })
+  return ''
 }
 
 function channelLabel(key: string): string {
@@ -302,6 +443,7 @@ function channelLabel(key: string): string {
 
 function providerLabel(provider: string): string {
   const keyMap: Record<string, string> = {
+    xunfei_simult: 'xunfeiSimult',
     xunfei: 'xunfei',
     deepseek: 'deepseek',
     openai_compatible: 'openaiCompatible',
@@ -423,12 +565,12 @@ async function switchLocale(code: 'zh-CN' | 'en-US') {
             <!-- 切换开关 -->
             <button
               class="relative w-11 h-6 rounded-full transition-colors duration-200 focus:outline-none"
-              :class="hearingStatus === 'running' ? 'bg-blue-500' : 'bg-gray-600'"
-              @click="toggleHearing(hearingStatus !== 'running')"
+              :class="chainSwitchOn(hearingStatus) ? 'bg-blue-500' : 'bg-gray-600'"
+              @click="toggleHearing(!chainSwitchOn(hearingStatus))"
             >
               <span
                 class="absolute top-0.5 left-0 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200"
-                :class="hearingStatus === 'running' ? 'translate-x-[22px]' : 'translate-x-0.5'"
+                :class="chainSwitchOn(hearingStatus) ? 'translate-x-[22px]' : 'translate-x-0.5'"
               />
             </button>
           </div>
@@ -436,6 +578,20 @@ async function switchLocale(code: 'zh-CN' | 'en-US') {
 
         <!-- 面试业务流：先表达用户结果，再保留诊断链路 -->
         <div class="mt-4 space-y-2">
+          <div class="step-board">
+            <div v-for="key in STEP_KEYS" :key="'hearing-' + key" class="step-cell">
+              <div class="step-cell-head">
+                <span>{{ t(`dashboard.steps.${key}`) }}</span>
+                <span v-if="hearingSteps[key].isFinal" class="step-final">{{ t('dashboard.stepFinal') }}</span>
+              </div>
+              <p class="step-main" :class="stepMainText(key, hearingSteps[key]) ? 'text-gray-100' : 'text-gray-600'">
+                {{ stepMainText(key, hearingSteps[key]) || t('dashboard.stepWaiting') }}
+              </p>
+              <p v-if="stepMetaText(key, hearingSteps[key])" class="step-meta">
+                {{ stepMetaText(key, hearingSteps[key]) }}
+              </p>
+            </div>
+          </div>
           <div class="business-lane">
             <span class="lane-label">{{ t('dashboard.businessInput') }}</span>
             <PipelineStep
@@ -526,17 +682,31 @@ async function switchLocale(code: 'zh-CN' | 'en-US') {
             <span class="text-xs text-gray-500 hidden sm:block">{{ speakingLangPair }}</span>
             <button
               class="relative w-11 h-6 rounded-full transition-colors duration-200 focus:outline-none"
-              :class="speakingStatus === 'running' ? 'bg-purple-500' : 'bg-gray-600'"
-              @click="toggleSpeaking(speakingStatus !== 'running')"
+              :class="chainSwitchOn(speakingStatus) ? 'bg-purple-500' : 'bg-gray-600'"
+              @click="toggleSpeaking(!chainSwitchOn(speakingStatus))"
             >
               <span
                 class="absolute top-0.5 left-0 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200"
-                :class="speakingStatus === 'running' ? 'translate-x-[22px]' : 'translate-x-0.5'"
+                :class="chainSwitchOn(speakingStatus) ? 'translate-x-[22px]' : 'translate-x-0.5'"
               />
             </button>
           </div>
         </div>
         <div class="mt-4 space-y-2">
+          <div class="step-board">
+            <div v-for="key in STEP_KEYS" :key="'speaking-' + key" class="step-cell">
+              <div class="step-cell-head">
+                <span>{{ t(`dashboard.steps.${key}`) }}</span>
+                <span v-if="speakingSteps[key].isFinal" class="step-final">{{ t('dashboard.stepFinal') }}</span>
+              </div>
+              <p class="step-main" :class="stepMainText(key, speakingSteps[key]) ? 'text-gray-100' : 'text-gray-600'">
+                {{ stepMainText(key, speakingSteps[key]) || t('dashboard.stepWaiting') }}
+              </p>
+              <p v-if="stepMetaText(key, speakingSteps[key])" class="step-meta">
+                {{ stepMetaText(key, speakingSteps[key]) }}
+              </p>
+            </div>
+          </div>
           <div class="business-lane">
             <span class="lane-label">{{ t('dashboard.businessInput') }}</span>
             <PipelineStep
@@ -559,6 +729,19 @@ async function switchLocale(code: 'zh-CN' | 'en-US') {
               :label="t('pipeline.speechTransformReady')"
               :active="speakingStatus === 'running'"
             />
+          </div>
+          <div
+            v-if="latestSpeakingSourceText || latestSpeakingTargetText"
+            class="rounded-lg border border-purple-400/20 bg-purple-500/8 px-3 py-2 text-xs leading-relaxed space-y-1"
+          >
+            <div v-if="latestSpeakingSourceText" class="grid grid-cols-[64px_minmax(0,1fr)] gap-2">
+              <span class="text-purple-300/70">{{ t('dashboard.speakingSourceText') }}</span>
+              <span class="text-purple-50 break-words">{{ latestSpeakingSourceText }}</span>
+            </div>
+            <div v-if="latestSpeakingTargetText" class="grid grid-cols-[64px_minmax(0,1fr)] gap-2">
+              <span class="text-purple-300/70">{{ t('dashboard.speakingTargetText') }}</span>
+              <span class="text-purple-50 break-words">{{ latestSpeakingTargetText }}</span>
+            </div>
           </div>
           <div class="business-lane">
             <span class="lane-label">{{ t('dashboard.meetingOutput') }}</span>
@@ -635,12 +818,12 @@ async function switchLocale(code: 'zh-CN' | 'en-US') {
           <div class="flex items-center gap-3">
             <button
               class="relative w-11 h-6 rounded-full transition-colors duration-200 focus:outline-none"
-              :class="videoStatus === 'running' ? 'bg-cyan-500' : 'bg-gray-600'"
-              @click="toggleVideo(videoStatus !== 'running')"
+              :class="chainSwitchOn(videoStatus) ? 'bg-cyan-500' : 'bg-gray-600'"
+              @click="toggleVideo(!chainSwitchOn(videoStatus))"
             >
               <span
                 class="absolute top-0.5 left-0 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200"
-                :class="videoStatus === 'running' ? 'translate-x-[22px]' : 'translate-x-0.5'"
+                :class="chainSwitchOn(videoStatus) ? 'translate-x-[22px]' : 'translate-x-0.5'"
               />
             </button>
           </div>
@@ -883,5 +1066,64 @@ export { PipelineStep }
   color: #6b7280;
   font-size: 11px;
   font-weight: 600;
+}
+
+.step-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.step-cell {
+  min-height: 5.75rem;
+  border: 1px solid rgb(255 255 255 / 0.08);
+  border-radius: 0.5rem;
+  background: rgb(255 255 255 / 0.035);
+  padding: 0.625rem;
+}
+
+.step-cell-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: #93c5fd;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.step-final {
+  flex: none;
+  border-radius: 999px;
+  background: rgb(34 197 94 / 0.14);
+  padding: 0.125rem 0.375rem;
+  color: #86efac;
+  font-size: 9px;
+}
+
+.step-main {
+  margin-top: 0.5rem;
+  display: -webkit-box;
+  min-height: 2.25rem;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.step-meta {
+  margin-top: 0.25rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #6b7280;
+  font-size: 10px;
+}
+
+@media (max-width: 640px) {
+  .step-board {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

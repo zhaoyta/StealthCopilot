@@ -5,7 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zhaoyta/stealthcopilot/internal/translation"
+	"github.com/zhaoyta/stealthcopilot/internal/audio"
+	"github.com/zhaoyta/stealthcopilot/internal/vad"
 )
 
 func TestChain_StartStop(t *testing.T) {
@@ -73,7 +74,7 @@ func TestChain_StartWithVirtualMicRequiresRealWriter(t *testing.T) {
 	}
 }
 
-func TestChain_StartWithPhysicalMicRequiresXunfeiConfig(t *testing.T) {
+func TestChain_StartWithPhysicalMicRequiresSimultConfig(t *testing.T) {
 	t.Setenv("PATH", "")
 	c := &Chain{}
 	result := c.Start(context.Background(), ChainConfig{
@@ -91,15 +92,30 @@ func TestChain_StartWithVirtualMicRequiresXunfeiVoiceCloneConfig(t *testing.T) {
 	result := c.Start(context.Background(), ChainConfig{
 		SilenceThresholdMs: 400,
 		VirtualMicDevice:   "1",
-		Xunfei: translation.XunfeiSpeakConfig{
-			AppID:      "app",
-			APIKey:     "key",
-			SourceLang: "zh",
-			TargetLang: "en",
-		},
 	})
 	if result == "" {
 		c.Stop()
 		t.Fatal("expected startup error for missing Xunfei VoiceClone config")
+	}
+}
+
+func TestSplitSegmentForSpeaking(t *testing.T) {
+	pcm := make([]byte, audio.FrameBytes*200)
+	parts := splitSegmentForSpeaking(vad.SpeechSegment{
+		PCM:        pcm,
+		DurationMs: pcmDurationMs(pcm),
+	})
+	if len(parts) != 4 {
+		t.Fatalf("len(parts) = %d, want 4", len(parts))
+	}
+	total := 0
+	for i, part := range parts {
+		if got := pcmDurationMs(part.PCM); got > speakingMaxSpeechMs {
+			t.Fatalf("part %d duration = %d, want <= %d", i, got, speakingMaxSpeechMs)
+		}
+		total += len(part.PCM)
+	}
+	if total != len(pcm) {
+		t.Fatalf("total bytes = %d, want %d", total, len(pcm))
 	}
 }

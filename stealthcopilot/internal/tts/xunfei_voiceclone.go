@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+
+	"github.com/zhaoyta/stealthcopilot/internal/diag"
 )
 
 const (
@@ -58,12 +60,14 @@ func XunfeiVoiceCloneConfigReady(cfg XunfeiVoiceCloneConfig) bool {
 }
 
 func (p *XunfeiVoiceCloneProvider) Synthesize(ctx context.Context, text string) (<-chan []byte, error) {
+	started := time.Now()
 	text = strings.TrimSpace(text)
 	if text == "" {
 		ch := make(chan []byte)
 		close(ch)
 		return ch, nil
 	}
+	diag.Infof("xunfei_voiceclone synth start chars=%d asset_set=%t", len(text), strings.TrimSpace(p.cfg.AssetID) != "")
 	if !XunfeiVoiceCloneConfigReady(p.cfg) {
 		return nil, fmt.Errorf("xunfei_voiceclone: AppID/API Key/API Secret/AssetID 未完整配置")
 	}
@@ -81,38 +85,52 @@ func (p *XunfeiVoiceCloneProvider) Synthesize(ctx context.Context, text string) 
 		}
 		return nil, fmt.Errorf("xunfei_voiceclone: websocket: %w", err)
 	}
+	diag.Infof("xunfei_voiceclone websocket connected elapsed=%s", diag.Since(started))
 	if err := conn.WriteJSON(buildXunfeiVoiceCloneSynthesisRequest(p.cfg.AppID, p.cfg.AssetID, text)); err != nil {
 		_ = conn.Close()
 		return nil, fmt.Errorf("xunfei_voiceclone: send synthesis request: %w", err)
 	}
+	diag.Infof("xunfei_voiceclone request sent chars=%d", len(text))
 
 	ch := make(chan []byte, 16)
 	go func() {
 		defer close(ch)
 		defer conn.Close()
+		chunks := 0
+		bytes := 0
 		for {
 			_, data, err := conn.ReadMessage()
 			if err != nil {
+				diag.Warnf("xunfei_voiceclone read ended elapsed=%s chunks=%d bytes=%d err=%v", diag.Since(started), chunks, bytes, err)
 				return
 			}
 			var msg xunfeiVoiceCloneSynthesisResponse
 			if err := json.Unmarshal(data, &msg); err != nil {
+				diag.Warnf("xunfei_voiceclone response parse failed elapsed=%s err=%v", diag.Since(started), err)
 				return
 			}
 			if msg.Header.Code != 0 {
+				diag.Warnf("xunfei_voiceclone response code=%d message=%q elapsed=%s", msg.Header.Code, msg.Header.Message, diag.Since(started))
 				return
 			}
 			if msg.Payload.Audio.Audio != "" {
 				audio, err := base64.StdEncoding.DecodeString(msg.Payload.Audio.Audio)
 				if err == nil && len(audio) > 0 {
+					chunks++
+					bytes += len(audio)
+					if chunks == 1 || chunks%20 == 0 {
+						diag.Infof("xunfei_voiceclone audio chunk chunks=%d bytes=%d last_chunk=%d", chunks, bytes, len(audio))
+					}
 					select {
 					case ch <- audio:
 					case <-ctx.Done():
+						diag.Warnf("xunfei_voiceclone canceled elapsed=%s chunks=%d bytes=%d", diag.Since(started), chunks, bytes)
 						return
 					}
 				}
 			}
 			if msg.Header.Status == 2 || msg.Payload.Audio.Status == 2 {
+				diag.Infof("xunfei_voiceclone synth done elapsed=%s chunks=%d bytes=%d", diag.Since(started), chunks, bytes)
 				return
 			}
 		}

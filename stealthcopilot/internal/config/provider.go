@@ -6,7 +6,9 @@ package config
 type TranslationProviderType string
 
 const (
-	// TranslationProviderXunfei 使用讯飞 RTASR 实时语音转写。
+	// TranslationProviderXunfeiSimult 使用讯飞同声传译获取原文和译文。
+	TranslationProviderXunfeiSimult TranslationProviderType = "xunfei_simult"
+	// TranslationProviderXunfei is kept as a legacy alias for the current iFlytek simultaneous interpretation provider.
 	TranslationProviderXunfei TranslationProviderType = "xunfei"
 	TranslationProviderNull   TranslationProviderType = "null"
 )
@@ -59,7 +61,7 @@ type ProviderConfig struct {
 // DefaultProviderConfig 返回生产环境默认配置。
 func DefaultProviderConfig() ProviderConfig {
 	return ProviderConfig{
-		Translation: TranslationProviderXunfei,
+		Translation: TranslationProviderXunfeiSimult,
 		LLM:         LLMProviderDeepSeek,
 		TTS:         TTSProviderSystem,
 		LipSync:     LipSyncProviderSimli,

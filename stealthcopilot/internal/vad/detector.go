@@ -17,6 +17,8 @@ const (
 	DefaultSilenceThresholdMs = 800
 	// DefaultEnergyThreshold RMS 能量低于此值判定为静音帧（16bit PCM 满量程 32768）
 	DefaultEnergyThreshold = 200.0
+	// DefaultMaxSpeechMs 单段语音最长时长，避免长回答一次性送入下游导致超时。
+	DefaultMaxSpeechMs = 8000
 	// minSpeechMs 至少检测到此时长的语音才触发 VAD（避免瞬时噪声误触发）
 	minSpeechMs = 200
 )
@@ -44,6 +46,7 @@ type Detector interface {
 // 连续静音帧超过 silenceThresholdMs 且已积累足够语音（minSpeechMs）时触发回调。
 type EnergyDetector struct {
 	silenceMs    atomic.Int64 // 静音阈值（毫秒），支持运行时原子更新
+	maxSpeechMs  atomic.Int64 // 单段最长语音时长（毫秒），支持不同链路按延迟目标调整
 	energyThresh float64      // RMS 能量阈值
 	frameDurMs   int          // 每帧时长（ms），用于计算帧数阈值
 }
@@ -63,12 +66,21 @@ func NewEnergyDetector(silenceThresholdMs, frameDurMs int) *EnergyDetector {
 		frameDurMs:   frameDurMs,
 	}
 	d.silenceMs.Store(int64(silenceThresholdMs))
+	d.maxSpeechMs.Store(DefaultMaxSpeechMs)
 	return d
 }
 
 // SetSilenceThreshold 运行时更新静音阈值（毫秒），原子写，即时生效。
 func (d *EnergyDetector) SetSilenceThreshold(ms int) {
 	d.silenceMs.Store(int64(ms))
+}
+
+// SetMaxSpeechMs 运行时更新单段最长语音时长（毫秒），用于控制下游延迟。
+func (d *EnergyDetector) SetMaxSpeechMs(ms int) {
+	if ms <= 0 {
+		ms = DefaultMaxSpeechMs
+	}
+	d.maxSpeechMs.Store(int64(ms))
 }
 
 // Run 启动 VAD 检测主循环。
@@ -79,10 +91,11 @@ func (d *EnergyDetector) Run(
 	onSegment func(seg SpeechSegment),
 ) {
 	var (
-		speechBuf    []byte // 累积语音 PCM
-		silenceCount int    // 连续静音帧数
-		speechFrames int    // 已累积语音帧数（用于判断 minSpeechMs）
-		inSpeech     bool   // 是否处于语音段内
+		speechBuf     []byte // 累积语音 PCM
+		silenceCount  int    // 连续静音帧数
+		speechFrames  int    // 已累积语音帧数（用于判断 minSpeechMs）
+		segmentFrames int    // 当前语音段累计帧数，包含短静音
+		inSpeech      bool   // 是否处于语音段内
 	)
 	minSpeechFrames := minSpeechMs / d.frameDurMs
 
@@ -100,22 +113,37 @@ func (d *EnergyDetector) Run(
 				inSpeech = true
 				silenceCount = 0
 				speechFrames++
+				segmentFrames++
 				speechBuf = append(speechBuf, frame...)
+				maxSpeechFrames := int(d.maxSpeechMs.Load()) / d.frameDurMs
+				if segmentFrames >= maxSpeechFrames && speechFrames >= minSpeechFrames {
+					onSegment(SpeechSegment{
+						PCM:        speechBuf,
+						DurationMs: segmentFrames * d.frameDurMs,
+					})
+					speechBuf = nil
+					silenceCount = 0
+					speechFrames = 0
+					segmentFrames = 0
+					inSpeech = false
+				}
 			} else if inSpeech {
 				silenceCount++
+				segmentFrames++
 				speechBuf = append(speechBuf, frame...) // 静音帧也纳入以保持自然尾音
 				threshFrames := int(d.silenceMs.Load()) / d.frameDurMs
 				if silenceCount >= threshFrames && speechFrames >= minSpeechFrames {
 					// 触发回调
 					seg := SpeechSegment{
 						PCM:        speechBuf,
-						DurationMs: (speechFrames + silenceCount) * d.frameDurMs,
+						DurationMs: segmentFrames * d.frameDurMs,
 					}
 					onSegment(seg)
 					// 重置状态
 					speechBuf = nil
 					silenceCount = 0
 					speechFrames = 0
+					segmentFrames = 0
 					inSpeech = false
 				}
 			}

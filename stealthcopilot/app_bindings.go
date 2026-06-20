@@ -108,74 +108,37 @@ func (a *App) TestAPIConnection(service string) APIConnectionResult {
 			return APIConnectionResult{OK: true, Message: "Simli API Key 已配置"}
 		}
 		return result
-	case "xunfei":
-		if cfg.XunfeiRTASRAppID == "" || cfg.XunfeiRTASRAPIKey == "" {
-			return APIConnectionResult{Message: "讯飞 RTASR AppID/API Key 未完整配置"}
+	case "xunfei_simult", "xunfei":
+		if cfg.XunfeiSimultAppID == "" || cfg.XunfeiSimultAPIKey == "" || cfg.XunfeiSimultAPISecret == "" {
+			return APIConnectionResult{Message: "讯飞同声传译 AppID/API Key/API Secret 未完整配置"}
 		}
-		if cfg.XunfeiMTAppID == "" || cfg.XunfeiMTAPIKey == "" || cfg.XunfeiMTAPISecret == "" {
-			return probeXunfeiRTASR(cfg)
-		}
-		rtasrResult := probeXunfeiRTASR(cfg)
-		if !rtasrResult.OK {
-			return rtasrResult
-		}
-		mtResult := probeXunfeiMT(cfg)
-		if !mtResult.OK {
-			return mtResult
-		}
-		return APIConnectionResult{OK: true, Message: "讯飞 RTASR WebSocket 握手成功，机器翻译 v1/v2 HTTP 请求成功"}
-	case "xunfei_rtasr":
-		if cfg.XunfeiRTASRAppID == "" || cfg.XunfeiRTASRAPIKey == "" {
-			return APIConnectionResult{Message: "讯飞 RTASR AppID/API Key 未完整配置"}
-		}
-		return probeXunfeiRTASR(cfg)
-	case "xunfei_mt":
-		if cfg.XunfeiMTAppID == "" || cfg.XunfeiMTAPIKey == "" || cfg.XunfeiMTAPISecret == "" {
-			return APIConnectionResult{Message: "讯飞机器翻译 AppID/API Key/API Secret 未完整配置"}
-		}
-		return probeXunfeiMT(cfg)
+		return probeXunfeiSimult(cfg)
 	default:
 		return APIConnectionResult{Message: "未知服务：" + service}
 	}
 }
 
-func probeXunfeiRTASR(cfg *config.AppConfig) APIConnectionResult {
+func probeXunfeiSimult(cfg *config.AppConfig) APIConnectionResult {
 	ctx, cancel := context.WithTimeout(context.Background(), apiConnectionTimeout)
 	defer cancel()
-	err := translation.ProbeXunfeiRTASRConnection(ctx, translation.XunfeiConfig{
-		AppID:      cfg.XunfeiRTASRAppID,
-		APIKey:     cfg.XunfeiRTASRAPIKey,
+	err := translation.ProbeXunfeiSimultConnection(ctx, translation.XunfeiSimultConfig{
+		AppID:      cfg.XunfeiSimultAppID,
+		APIKey:     cfg.XunfeiSimultAPIKey,
+		APISecret:  cfg.XunfeiSimultAPISecret,
 		SourceLang: cfg.HearingSourceLang,
 		TargetLang: cfg.HearingTargetLang,
 	})
 	if err != nil {
-		return APIConnectionResult{Message: "讯飞 RTASR WebSocket 握手失败：" + err.Error()}
+		return APIConnectionResult{Message: "讯飞同声传译 WebSocket 握手失败：" + err.Error()}
 	}
-	return APIConnectionResult{OK: true, Message: "讯飞 RTASR WebSocket 握手成功"}
+	return APIConnectionResult{OK: true, Message: "讯飞同声传译 WebSocket 握手成功"}
 }
 
-func probeXunfeiMT(cfg *config.AppConfig) APIConnectionResult {
-	ctx, cancel := context.WithTimeout(context.Background(), apiConnectionTimeout)
-	defer cancel()
-	err := translation.ProbeXunfeiMachineTranslationConnection(ctx, translation.XunfeiMachineTranslationConfig{
-		AppID:     cfg.XunfeiMTAppID,
-		APIKey:    cfg.XunfeiMTAPIKey,
-		APISecret: cfg.XunfeiMTAPISecret,
-	})
-	if err != nil {
-		if strings.Contains(err.Error(), "apikey not found") {
-			detail := fmt.Sprintf("当前保存：API Key %s；API Secret %s", maskedSecretHint(cfg.XunfeiMTAPIKey), maskedSecretHint(cfg.XunfeiMTAPISecret))
-			if looksLikeXunfeiSecret(cfg.XunfeiMTAPIKey) {
-				return APIConnectionResult{Message: "讯飞机器翻译 API Key 未被接口识别。" + detail + "。API Key 当前值看起来更像 API Secret；请重新保存控制台 APIKey 行的值"}
-			}
-			return APIConnectionResult{Message: "讯飞机器翻译 API Key 未被接口识别。" + detail + "。请确认这是机器翻译服务页的 API Key，且保存后重新点击测试"}
-		}
-		if strings.Contains(err.Error(), "HMAC signature does not match") {
-			return APIConnectionResult{Message: "讯飞机器翻译签名不匹配：请检查机器翻译 API Secret 是否和 API Key 属于同一个服务/应用"}
-		}
-		return APIConnectionResult{Message: "讯飞机器翻译测试请求失败：" + err.Error()}
+func xunfeiSimultLangPairMessage(sourceLang, targetLang string) string {
+	if translation.XunfeiSimultLangPairSupported(sourceLang, targetLang) {
+		return ""
 	}
-	return APIConnectionResult{OK: true, Message: "讯飞机器翻译测试翻译成功"}
+	return "讯飞同声传译当前只支持中文普通话 → 英文；当前语言方向为 " + sourceLang + " → " + targetLang + "。英文 → 中文需要改用 ASR + 机器翻译 + TTS 方案。"
 }
 
 func xunfeiVoiceCloneConfigFromApp(cfg *config.AppConfig) tts.XunfeiVoiceCloneConfig {
@@ -188,15 +151,42 @@ func xunfeiVoiceCloneConfigFromApp(cfg *config.AppConfig) tts.XunfeiVoiceCloneCo
 	}
 }
 
-func maskedSecretHint(key string) string {
-	key = strings.TrimSpace(key)
-	if key == "" {
-		return "未保存"
+func hearingASRProviderFromApp(cfg *config.AppConfig, override translation.Provider) translation.Provider {
+	if override != nil {
+		return override
 	}
-	if len(key) <= 8 {
-		return fmt.Sprintf("长度 %d", len(key))
+	switch cfg.TranslationProvider {
+	case config.TranslationProviderXunfeiSimult, config.TranslationProviderXunfei:
+		return translation.NewXunfeiRTASRLLMProvider(translation.XunfeiRTASRLLMConfig{
+			AppID:      cfg.XunfeiSimultAppID,
+			APIKey:     cfg.XunfeiSimultAPIKey,
+			APISecret:  cfg.XunfeiSimultAPISecret,
+			SourceLang: cfg.HearingSourceLang,
+		})
+	default:
+		return override
 	}
-	return fmt.Sprintf("长度 %d，前4位 %s，后4位 %s", len(key), key[:4], key[len(key)-4:])
+}
+
+func speakingTranslationProviderFromApp(
+	cfg *config.AppConfig,
+	override translation.SpeakProvider,
+) translation.SpeakProvider {
+	if override != nil {
+		return override
+	}
+	switch cfg.TranslationProvider {
+	case config.TranslationProviderXunfeiSimult, config.TranslationProviderXunfei:
+		return translation.NewXunfeiSimultSpeakProvider(translation.XunfeiSimultConfig{
+			AppID:      cfg.XunfeiSimultAppID,
+			APIKey:     cfg.XunfeiSimultAPIKey,
+			APISecret:  cfg.XunfeiSimultAPISecret,
+			SourceLang: cfg.SpeakingInputLang,
+			TargetLang: cfg.SpeakingOutputLang,
+		})
+	default:
+		return override
+	}
 }
 
 func secretLengthHint(key string) string {
@@ -205,17 +195,6 @@ func secretLengthHint(key string) string {
 		return "未保存"
 	}
 	return fmt.Sprintf("长度 %d", len(key))
-}
-
-func looksLikeXunfeiSecret(value string) bool {
-	value = strings.TrimSpace(value)
-	if len(value) < 24 {
-		return false
-	}
-	if strings.HasPrefix(value, "NW") || strings.HasPrefix(value, "MG") || strings.HasPrefix(value, "ZW") {
-		return true
-	}
-	return strings.ContainsAny(value, "ABCDEFGHIJKLMNOPQRSTUVWXYZ") && strings.ContainsAny(value, "abcdefghijklmnopqrstuvwxyz") && !strings.ContainsAny(value, "-_")
 }
 
 // SaveLocalConfig 保存非敏感配置（语言、设备、外观等）。
@@ -520,9 +499,21 @@ func (a *App) StartHearingChain() string {
 	if cfg.TranslationProvider == config.TranslationProviderNull {
 		return "听力链需要真实翻译 Provider，请在高级设置选择讯飞"
 	}
-	if cfg.HearingSourceLang != cfg.HearingTargetLang &&
-		(cfg.XunfeiMTAppID == "" || cfg.XunfeiMTAPIKey == "" || cfg.XunfeiMTAPISecret == "") {
-		return "听力链跨语言字幕需要讯飞机器翻译 AppID、API Key 和 API Secret；RTASR 只转写不需要机器翻译凭证"
+	if cfg.XunfeiSimultAppID == "" || cfg.XunfeiSimultAPIKey == "" || cfg.XunfeiSimultAPISecret == "" {
+		return "讯飞同声传译配置不完整：请配置 AppID、API Key 和 API Secret"
+	}
+	asrCfg := translation.XunfeiRTASRLLMConfig{
+		AppID:      cfg.XunfeiSimultAppID,
+		APIKey:     cfg.XunfeiSimultAPIKey,
+		APISecret:  cfg.XunfeiSimultAPISecret,
+		SourceLang: cfg.HearingSourceLang,
+	}
+	transCfg := translation.XunfeiTextTransConfig{
+		AppID:      cfg.XunfeiSimultAppID,
+		APIKey:     cfg.XunfeiSimultAPIKey,
+		APISecret:  cfg.XunfeiSimultAPISecret,
+		SourceLang: cfg.HearingSourceLang,
+		TargetLang: cfg.HearingTargetLang,
 	}
 	llmCfg := llm.Config{
 		Provider: string(cfg.LLMProvider),
@@ -530,34 +521,24 @@ func (a *App) StartHearingChain() string {
 		Model:    cfg.DeepSeekModel,
 		BaseURL:  cfg.LLMBaseURL,
 	}
-	textTranslator := translation.NewXunfeiTextTranslator(translation.XunfeiMachineTranslationConfig{
-		AppID:     cfg.XunfeiMTAppID,
-		APIKey:    cfg.XunfeiMTAPIKey,
-		APISecret: cfg.XunfeiMTAPISecret,
-	})
-
 	chainCfg := hearing.ChainConfig{
-		Xunfei: translation.XunfeiConfig{
-			AppID:      cfg.XunfeiRTASRAppID,
-			APIKey:     cfg.XunfeiRTASRAPIKey,
-			SourceLang: cfg.HearingSourceLang,
-			TargetLang: cfg.HearingTargetLang,
-		},
-		TextTranslator:      textTranslator,
-		TranslationProvider: translator,
-		LLMConfig:           llmCfg,
-		DeepSeekKey:         cfg.DeepSeekKey,
-		DeepSeekModel:       cfg.DeepSeekModel,
-		RAGPrompt:           cfg.RAGPrompt,
-		VirtualMicDevice:    cfg.VirtualMicName,
+		ASRConfig:        asrCfg,
+		ASRProvider:      hearingASRProviderFromApp(cfg, translator),
+		TransStage:       translation.NewXunfeiTextTranslateStage(transCfg),
+		LLMConfig:        llmCfg,
+		DeepSeekKey:      cfg.DeepSeekKey,
+		DeepSeekModel:    cfg.DeepSeekModel,
+		RAGPrompt:        cfg.RAGPrompt,
+		VirtualMicDevice: cfg.VirtualMicName,
 		MonitorConfig: audio.MonitorConfig{
 			Enabled:      cfg.HearingMonitorEnabled,
 			OutputDevice: cfg.MonitorOutputName,
 			Rate:         cfg.HearingMonitorRate,
 			Volume:       cfg.HearingMonitorVolume,
 		},
-		Retriever: retriever,
-		EventSink: a.emitTeleprompterEvent,
+		MonitorPrefersProviderAudio: false,
+		Retriever:                   retriever,
+		EventSink:                   a.emitTeleprompterEvent,
 	}
 	if err := a.HearingChain.Start(a.ctx, chainCfg); err != "" {
 		diag.Errorf("hearing start failed err=%q", err)
@@ -625,11 +606,15 @@ func (a *App) StartSpeakingChain() string {
 	if cfg.TranslationProvider == config.TranslationProviderNull {
 		return "说话链需要真实翻译 Provider，请在高级设置选择讯飞"
 	}
-	if cfg.SpeakingInputLang != cfg.SpeakingOutputLang &&
-		(cfg.XunfeiMTAppID == "" || cfg.XunfeiMTAPIKey == "" || cfg.XunfeiMTAPISecret == "") {
-		return "说话链跨语言输出需要讯飞机器翻译 AppID、API Key 和 API Secret；RTASR 只转写不需要机器翻译凭证"
+	if cfg.XunfeiSimultAppID == "" || cfg.XunfeiSimultAPIKey == "" || cfg.XunfeiSimultAPISecret == "" {
+		return "讯飞同声传译配置不完整：请配置 AppID、API Key 和 API Secret"
+	}
+	if msg := xunfeiSimultLangPairMessage(cfg.SpeakingInputLang, cfg.SpeakingOutputLang); msg != "" {
+		diag.Errorf("speaking start rejected err=%q", msg)
+		return msg
 	}
 	var ttsProvider tts.Provider
+	resolvedTTSProvider := string(cfg.TTSProvider)
 	switch cfg.TTSProvider {
 	case config.TTSProviderNull:
 		return "说话链需要 TTS Provider，请在高级设置选择默认音色或讯飞声音复刻"
@@ -642,29 +627,26 @@ func (a *App) StartSpeakingChain() string {
 		}
 		ttsProvider = tts.NewXunfeiVoiceCloneProvider(voiceCfg)
 	default:
+		resolvedTTSProvider = string(config.TTSProviderSystem)
 		ttsProvider = tts.NewSystemProvider()
 	}
+	diag.Infof("speaking tts provider resolved requested=%s resolved=%s voiceclone_asset_set=%t", cfg.TTSProvider, resolvedTTSProvider, strings.TrimSpace(cfg.XunfeiTTSAssetID) != "")
 	llmCfg := llm.Config{
 		Provider: string(cfg.LLMProvider),
 		APIKey:   cfg.DeepSeekKey,
 		Model:    cfg.DeepSeekModel,
 		BaseURL:  cfg.LLMBaseURL,
 	}
-	textTranslator := translation.NewXunfeiTextTranslator(translation.XunfeiMachineTranslationConfig{
-		AppID:     cfg.XunfeiMTAppID,
-		APIKey:    cfg.XunfeiMTAPIKey,
-		APISecret: cfg.XunfeiMTAPISecret,
-	})
 	chainCfg := speaking.ChainConfig{
-		Xunfei: translation.XunfeiSpeakConfig{
-			AppID:      cfg.XunfeiRTASRAppID,
-			APIKey:     cfg.XunfeiRTASRAPIKey,
+		Simult: translation.XunfeiSimultConfig{
+			AppID:      cfg.XunfeiSimultAppID,
+			APIKey:     cfg.XunfeiSimultAPIKey,
+			APISecret:  cfg.XunfeiSimultAPISecret,
 			SourceLang: cfg.SpeakingInputLang,
 			TargetLang: cfg.SpeakingOutputLang,
 		},
-		TextTranslator:     textTranslator,
 		XunfeiVoiceClone:   xunfeiVoiceCloneConfigFromApp(cfg),
-		Translator:         translator,
+		Translator:         speakingTranslationProviderFromApp(cfg, translator),
 		TTSProvider:        ttsProvider,
 		PhysicalMicDevice:  cfg.PhysicalMicName,
 		VirtualMicDevice:   cfg.VirtualMicName,
@@ -705,6 +687,11 @@ func (a *App) StartVideoChain() string {
 	cfg := a.ConfigSvc.InternalManager().Config
 	diag.Infof("video start requested physical_cam=%q virtual_cam=%q lipsync_provider=%s simli_key_set=%t simli_face_set=%t",
 		cfg.PhysicalCamName, cfg.VirtualCamName, cfg.LipSyncProvider, cfg.SimliKey != "", cfg.SimliFaceID != "")
+	if strings.EqualFold(strings.TrimSpace(cfg.PhysicalCamName), strings.TrimSpace(cfg.VirtualCamName)) && strings.TrimSpace(cfg.PhysicalCamName) != "" {
+		err := "真实摄像头和会议虚拟摄像头不能选择同一个设备：" + cfg.PhysicalCamName
+		diag.Errorf("video start rejected err=%q", err)
+		return err
+	}
 	var lipSyncProvider lipsync.Provider
 	lipSyncCloudMode := false
 	if cfg.LipSyncProvider == config.LipSyncProviderNull {

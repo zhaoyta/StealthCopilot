@@ -2,7 +2,6 @@
 package system
 
 import (
-	"fmt"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -161,16 +160,15 @@ func checkWinVirtualCam() DepStatus {
 
 // DepInstallResult 表示依赖安装操作的结果。
 type DepInstallResult struct {
-	// AutoInstalled 为 true 表示已通过包管理器自动触发安装流程。
-	// 安装在独立 Terminal 中运行，仍需用户点击「重新检测」确认完成。
+	// AutoInstalled is kept for frontend compatibility. The app no longer
+	// launches package managers automatically; dependencies are installed by the user.
 	AutoInstalled bool `json:"auto_installed"`
 	// Message 是展示给用户的操作提示或错误说明。
 	Message string `json:"message"`
 }
 
-// InstallDep 根据依赖 key 尝试引导安装。
-// macOS: 虚拟声卡优先走 Homebrew（在 Terminal 中运行），否则开浏览器下载页。
-// Windows: 统一打开官方下载页。
+// InstallDep returns manual installation guidance for the requested dependency.
+// It must not open Terminal or launch package managers automatically.
 func InstallDep(key string) DepInstallResult {
 	switch runtime.GOOS {
 	case "darwin":
@@ -178,7 +176,7 @@ func InstallDep(key string) DepInstallResult {
 	case "windows":
 		return installDepWin(key)
 	default:
-		return DepInstallResult{Message: "当前系统暂不支持自动引导，请参考文档手动安装"}
+		return DepInstallResult{Message: "当前系统暂不支持安装引导，请参考文档手动安装"}
 	}
 }
 
@@ -186,38 +184,17 @@ func installDepMac(key string) DepInstallResult {
 	switch key {
 	case "ffmpeg":
 		if brewPath, err := exec.LookPath("brew"); err == nil {
-			script := fmt.Sprintf(
-				`tell application "Terminal" to do script "%s install ffmpeg"`,
-				brewPath,
-			)
-			if err := exec.Command("osascript", "-e", script).Start(); err == nil {
-				return DepInstallResult{
-					AutoInstalled: true,
-					Message:       "已在 Terminal 中启动 Homebrew 安装，完成后点击「重新检测」",
-				}
-			}
+			return DepInstallResult{Message: "请在 Terminal 手动执行：" + brewPath + " install ffmpeg。安装完成后点击「重新检测」。"}
 		}
 		_ = exec.Command("open", "https://ffmpeg.org/download.html").Start()
-		return DepInstallResult{Message: "已打开 FFmpeg 官方下载页，安装完成后点击「重新检测」"}
+		return DepInstallResult{Message: "已打开 FFmpeg 官方下载页，请手动安装并放入 PATH，完成后点击「重新检测」。"}
 	case "virtual_mic":
-		// 优先使用 Homebrew 在独立 Terminal 中安装，用户可看到安装进度
 		if brewPath, err := exec.LookPath("brew"); err == nil {
-			script := fmt.Sprintf(
-				`tell application "Terminal" to do script "%s install blackhole-2ch"`,
-				brewPath,
-			)
-			// 使用 Start() 而非 Run()：osascript 启动 Terminal 后即可返回，无需等待 Terminal 退出
-			if err := exec.Command("osascript", "-e", script).Start(); err == nil {
-				return DepInstallResult{
-					AutoInstalled: true,
-					Message:       "已在 Terminal 中启动 Homebrew 安装，完成后点击「重新检测」",
-				}
-			}
+			return DepInstallResult{Message: "请在 Terminal 手动执行：" + brewPath + " install blackhole-2ch。安装完成后重启会议软件并点击「重新检测」。"}
 		}
-		// Homebrew 不可用，打开官方下载页
 		_ = exec.Command("open", "https://existential.audio/blackhole/").Start()
 		return DepInstallResult{
-			Message: "已打开 BlackHole 官方下载页，安装完成后点击「重新检测」",
+			Message: "已打开 BlackHole 官方下载页，请手动安装 BlackHole 2ch，完成后重启会议软件并点击「重新检测」。",
 		}
 	case "virtual_cam":
 		_ = exec.Command("open", "https://obsproject.com/").Start()
@@ -232,17 +209,11 @@ func installDepMac(key string) DepInstallResult {
 func installDepWin(key string) DepInstallResult {
 	switch key {
 	case "ffmpeg":
-		// 优先尝试 winget（Windows 11 / 10 新版内置）
-		if _, err := exec.LookPath("winget"); err == nil {
-			if err := exec.Command("winget", "install", "Gyan.FFmpeg", "--silent").Start(); err == nil {
-				return DepInstallResult{
-					AutoInstalled: true,
-					Message:       "已通过 winget 静默安装 FFmpeg，完成后点击「重新检测」",
-				}
-			}
+		if wingetPath, err := exec.LookPath("winget"); err == nil {
+			return DepInstallResult{Message: "请在终端手动执行：" + wingetPath + " install Gyan.FFmpeg。安装完成后点击「重新检测」。"}
 		}
 		_ = exec.Command("cmd", "/c", "start", "https://ffmpeg.org/download.html#build-windows").Start()
-		return DepInstallResult{Message: "已打开 FFmpeg 下载页，将 ffmpeg.exe 放入系统 PATH 后点击「重新检测」"}
+		return DepInstallResult{Message: "已打开 FFmpeg 下载页，请手动安装并将 ffmpeg.exe 放入系统 PATH，完成后点击「重新检测」。"}
 	case "virtual_mic":
 		_ = exec.Command("cmd", "/c", "start", "https://vb-audio.com/Cable/").Start()
 		return DepInstallResult{
