@@ -1,4 +1,4 @@
-package translation
+package asr
 
 import (
 	"encoding/json"
@@ -26,14 +26,14 @@ type xunfeiASRData struct {
 	} `json:"ws"`
 }
 
-func parseXunfeiASRData(data []byte) (DualResult, bool) {
+func parseXunfeiASRData(data []byte) (Result, bool) {
 	var asr xunfeiASRData
 	if err := json.Unmarshal(data, &asr); err != nil {
 		text := extractXunfeiASRWords(data)
 		if text == "" {
-			return DualResult{}, false
+			return Result{}, false
 		}
-		return DualResult{SrcText: text, DstText: text, IsFinal: true}, true
+		return Result{SrcText: text, DstText: text, IsFinal: true}, true
 	}
 	var b strings.Builder
 	appendWords := func(words []struct {
@@ -56,9 +56,9 @@ func parseXunfeiASRData(data []byte) (DualResult, bool) {
 		text = extractXunfeiASRWords(data)
 	}
 	if text == "" {
-		return DualResult{}, false
+		return Result{}, false
 	}
-	return DualResult{SrcText: text, DstText: text, IsFinal: asr.CN.ST.Type == "0" || asr.LS}, true
+	return Result{SrcText: text, DstText: text, IsFinal: asr.CN.ST.Type == "0" || asr.LS}, true
 }
 
 func extractXunfeiASRWords(data []byte) string {

@@ -1,4 +1,4 @@
-// Package tts 定义文字转语音（TTS）Provider 接口。
+// Package tts defines text-to-speech extensions.
 // 讯飞一句话复刻流式 TTS 实现在同包的 xunfei_voiceclone.go 中提供。
 package tts
 
@@ -6,9 +6,9 @@ import (
 	"context"
 )
 
-// Provider 是 TTS 服务的统一抽象接口。
+// Extension 是 TTS 服务的统一扩展点接口。
 // 实现必须支持流式输出，首个音频 chunk 应尽快返回以降低延迟。
-type Provider interface {
+type Extension interface {
 	// Synthesize 将文本转换为音频流（PCM 或 MP3 chunk）。
 	// 返回 channel，每次接收到 chunk 即可写入虚拟麦克风，不需等待全部完成。
 	// text 为目标语言文本（如英文），通过 cancel ctx 中止合成。

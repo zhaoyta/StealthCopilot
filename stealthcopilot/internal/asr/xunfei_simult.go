@@ -1,4 +1,4 @@
-package translation
+package asr
 
 import (
 	"context"
@@ -31,12 +31,12 @@ type XunfeiSimultConfig struct {
 	TargetLang string
 }
 
-type XunfeiSimultProvider struct {
+type XunfeiSimultExtension struct {
 	cfg XunfeiSimultConfig
 }
 
-func NewXunfeiSimultProvider(cfg XunfeiSimultConfig) *XunfeiSimultProvider {
-	return &XunfeiSimultProvider{cfg: cfg}
+func NewXunfeiSimultExtension(cfg XunfeiSimultConfig) *XunfeiSimultExtension {
+	return &XunfeiSimultExtension{cfg: cfg}
 }
 
 func ProbeXunfeiSimultConnection(ctx context.Context, cfg XunfeiSimultConfig) error {
@@ -57,21 +57,21 @@ func ProbeXunfeiSimultConnection(ctx context.Context, cfg XunfeiSimultConfig) er
 	return conn.Close()
 }
 
-func (p *XunfeiSimultProvider) Translate(ctx context.Context, audioStream <-chan []byte) (<-chan DualResult, error) {
+func (p *XunfeiSimultExtension) Translate(ctx context.Context, audioStream <-chan []byte) (<-chan Result, error) {
 	if !XunfeiSimultConfigReady(p.cfg) {
 		return nil, fmt.Errorf("xunfei_simult: incomplete config")
 	}
 	if !XunfeiSimultLangPairSupported(p.cfg.SourceLang, p.cfg.TargetLang) {
 		return nil, fmt.Errorf("xunfei_simult: unsupported language pair source=%s target=%s", p.cfg.SourceLang, p.cfg.TargetLang)
 	}
-	out := make(chan DualResult, 32)
+	out := make(chan Result, 32)
 	go p.run(ctx, audioStream, out)
 	return out, nil
 }
 
-func (p *XunfeiSimultProvider) Close() error { return nil }
+func (p *XunfeiSimultExtension) Close() error { return nil }
 
-func (p *XunfeiSimultProvider) run(ctx context.Context, audioStream <-chan []byte, out chan<- DualResult) {
+func (p *XunfeiSimultExtension) run(ctx context.Context, audioStream <-chan []byte, out chan<- Result) {
 	defer close(out)
 	endpoint := buildXunfeiSimultURL(p.cfg, time.Now().UTC())
 	conn, resp, err := xunfeiWebSocketDialer().DialContext(ctx, endpoint, nil)
@@ -97,20 +97,20 @@ func (p *XunfeiSimultProvider) run(ctx context.Context, audioStream <-chan []byt
 	}
 }
 
-type XunfeiSimultSpeakProvider struct {
+type XunfeiSimultSegmentExtension struct {
 	cfg XunfeiSimultConfig
 }
 
-func NewXunfeiSimultSpeakProvider(cfg XunfeiSimultConfig) *XunfeiSimultSpeakProvider {
-	return &XunfeiSimultSpeakProvider{cfg: cfg}
+func NewXunfeiSimultSegmentExtension(cfg XunfeiSimultConfig) *XunfeiSimultSegmentExtension {
+	return &XunfeiSimultSegmentExtension{cfg: cfg}
 }
 
-func (p *XunfeiSimultSpeakProvider) Translate(ctx context.Context, pcmData []byte) (DualResult, error) {
+func (p *XunfeiSimultSegmentExtension) Translate(ctx context.Context, pcmData []byte) (Result, error) {
 	if !XunfeiSimultConfigReady(p.cfg) {
-		return DualResult{}, fmt.Errorf("xunfei_simult: incomplete config")
+		return Result{}, fmt.Errorf("xunfei_simult: incomplete config")
 	}
 	if !XunfeiSimultLangPairSupported(p.cfg.SourceLang, p.cfg.TargetLang) {
-		return DualResult{}, fmt.Errorf("xunfei_simult: unsupported language pair source=%s target=%s", p.cfg.SourceLang, p.cfg.TargetLang)
+		return Result{}, fmt.Errorf("xunfei_simult: unsupported language pair source=%s target=%s", p.cfg.SourceLang, p.cfg.TargetLang)
 	}
 	diag.Infof(
 		"xunfei_simult_speak start pcm_bytes=%d approx_ms=%d peak=%d source_lang=%s target_lang=%s",
@@ -125,22 +125,22 @@ func (p *XunfeiSimultSpeakProvider) Translate(ctx context.Context, pcmData []byt
 		_ = resp.Body.Close()
 	}
 	if err != nil {
-		return DualResult{}, fmt.Errorf("xunfei_simult: dial: %w", err)
+		return Result{}, fmt.Errorf("xunfei_simult: dial: %w", err)
 	}
 	defer conn.Close()
 
 	framesSent, err := sendXunfeiSimultPCM(timeoutCtx, conn, p.cfg, pcmData)
 	if err != nil {
-		return DualResult{}, fmt.Errorf("xunfei_simult: send frames: %w", err)
+		return Result{}, fmt.Errorf("xunfei_simult: send frames: %w", err)
 	}
 	diag.Infof("xunfei_simult_speak sent frames=%d pcm_bytes=%d", framesSent, len(pcmData))
 
 	result, err := waitXunfeiSimultFinal(conn, p.cfg)
 	if err != nil {
-		return DualResult{}, err
+		return Result{}, err
 	}
 	if result.SrcText == "" && result.DstText == "" {
-		return DualResult{}, ErrNoSpeechRecognized
+		return Result{}, ErrNoSpeechRecognized
 	}
 	if result.DstText == "" && !xunfeiSimultNeedsTranslation(p.cfg) {
 		result.DstText = result.SrcText
@@ -245,8 +245,8 @@ func writeXunfeiSimultFrame(conn *websocket.Conn, cfg XunfeiSimultConfig, pcm []
 				EOS:      150000,
 			},
 			StreamTrans: xunfeiSimultStreamTransParameter{
-				From: normalizeXunfeiSimultLang(cfg.SourceLang),
-				To:   normalizeXunfeiSimultLang(cfg.TargetLang),
+				From: NormalizeXunfeiSimultLang(cfg.SourceLang),
+				To:   NormalizeXunfeiSimultLang(cfg.TargetLang),
 			},
 			TTS: xunfeiSimultTTSParameter{
 				VCN: "x2_john",
@@ -275,7 +275,7 @@ func writeXunfeiSimultFrame(conn *websocket.Conn, cfg XunfeiSimultConfig, pcm []
 	return conn.WriteMessage(websocket.TextMessage, data)
 }
 
-func receiveXunfeiSimultLoop(conn *websocket.Conn, out chan<- DualResult) {
+func receiveXunfeiSimultLoop(conn *websocket.Conn, out chan<- Result) {
 	for {
 		_, data, err := conn.ReadMessage()
 		if err != nil {
@@ -298,10 +298,10 @@ func receiveXunfeiSimultLoop(conn *websocket.Conn, out chan<- DualResult) {
 	}
 }
 
-func waitXunfeiSimultFinal(conn *websocket.Conn, cfg XunfeiSimultConfig) (DualResult, error) {
+func waitXunfeiSimultFinal(conn *websocket.Conn, cfg XunfeiSimultConfig) (Result, error) {
 	const idleWait = 3 * time.Second
 	_ = conn.SetReadDeadline(time.Now().Add(idleWait))
-	var last DualResult
+	var last Result
 	for {
 		_, data, err := conn.ReadMessage()
 		if err != nil {
@@ -311,18 +311,18 @@ func waitXunfeiSimultFinal(conn *websocket.Conn, cfg XunfeiSimultConfig) (DualRe
 				return last, nil
 			}
 			if last.SrcText != "" && xunfeiSimultNeedsTranslation(cfg) {
-				return DualResult{}, ErrNoTranslationReturned
+				return Result{}, ErrNoTranslationReturned
 			}
 			if isTimeoutErr(err) {
-				return DualResult{}, ErrNoSpeechRecognized
+				return Result{}, ErrNoSpeechRecognized
 			}
-			return DualResult{}, fmt.Errorf("xunfei_simult: read: %w", err)
+			return Result{}, fmt.Errorf("xunfei_simult: read: %w", err)
 		}
 		_ = conn.SetReadDeadline(time.Now().Add(idleWait))
 		result, ok := parseXunfeiSimultResponse(data)
 		if !ok {
 			if responseErr := parseXunfeiSimultError(data); responseErr != nil {
-				return DualResult{}, responseErr
+				return Result{}, responseErr
 			}
 			if !isXunfeiSimultEmptySuccess(data) {
 				diag.Warnf("xunfei_simult response ignored bytes=%d preview=%q", len(data), previewResponse(data))
@@ -385,7 +385,7 @@ func isXunfeiBlankASRData(data []byte) bool {
 }
 
 func xunfeiSimultNeedsTranslation(cfg XunfeiSimultConfig) bool {
-	return normalizeXunfeiSimultLang(cfg.SourceLang) != normalizeXunfeiSimultLang(cfg.TargetLang)
+	return NormalizeXunfeiSimultLang(cfg.SourceLang) != NormalizeXunfeiSimultLang(cfg.TargetLang)
 }
 
 type xunfeiSimultRequest struct {
@@ -472,28 +472,28 @@ type xunfeiSimultTransText struct {
 	IsFinal int    `json:"is_final"`
 }
 
-func parseXunfeiSimultResponse(data []byte) (DualResult, bool) {
+func parseXunfeiSimultResponse(data []byte) (Result, bool) {
 	var resp xunfeiSimultResponse
 	if err := json.Unmarshal(data, &resp); err != nil || resp.Header.Code != 0 {
-		return DualResult{}, false
+		return Result{}, false
 	}
 	if resp.Payload.TTSResults != nil && resp.Payload.TTSResults.Audio != "" {
 		audio, err := base64.StdEncoding.DecodeString(resp.Payload.TTSResults.Audio)
 		if err != nil {
-			return DualResult{}, false
+			return Result{}, false
 		}
-		return DualResult{AudioPCM: audio}, len(audio) > 0
+		return Result{AudioPCM: audio}, len(audio) > 0
 	}
 	if resp.Payload.StreamTransResults != nil && resp.Payload.StreamTransResults.Text != "" {
 		decoded, err := base64.StdEncoding.DecodeString(resp.Payload.StreamTransResults.Text)
 		if err != nil {
-			return DualResult{}, false
+			return Result{}, false
 		}
 		var trans xunfeiSimultTransText
 		if err := json.Unmarshal(decoded, &trans); err != nil {
-			return DualResult{}, false
+			return Result{}, false
 		}
-		return DualResult{
+		return Result{
 			SrcText: strings.TrimSpace(trans.Src),
 			DstText: strings.TrimSpace(trans.Dst),
 			IsFinal: trans.IsFinal == 1,
@@ -503,20 +503,20 @@ func parseXunfeiSimultResponse(data []byte) (DualResult, bool) {
 		decoded, err := base64.StdEncoding.DecodeString(resp.Payload.RecognitionResults.Text)
 		if err != nil {
 			diag.Warnf("xunfei_simult recognition decode failed err=%v", err)
-			return DualResult{}, false
+			return Result{}, false
 		}
 		result, ok := parseXunfeiASRData(decoded)
 		if !ok {
 			if isXunfeiBlankASRData(decoded) {
-				return DualResult{}, false
+				return Result{}, false
 			}
 			diag.Warnf("xunfei_simult recognition parse failed decoded=%q", trimLogString(string(decoded), 500))
-			return DualResult{}, false
+			return Result{}, false
 		}
 		result.DstText = ""
 		return result, result.SrcText != ""
 	}
-	return DualResult{}, false
+	return Result{}, false
 }
 
 func parseXunfeiSimultError(data []byte) error {
@@ -548,7 +548,7 @@ func trimLogString(s string, max int) string {
 	return s[:max] + "...(truncated)"
 }
 
-func normalizeXunfeiSimultLang(lang string) string {
+func NormalizeXunfeiSimultLang(lang string) string {
 	switch strings.ToLower(strings.TrimSpace(lang)) {
 	case "zh", "zh-cn", "zh_cn", "cn":
 		return "cn"
@@ -560,11 +560,11 @@ func normalizeXunfeiSimultLang(lang string) string {
 }
 
 func XunfeiSimultLangPairSupported(sourceLang, targetLang string) bool {
-	return normalizeXunfeiSimultLang(sourceLang) == "cn" && normalizeXunfeiSimultLang(targetLang) == "en"
+	return NormalizeXunfeiSimultLang(sourceLang) == "cn" && NormalizeXunfeiSimultLang(targetLang) == "en"
 }
 
 func xunfeiSimultRecognitionLang(lang string) string {
-	switch normalizeXunfeiSimultLang(lang) {
+	switch NormalizeXunfeiSimultLang(lang) {
 	case "cn":
 		return "zh_cn"
 	case "en":

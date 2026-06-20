@@ -12,12 +12,14 @@ import (
 	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"github.com/zhaoyta/stealthcopilot/internal/asr"
 	"github.com/zhaoyta/stealthcopilot/internal/audio"
 	"github.com/zhaoyta/stealthcopilot/internal/diag"
 	"github.com/zhaoyta/stealthcopilot/internal/intent"
 	"github.com/zhaoyta/stealthcopilot/internal/llm"
+	"github.com/zhaoyta/stealthcopilot/internal/pipeline"
 	"github.com/zhaoyta/stealthcopilot/internal/rag"
-	"github.com/zhaoyta/stealthcopilot/internal/translation"
+	"github.com/zhaoyta/stealthcopilot/internal/trans"
 )
 
 // 听力链向前端推送的 Wails 事件名常量
@@ -43,7 +45,7 @@ const (
 )
 
 type hearingTransItem struct {
-	Result translation.DualResult
+	Result asr.Result
 }
 
 type hearingTTSItem struct {
@@ -54,11 +56,11 @@ type hearingTTSItem struct {
 // ChainConfig 听力链运行时所需的 API 配置和服务依赖。
 type ChainConfig struct {
 	// ASRConfig configures the hearing ASR extension.
-	ASRConfig translation.XunfeiRTASRLLMConfig
-	// ASRProvider overrides the default hearing ASR extension.
-	ASRProvider translation.Provider
-	// TransStage allows replacing the text translation/post-processing step.
-	TransStage translation.ResultStage
+	ASRConfig asr.XunfeiRTASRLLMConfig
+	// ASRExtension overrides the default hearing ASR extension.
+	ASRExtension asr.StreamingExtension
+	// TransExtension allows replacing the text translation/post-processing extension.
+	TransExtension trans.Extension
 	// LLMConfig configures OpenAI-compatible intent classification and answer generation.
 	LLMConfig llm.Config
 	// DeepSeekKey DeepSeek API Key
@@ -124,15 +126,15 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 	}
 	diag.Infof("hearing capture started device=%q", cfg.VirtualMicDevice)
 
-	translator := cfg.ASRProvider
+	translator := cfg.ASRExtension
 	if translator == nil {
-		if !translation.XunfeiRTASRLLMConfigReady(cfg.ASRConfig) {
+		if !asr.XunfeiRTASRLLMConfigReady(cfg.ASRConfig) {
 			cancel()
 			c.cancel = nil
 			diag.Errorf("hearing asr config incomplete source_lang=%s", cfg.ASRConfig.SourceLang)
 			return "讯飞实时转写配置不完整：请配置 AppID、API Key、API Secret 和听力链语言"
 		}
-		translator = translation.NewXunfeiRTASRLLMProvider(cfg.ASRConfig)
+		translator = asr.NewXunfeiRTASRLLMExtension(cfg.ASRConfig)
 	}
 	resultCh, err := translator.Translate(ctx, audioStream)
 	if err != nil {
@@ -182,9 +184,9 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 	go func() {
 		defer c.wg.Done()
 		defer translator.Close()
-		transStage := cfg.TransStage
+		transStage := cfg.TransExtension
 		if transStage == nil {
-			transStage = translation.NoopResultStage{}
+			transStage = trans.NoopExtension{}
 		}
 		c.processLoop(ctx, resultCh, transStage, classifier, cfg.Retriever, generator, sessionID, cfg.RAGPrompt, combinedEmit, monitor, monitorAudioQueue, cfg.MonitorPrefersProviderAudio)
 	}()
@@ -227,8 +229,8 @@ func (c *Chain) Stop() {
 // emitFn 由 Start() 创建，内部同时推送 Wails 事件和 EventSink，processLoop 本身无 Wails 依赖。
 func (c *Chain) processLoop(
 	ctx context.Context,
-	results <-chan translation.DualResult,
-	transStage translation.ResultStage,
+	results <-chan asr.Result,
+	transStage trans.Extension,
 	classifier *intent.Classifier,
 	retriever *rag.Retriever,
 	generator *llm.AnswerGenerator,
@@ -313,9 +315,9 @@ func (c *Chain) processLoop(
 			}
 			diag.Infof("hearing result final=%t src_len=%d dst_len=%d audio_bytes=%d", result.IsFinal, len(result.SrcText), len(result.DstText), len(result.AudioPCM))
 			if result.SrcText != "" {
-				emitFn(EventStep, translation.StepEvent{
+				emitFn(EventStep, pipeline.StepEvent{
 					Chain:   "hearing",
-					Step:    translation.StepASR,
+					Step:    pipeline.StepASR,
 					SrcText: result.SrcText,
 					IsFinal: result.IsFinal,
 				})
@@ -379,7 +381,7 @@ func (c *Chain) queueHearingSentences(ctx context.Context, transQueue chan<- hea
 		if sentence == "" {
 			continue
 		}
-		result := translation.DualResult{SrcText: sentence, IsFinal: true}
+		result := asr.Result{SrcText: sentence, IsFinal: true}
 		select {
 		case transQueue <- hearingTransItem{Result: result}:
 			diag.Infof("hearing sentence queued chars=%d queue_depth=%d text=%q", len(sentence), len(transQueue), trimHearingLog(sentence, 120))
@@ -400,7 +402,7 @@ func (c *Chain) transWorker(
 	ctx context.Context,
 	queue <-chan hearingTransItem,
 	ttsQueue chan<- hearingTTSItem,
-	transStage translation.ResultStage,
+	transStage trans.Extension,
 	classifier *intent.Classifier,
 	retriever *rag.Retriever,
 	generator *llm.AnswerGenerator,
@@ -433,9 +435,9 @@ func (c *Chain) transWorker(
 				}
 			}
 			if result.DstText != "" {
-				emitFn(EventStep, translation.StepEvent{
+				emitFn(EventStep, pipeline.StepEvent{
 					Chain:   "hearing",
-					Step:    translation.StepTrans,
+					Step:    pipeline.StepTrans,
 					DstText: result.DstText,
 					IsFinal: result.IsFinal,
 				})
@@ -484,9 +486,9 @@ func (c *Chain) ttsWorker(ctx context.Context, queue <-chan hearingTTSItem, moni
 			if item.Text == "" || monitor == nil {
 				continue
 			}
-			emitFn(EventStep, translation.StepEvent{
+			emitFn(EventStep, pipeline.StepEvent{
 				Chain:   "hearing",
-				Step:    translation.StepTTS,
+				Step:    pipeline.StepTTS,
 				DstText: item.Text,
 				IsFinal: item.IsFinal,
 			})
@@ -503,14 +505,14 @@ func (c *Chain) ttsWorker(ctx context.Context, queue <-chan hearingTTSItem, moni
 
 func (c *Chain) queueProviderAudio(
 	ctx context.Context,
-	result translation.DualResult,
+	result asr.Result,
 	emitFn llm.EventEmitter,
 	monitor audio.MonitorSink,
 	monitorAudioQueue chan<- []byte,
 ) {
-	emitFn(EventStep, translation.StepEvent{
+	emitFn(EventStep, pipeline.StepEvent{
 		Chain:      "hearing",
-		Step:       translation.StepTTS,
+		Step:       pipeline.StepTTS,
 		DstText:    result.DstText,
 		IsFinal:    result.IsFinal,
 		AudioBytes: len(result.AudioPCM),

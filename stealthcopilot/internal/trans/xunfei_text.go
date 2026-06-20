@@ -1,4 +1,4 @@
-package translation
+package trans
 
 import (
 	"bytes"
@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/zhaoyta/stealthcopilot/internal/asr"
 	"github.com/zhaoyta/stealthcopilot/internal/diag"
 )
 
@@ -23,7 +24,7 @@ const (
 	xunfeiTextTransURL  = "https://" + xunfeiTextTransHost + xunfeiTextTransPath
 )
 
-type XunfeiTextTranslateStage struct {
+type XunfeiTextExtension struct {
 	cfg    XunfeiTextTransConfig
 	client *http.Client
 }
@@ -36,16 +37,16 @@ type XunfeiTextTransConfig struct {
 	TargetLang string
 }
 
-func NewXunfeiTextTranslateStage(cfg XunfeiTextTransConfig) *XunfeiTextTranslateStage {
-	return &XunfeiTextTranslateStage{
+func NewXunfeiTextExtension(cfg XunfeiTextTransConfig) *XunfeiTextExtension {
+	return &XunfeiTextExtension{
 		cfg:    cfg,
 		client: &http.Client{Timeout: 8 * time.Second},
 	}
 }
 
-func (s *XunfeiTextTranslateStage) Process(ctx context.Context, result DualResult) (DualResult, error) {
+func (s *XunfeiTextExtension) Process(ctx context.Context, result asr.Result) (asr.Result, error) {
 	text := strings.TrimSpace(result.SrcText)
-	if text == "" || result.DstText != "" || normalizeXunfeiSimultLang(s.cfg.SourceLang) == normalizeXunfeiSimultLang(s.cfg.TargetLang) {
+	if text == "" || result.DstText != "" || asr.NormalizeXunfeiSimultLang(s.cfg.SourceLang) == asr.NormalizeXunfeiSimultLang(s.cfg.TargetLang) {
 		return result, nil
 	}
 	translated, err := s.translate(ctx, text)
@@ -56,7 +57,7 @@ func (s *XunfeiTextTranslateStage) Process(ctx context.Context, result DualResul
 	return result, nil
 }
 
-func (s *XunfeiTextTranslateStage) translate(ctx context.Context, text string) (string, error) {
+func (s *XunfeiTextExtension) translate(ctx context.Context, text string) (string, error) {
 	if !XunfeiTextTransConfigReady(s.cfg) {
 		return "", fmt.Errorf("xunfei_text_trans: incomplete config")
 	}
@@ -68,8 +69,8 @@ func (s *XunfeiTextTranslateStage) translate(ctx context.Context, text string) (
 		},
 		Parameter: xunfeiTextTransParameter{
 			ITS: xunfeiTextTransITSParameter{
-				From:   normalizeXunfeiSimultLang(s.cfg.SourceLang),
-				To:     normalizeXunfeiSimultLang(s.cfg.TargetLang),
+				From:   asr.NormalizeXunfeiSimultLang(s.cfg.SourceLang),
+				To:     asr.NormalizeXunfeiSimultLang(s.cfg.TargetLang),
 				Result: map[string]any{},
 			},
 		},
@@ -206,7 +207,16 @@ func parseXunfeiTextTransResponse(raw []byte) (string, error) {
 	}
 	dst := strings.TrimSpace(result.TransResult.Dst)
 	if dst == "" {
-		return "", ErrNoTranslationReturned
+		return "", asr.ErrNoTranslationReturned
 	}
 	return dst, nil
+}
+
+func previewResponse(data []byte) string {
+	const max = 240
+	text := string(data)
+	if len(text) <= max {
+		return text
+	}
+	return text[:max] + "..."
 }

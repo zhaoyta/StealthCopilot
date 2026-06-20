@@ -15,17 +15,17 @@ import (
 
 const systemTTSChunkSize = 4096
 
-// SystemProvider 使用操作系统默认语音合成生成普通人声音频。
+// SystemExtension 使用操作系统默认语音合成生成普通人声音频。
 // 它不依赖声音复刻训练，适合作为说话链默认音色。
-type SystemProvider struct{}
+type SystemExtension struct{}
 
-// NewSystemProvider 创建默认音色 TTS Provider。
-func NewSystemProvider() *SystemProvider {
-	return &SystemProvider{}
+// NewSystemExtension 创建默认音色 TTS Extension。
+func NewSystemExtension() *SystemExtension {
+	return &SystemExtension{}
 }
 
 // Synthesize 将文本合成为 24kHz mono s16le PCM chunk。
-func (p *SystemProvider) Synthesize(ctx context.Context, text string) (<-chan []byte, error) {
+func (p *SystemExtension) Synthesize(ctx context.Context, text string) (<-chan []byte, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		ch := make(chan []byte)
@@ -76,10 +76,10 @@ func (p *SystemProvider) Synthesize(ctx context.Context, text string) (<-chan []
 }
 
 // VoiceID 返回默认音色标识，便于日志区分个人复刻音色。
-func (p *SystemProvider) VoiceID() string { return "system-default" }
+func (p *SystemExtension) VoiceID() string { return "system-default" }
 
 // Close 无需释放外部资源。
-func (p *SystemProvider) Close() error { return nil }
+func (p *SystemExtension) Close() error { return nil }
 
 func synthesizeSystemPCM(ctx context.Context, text, goos string) ([]byte, error) {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {

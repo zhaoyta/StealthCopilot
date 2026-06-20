@@ -1,5 +1,5 @@
-// Package translation 定义实时语音同传 Provider 接口。
-package translation
+// Package asr defines speech recognition extensions for streaming and segmented audio.
+package asr
 
 import (
 	"context"
@@ -7,53 +7,53 @@ import (
 	"errors"
 )
 
-// DualResult 包含一次翻译结果的两路输出：
+// Result 包含一次语音识别/同传结果的两路输出：
 //   - SrcText：面试官原始语言文本（用于 RAG 检索）
 //   - DstText：用户目标语言翻译文本（用于幽灵提词窗字幕）
-type DualResult struct {
+type Result struct {
 	SrcText  string // 原文（面试官语言，如英文）
 	DstText  string // 译文（用户语言，如中文）
 	IsFinal  bool   // 是否为句子最终结果
 	AudioPCM []byte // 可选：同传服务返回的译文音频，16k/16bit/mono PCM
 }
 
-// Provider 是实时 ASR/翻译服务的统一抽象接口。
+// StreamingExtension 是实时流式 ASR 扩展点。
 // 单次调用同时返回 src 和 dst，两路并行不串行。
-type Provider interface {
+type StreamingExtension interface {
 	// Translate 开始实时 ASR，从 audioStream 读取 PCM 数据。
-	// 返回 DualResult channel，每条记录包含原文，译文可由包装器补齐。
+	// 返回 Result channel，每条记录包含原文，译文可由 Trans 扩展补齐。
 	// 通过 cancel ctx 停止翻译并关闭 channel。
-	Translate(ctx context.Context, audioStream <-chan []byte) (<-chan DualResult, error)
+	Translate(ctx context.Context, audioStream <-chan []byte) (<-chan Result, error)
 
 	// Close 释放 WebSocket 连接等资源。
 	Close() error
 }
 
-// SpeakProvider translates a completed speech segment into source and target text.
-type SpeakProvider interface {
-	Translate(ctx context.Context, pcmData []byte) (DualResult, error)
+// SegmentExtension translates a completed speech segment into source and target text.
+type SegmentExtension interface {
+	Translate(ctx context.Context, pcmData []byte) (Result, error)
 }
 
 // ErrNoSpeechRecognized 表示语音服务正常返回但没有可用文本。
-var ErrNoSpeechRecognized = errors.New("translation: no speech text recognized")
+var ErrNoSpeechRecognized = errors.New("asr: no speech text recognized")
 
 // ErrNoTranslationReturned 表示 ASR 有文本，但跨语言翻译没有返回目标文本。
-var ErrNoTranslationReturned = errors.New("translation: no translated text returned")
+var ErrNoTranslationReturned = errors.New("asr: no translated text returned")
 
-type NullProvider struct{}
+type NullStreamingExtension struct{}
 
-func (NullProvider) Translate(_ context.Context, _ <-chan []byte) (<-chan DualResult, error) {
-	ch := make(chan DualResult)
+func (NullStreamingExtension) Translate(_ context.Context, _ <-chan []byte) (<-chan Result, error) {
+	ch := make(chan Result)
 	close(ch)
 	return ch, nil
 }
 
-func (NullProvider) Close() error { return nil }
+func (NullStreamingExtension) Close() error { return nil }
 
-type NullSpeakProvider struct{}
+type NullSegmentExtension struct{}
 
-func (NullSpeakProvider) Translate(context.Context, []byte) (DualResult, error) {
-	return DualResult{}, nil
+func (NullSegmentExtension) Translate(context.Context, []byte) (Result, error) {
+	return Result{}, nil
 }
 
 func pcmDurationMs(pcm []byte) int {

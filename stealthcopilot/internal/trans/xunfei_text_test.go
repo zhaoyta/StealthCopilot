@@ -1,4 +1,4 @@
-package translation
+package trans
 
 import (
 	"encoding/base64"

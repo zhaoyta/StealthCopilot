@@ -11,10 +11,12 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"github.com/zhaoyta/stealthcopilot/internal/asr"
 	"github.com/zhaoyta/stealthcopilot/internal/audio"
 	"github.com/zhaoyta/stealthcopilot/internal/diag"
 	"github.com/zhaoyta/stealthcopilot/internal/llm"
-	"github.com/zhaoyta/stealthcopilot/internal/translation"
+	"github.com/zhaoyta/stealthcopilot/internal/pipeline"
+	"github.com/zhaoyta/stealthcopilot/internal/trans"
 	"github.com/zhaoyta/stealthcopilot/internal/tts"
 	"github.com/zhaoyta/stealthcopilot/internal/vad"
 )
@@ -56,15 +58,15 @@ type segmentQueueItem struct {
 // ChainConfig 说话链运行时所需的配置和服务依赖。
 type ChainConfig struct {
 	// Simult 语音同传配置，默认用于获取原文和译文。
-	Simult translation.XunfeiSimultConfig
-	// Translator overrides Xunfei when a different speech translation provider is selected.
-	Translator translation.SpeakProvider
-	// TransStage allows replacing the text translation/post-processing step.
-	TransStage translation.ResultStage
+	Simult asr.XunfeiSimultConfig
+	// ASRExtension overrides Xunfei when a different segmented ASR extension is selected.
+	ASRExtension asr.SegmentExtension
+	// TransExtension allows replacing the text translation/post-processing extension.
+	TransExtension trans.Extension
 	// XunfeiVoiceClone TTS 配置
 	XunfeiVoiceClone tts.XunfeiVoiceCloneConfig
-	// TTSProvider overrides XunfeiVoiceClone when a different TTS provider is selected.
-	TTSProvider tts.Provider
+	// TTSExtension overrides XunfeiVoiceClone when a different TTS extension is selected.
+	TTSExtension tts.Extension
 	// PhysicalMicDevice 物理麦克风设备名称
 	PhysicalMicDevice string
 	// VirtualMicDevice 虚拟声卡设备名称（BlackHole/VB-Cable）
@@ -145,24 +147,24 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 	}
 	diag.Infof("speaking mic started device=%q", cfg.PhysicalMicDevice)
 
-	translator := cfg.Translator
+	translator := cfg.ASRExtension
 	if translator == nil {
-		if cfg.PhysicalMicDevice != "" && !translation.XunfeiSimultConfigReady(cfg.Simult) {
+		if cfg.PhysicalMicDevice != "" && !asr.XunfeiSimultConfigReady(cfg.Simult) {
 			cancel()
 			_ = mic.Close()
 			c.cancel = nil
 			diag.Errorf("speaking translator config incomplete source_lang=%s target_lang=%s", cfg.Simult.SourceLang, cfg.Simult.TargetLang)
 			return "讯飞同声传译配置不完整：请配置 AppID、API Key、API Secret 和说话链语言"
 		}
-		translator = translation.NewXunfeiSimultSpeakProvider(cfg.Simult)
+		translator = asr.NewXunfeiSimultSegmentExtension(cfg.Simult)
 	}
 
-	var ttsProvider tts.Provider = cfg.TTSProvider
+	var ttsExtension tts.Extension = cfg.TTSExtension
 	switch {
-	case ttsProvider != nil:
+	case ttsExtension != nil:
 		// injected provider
 	case tts.XunfeiVoiceCloneConfigReady(cfg.XunfeiVoiceClone):
-		ttsProvider = tts.NewXunfeiVoiceCloneProvider(cfg.XunfeiVoiceClone)
+		ttsExtension = tts.NewXunfeiVoiceCloneExtension(cfg.XunfeiVoiceClone)
 	default:
 		if cfg.VirtualMicDevice != "" {
 			cancel()
@@ -171,7 +173,7 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 			diag.Errorf("speaking tts config incomplete virtual_mic=%q", cfg.VirtualMicDevice)
 			return "讯飞声音复刻 TTS 配置不完整：请配置 AppID、API Key、API Secret，并完成音色训练获得 Asset ID"
 		}
-		ttsProvider = &tts.NullTTSProvider{}
+		ttsExtension = &tts.NullExtension{}
 	}
 
 	// 虚拟麦克风写入：未配置时允许 Null，用户选择设备时必须是真实 writer。
@@ -194,7 +196,7 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
-		c.ttsWorker(ctx, wailsCtx, ttsQueue, ttsProvider, virtualMic, cfg)
+		c.ttsWorker(ctx, wailsCtx, ttsQueue, ttsExtension, virtualMic, cfg)
 	}()
 	c.wg.Add(1)
 	go func() {
@@ -271,7 +273,7 @@ func (c *Chain) segmentWorker(
 	ctx context.Context,
 	wailsCtx context.Context,
 	queue <-chan segmentQueueItem,
-	translator translation.SpeakProvider,
+	translator asr.SegmentExtension,
 	ttsQueue chan<- ttsQueueItem,
 	cfg ChainConfig,
 ) {
@@ -299,7 +301,7 @@ func (c *Chain) handleSegment(
 	ctx context.Context,
 	wailsCtx context.Context,
 	item segmentQueueItem,
-	translator translation.SpeakProvider,
+	translator asr.SegmentExtension,
 	ttsQueue chan<- ttsQueueItem,
 	cfg ChainConfig,
 ) {
@@ -313,12 +315,12 @@ func (c *Chain) handleSegment(
 	diag.Infof("speaking asr_trans begin segment=%d pcm_ms=%d peak=%d", item.ID, pcmMs, audioPeak(item.Seg.PCM))
 	speechText, err := translator.Translate(ctx, item.Seg.PCM)
 	if err != nil {
-		if errors.Is(err, translation.ErrNoSpeechRecognized) {
+		if errors.Is(err, asr.ErrNoSpeechRecognized) {
 			diag.Infof("speaking recognition skipped segment=%d asr_elapsed=%s elapsed=%s reason=%q", item.ID, diag.Since(asrStarted), diag.Since(started), err)
 			runtime.EventsEmit(wailsCtx, EventSpeakDone)
 			return
 		}
-		if errors.Is(err, translation.ErrNoTranslationReturned) {
+		if errors.Is(err, asr.ErrNoTranslationReturned) {
 			diag.Warnf("speaking translation missing segment=%d asr_elapsed=%s elapsed=%s err=%v", item.ID, diag.Since(asrStarted), diag.Since(started), err)
 			runtime.EventsEmit(wailsCtx, EventSpeakError, "同传已识别到语音，但没有返回目标语言译文；请检查说话链源语言/目标语言设置和讯飞同传权限")
 			return
@@ -332,19 +334,19 @@ func (c *Chain) handleSegment(
 	if translatedText == "" {
 		translatedText = speechText.SrcText
 	}
-	runtime.EventsEmit(wailsCtx, EventSpeakStep, translation.StepEvent{
+	runtime.EventsEmit(wailsCtx, EventSpeakStep, pipeline.StepEvent{
 		Chain:   "speaking",
-		Step:    translation.StepASR,
+		Step:    pipeline.StepASR,
 		SrcText: speechText.SrcText,
 		IsFinal: true,
 	})
 
-	transStage := cfg.TransStage
+	transStage := cfg.TransExtension
 	if transStage == nil {
-		transStage = translation.NoopResultStage{}
+		transStage = trans.NoopExtension{}
 	}
 	transStarted := time.Now()
-	processedText, transErr := transStage.Process(ctx, translation.DualResult{
+	processedText, transErr := transStage.Process(ctx, asr.Result{
 		SrcText: speechText.SrcText,
 		DstText: translatedText,
 		IsFinal: true,
@@ -360,9 +362,9 @@ func (c *Chain) handleSegment(
 		diag.Infof("speaking trans stage done segment=%d elapsed=%s src_chars=%d dst_chars=%d", item.ID, diag.Since(transStarted), len(speechText.SrcText), len(translatedText))
 	}
 	diag.Infof("speaking translate ok segment=%d elapsed=%s translated_chars=%d", item.ID, diag.Since(started), len(translatedText))
-	runtime.EventsEmit(wailsCtx, EventSpeakStep, translation.StepEvent{
+	runtime.EventsEmit(wailsCtx, EventSpeakStep, pipeline.StepEvent{
 		Chain:   "speaking",
-		Step:    translation.StepTrans,
+		Step:    pipeline.StepTrans,
 		DstText: translatedText,
 		IsFinal: true,
 	})
@@ -423,11 +425,11 @@ func (c *Chain) ttsWorker(
 	ctx context.Context,
 	wailsCtx context.Context,
 	queue <-chan ttsQueueItem,
-	ttsProvider tts.Provider,
+	ttsExtension tts.Extension,
 	virtualMic audio.VirtualMicWriter,
 	cfg ChainConfig,
 ) {
-	defer ttsProvider.Close()
+	defer ttsExtension.Close()
 	defer virtualMic.Close()
 	defer diag.Infof("speaking tts worker stopped")
 	for {
@@ -436,7 +438,7 @@ func (c *Chain) ttsWorker(
 			return
 		case item := <-queue:
 			diag.Infof("speaking tts dequeued segment=%d sentence=%d/%d queue_depth=%d", item.SegmentID, item.Index, item.Total, len(queue))
-			c.playTTSItem(ctx, wailsCtx, item, ttsProvider, virtualMic, cfg)
+			c.playTTSItem(ctx, wailsCtx, item, ttsExtension, virtualMic, cfg)
 			if item.Index == item.Total && len(queue) == 0 {
 				runtime.EventsEmit(wailsCtx, EventSpeakDone)
 			}
@@ -448,22 +450,22 @@ func (c *Chain) playTTSItem(
 	ctx context.Context,
 	wailsCtx context.Context,
 	item ttsQueueItem,
-	ttsProvider tts.Provider,
+	ttsExtension tts.Extension,
 	virtualMic audio.VirtualMicWriter,
 	cfg ChainConfig,
 ) {
 	started := time.Now()
 	diag.Infof("speaking tts sentence begin segment=%d sentence=%d/%d virtual_mic=%q chars=%d", item.SegmentID, item.Index, item.Total, cfg.VirtualMicDevice, len(item.Text))
-	runtime.EventsEmit(wailsCtx, EventSpeakStep, translation.StepEvent{
+	runtime.EventsEmit(wailsCtx, EventSpeakStep, pipeline.StepEvent{
 		Chain:   "speaking",
-		Step:    translation.StepTTS,
+		Step:    pipeline.StepTTS,
 		DstText: item.Text,
 		IsFinal: item.Index == item.Total,
 	})
 	virtualMic.BeginZeroPCM()
 	stopLoopbackCheck := startVirtualMicLoopbackCheck(ctx, cfg.VirtualMicDevice, item.SegmentID)
 	defer stopLoopbackCheck()
-	audioCh, err := ttsProvider.Synthesize(ctx, item.Text)
+	audioCh, err := ttsExtension.Synthesize(ctx, item.Text)
 	if err != nil {
 		virtualMic.EndTTS()
 		diag.Warnf("speaking tts failed segment=%d sentence=%d/%d err=%v", item.SegmentID, item.Index, item.Total, err)

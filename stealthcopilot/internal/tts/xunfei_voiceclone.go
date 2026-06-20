@@ -44,12 +44,12 @@ type XunfeiVoiceCloneConfig struct {
 	TaskID    string
 }
 
-type XunfeiVoiceCloneProvider struct {
+type XunfeiVoiceCloneExtension struct {
 	cfg XunfeiVoiceCloneConfig
 }
 
-func NewXunfeiVoiceCloneProvider(cfg XunfeiVoiceCloneConfig) *XunfeiVoiceCloneProvider {
-	return &XunfeiVoiceCloneProvider{cfg: cfg}
+func NewXunfeiVoiceCloneExtension(cfg XunfeiVoiceCloneConfig) *XunfeiVoiceCloneExtension {
+	return &XunfeiVoiceCloneExtension{cfg: cfg}
 }
 
 func XunfeiVoiceCloneConfigReady(cfg XunfeiVoiceCloneConfig) bool {
@@ -59,7 +59,7 @@ func XunfeiVoiceCloneConfigReady(cfg XunfeiVoiceCloneConfig) bool {
 		strings.TrimSpace(cfg.AssetID) != ""
 }
 
-func (p *XunfeiVoiceCloneProvider) Synthesize(ctx context.Context, text string) (<-chan []byte, error) {
+func (p *XunfeiVoiceCloneExtension) Synthesize(ctx context.Context, text string) (<-chan []byte, error) {
 	started := time.Now()
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -138,9 +138,9 @@ func (p *XunfeiVoiceCloneProvider) Synthesize(ctx context.Context, text string) 
 	return ch, nil
 }
 
-func (p *XunfeiVoiceCloneProvider) VoiceID() string { return p.cfg.AssetID }
+func (p *XunfeiVoiceCloneExtension) VoiceID() string { return p.cfg.AssetID }
 
-func (p *XunfeiVoiceCloneProvider) Close() error { return nil }
+func (p *XunfeiVoiceCloneExtension) Close() error { return nil }
 
 type XunfeiVoiceCloneClient struct {
 	cfg             XunfeiVoiceCloneConfig

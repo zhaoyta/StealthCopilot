@@ -1,4 +1,4 @@
-package translation
+package asr
 
 import (
 	"context"
@@ -24,7 +24,7 @@ const (
 	xunfeiRTASRLLMWSS  = "wss://" + xunfeiRTASRLLMHost + xunfeiRTASRLLMPath
 )
 
-type XunfeiRTASRLLMProvider struct {
+type XunfeiRTASRLLMExtension struct {
 	cfg XunfeiRTASRLLMConfig
 }
 
@@ -35,22 +35,22 @@ type XunfeiRTASRLLMConfig struct {
 	SourceLang string
 }
 
-func NewXunfeiRTASRLLMProvider(cfg XunfeiRTASRLLMConfig) *XunfeiRTASRLLMProvider {
-	return &XunfeiRTASRLLMProvider{cfg: cfg}
+func NewXunfeiRTASRLLMExtension(cfg XunfeiRTASRLLMConfig) *XunfeiRTASRLLMExtension {
+	return &XunfeiRTASRLLMExtension{cfg: cfg}
 }
 
-func (p *XunfeiRTASRLLMProvider) Translate(ctx context.Context, audioStream <-chan []byte) (<-chan DualResult, error) {
+func (p *XunfeiRTASRLLMExtension) Translate(ctx context.Context, audioStream <-chan []byte) (<-chan Result, error) {
 	if !XunfeiRTASRLLMConfigReady(p.cfg) {
 		return nil, fmt.Errorf("xunfei_rtasr_llm: incomplete config")
 	}
-	out := make(chan DualResult, 32)
+	out := make(chan Result, 32)
 	go p.run(ctx, audioStream, out)
 	return out, nil
 }
 
-func (p *XunfeiRTASRLLMProvider) Close() error { return nil }
+func (p *XunfeiRTASRLLMExtension) Close() error { return nil }
 
-func (p *XunfeiRTASRLLMProvider) run(ctx context.Context, audioStream <-chan []byte, out chan<- DualResult) {
+func (p *XunfeiRTASRLLMExtension) run(ctx context.Context, audioStream <-chan []byte, out chan<- Result) {
 	defer close(out)
 	sessionID := uuid.NewString()
 	endpoint := buildXunfeiRTASRLLMURL(p.cfg, sessionID, time.Now())
@@ -139,7 +139,7 @@ func sendXunfeiRTASRLLMStream(ctx context.Context, conn *websocket.Conn, audioSt
 	}
 }
 
-func receiveXunfeiRTASRLLMLoop(conn *websocket.Conn, out chan<- DualResult) {
+func receiveXunfeiRTASRLLMLoop(conn *websocket.Conn, out chan<- Result) {
 	for {
 		_, data, err := conn.ReadMessage()
 		if err != nil {
@@ -181,13 +181,13 @@ type xunfeiRTASRLLMResponse struct {
 	} `json:"data"`
 }
 
-func parseXunfeiRTASRLLMResponse(data []byte) (DualResult, bool) {
+func parseXunfeiRTASRLLMResponse(data []byte) (Result, bool) {
 	var resp xunfeiRTASRLLMResponse
 	if err := json.Unmarshal(data, &resp); err != nil {
-		return DualResult{}, false
+		return Result{}, false
 	}
 	if resp.MsgType != "result" || resp.ResType != "asr" {
-		return DualResult{}, false
+		return Result{}, false
 	}
 	var b strings.Builder
 	for _, rt := range resp.Data.CN.ST.RT {
@@ -202,9 +202,9 @@ func parseXunfeiRTASRLLMResponse(data []byte) (DualResult, bool) {
 	}
 	text := strings.TrimSpace(b.String())
 	if text == "" {
-		return DualResult{}, false
+		return Result{}, false
 	}
-	return DualResult{SrcText: text, IsFinal: resp.Data.LS}, true
+	return Result{SrcText: text, IsFinal: resp.Data.LS}, true
 }
 
 func parseXunfeiRTASRLLMError(data []byte) error {
@@ -219,7 +219,7 @@ func parseXunfeiRTASRLLMError(data []byte) error {
 }
 
 func rtasrLLMLang(lang string) string {
-	switch normalizeXunfeiSimultLang(lang) {
+	switch NormalizeXunfeiSimultLang(lang) {
 	case "en":
 		return "autodialect"
 	case "cn":
