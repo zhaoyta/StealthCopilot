@@ -24,7 +24,7 @@ interface ServiceConfig {
 
 const services = reactive<ServiceConfig[]>([
   {
-    name: '讯飞同声传译',
+    name: '讯飞语音识别与翻译',
     testStatus: 'untested',
     testMsg: '',
     fields: [

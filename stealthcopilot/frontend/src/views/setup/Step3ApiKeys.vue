@@ -14,7 +14,7 @@ interface KeyField {
   show: boolean
 }
 
-// 必填：讯飞同声传译、DeepSeek；可选：讯飞声音复刻、Simli
+// 必填：讯飞语音识别/机器翻译、DeepSeek；可选：讯飞声音复刻、Simli
 const fields = reactive<KeyField[]>([
   { service: 'xunfei_simult', field: 'app_id', label: t('settings.apiKeys.xunfei.simultAppId'), required: true, value: '', show: false },
   { service: 'xunfei_simult', field: 'api_key', label: t('settings.apiKeys.xunfei.simultApiKey'), required: true, value: '', show: false },

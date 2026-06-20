@@ -114,9 +114,9 @@
       "statusFail": "Failed",
       "statusTesting": "Testing…",
       "xunfei": {
-        "simultAppId": "Simultaneous Interpretation App ID",
-        "simultApiKey": "Simultaneous Interpretation API Key",
-        "simultApiSecret": "Simultaneous Interpretation API Secret",
+        "simultAppId": "Speech Recognition / Text Translation App ID",
+        "simultApiKey": "Speech Recognition / Text Translation API Key",
+        "simultApiSecret": "Speech Recognition / Text Translation API Secret",
         "ttsAppId": "VoiceClone App ID",
         "ttsApiKey": "VoiceClone API Key",
         "ttsApiSecret": "VoiceClone API Secret"
@@ -130,8 +130,8 @@
         "faceId": "Face ID"
       },
       "serviceNames": {
-        "xunfei": "iFlytek Simultaneous Interpretation",
-        "xunfei_simult": "iFlytek Simultaneous Interpretation",
+        "xunfei": "iFlytek Speech Recognition & Text Translation",
+        "xunfei_simult": "iFlytek Speech Recognition & Text Translation",
         "xunfei_tts": "iFlytek VoiceClone",
         "deepseek": "DeepSeek",
         "simli": "Simli AI"
@@ -299,9 +299,9 @@
       "meetingCameraUnavailable": "Previously selected meeting virtual camera \"{name}\" is unavailable. Please select it again.",
       "cameraLoop": "Real camera and meeting virtual camera are both set to \"{name}\", which creates a video loop. Use a real device or screen capture as the real camera, and keep OBS Virtual Camera as the meeting virtual camera.",
       "monitorOutputUnavailable": "Previously selected translation playback device \"{name}\" is unavailable. Please select it again or use system default output.",
-      "hearingAsrMissing": "Hearing chain ASR Provider is disabled. Select iFlytek RTASR in Advanced Settings.",
-      "speakingAsrMissing": "Speaking chain ASR Provider is disabled. Select iFlytek Simultaneous Interpretation in Advanced Settings.",
-      "simultMissing": "iFlytek Simultaneous Interpretation App ID / API Key / API Secret is not configured, so hearing and speaking chains cannot recognize or translate speech.",
+      "hearingAsrMissing": "Hearing chain ASR Extension is disabled. Select iFlytek RTASR in Advanced Settings.",
+      "speakingAsrMissing": "Speaking chain ASR Extension is disabled. Select iFlytek Simultaneous Interpretation in Advanced Settings.",
+      "simultMissing": "iFlytek Speech Recognition / Text Translation App ID / API Key / API Secret is not configured, so hearing and speaking chains cannot recognize or translate speech.",
       "simultLangUnsupported": "iFlytek Simultaneous Interpretation currently supports Mandarin Chinese → English only. Current direction is {src} → {dst}.",
       "deepseekMissing": "DeepSeek Key is not configured, so answer suggestions and polishing will be limited.",
       "ttsMissing": "TTS Provider is disabled, so the speaking chain cannot output target-language speech.",
