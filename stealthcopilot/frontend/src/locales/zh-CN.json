@@ -222,11 +222,12 @@
         "openaiCompatible": "OpenAI 兼容",
         "systemTts": "默认音色",
         "systemMonitorTts": "系统语音播报",
+        "hearingMonitorOff": "关闭耳机播报",
         "xunfeiVoiceClone": "讯飞声音复刻",
         "simli": "Simli",
         "pythonBridge": "Python Bridge",
         "sourceOnly": "源文本直通",
-        "null": "禁用 / Null"
+        "null": "关闭此扩展点"
       }
     }
   },

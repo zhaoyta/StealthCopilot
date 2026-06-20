@@ -222,11 +222,12 @@
         "openaiCompatible": "OpenAI Compatible",
         "systemTts": "Default Voice",
         "systemMonitorTts": "System Speech Monitor",
+        "hearingMonitorOff": "Turn Off Headphone Playback",
         "xunfeiVoiceClone": "iFlytek VoiceClone",
         "simli": "Simli",
         "pythonBridge": "Python Bridge",
         "sourceOnly": "Source Text Passthrough",
-        "null": "Disabled / Null"
+        "null": "Turn Off This Extension"
       }
     }
   },

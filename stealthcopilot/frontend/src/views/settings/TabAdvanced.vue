@@ -98,7 +98,6 @@ async function save() {
             class="form-select"
           >
             <option value="xunfei_simult">{{ t('settings.advanced.providerNames.xunfeiRtasr') }}</option>
-            <option value="null">{{ t('settings.advanced.providerNames.null') }}</option>
           </select>
         </label>
         <label class="block">
@@ -108,7 +107,7 @@ async function save() {
             class="form-select"
           >
             <option value="xunfei_simult">{{ t('settings.advanced.providerNames.xunfeiText') }}</option>
-            <option value="null">{{ t('settings.advanced.providerNames.null') }}</option>
+            <option value="null">{{ t('settings.advanced.providerNames.sourceOnly') }}</option>
           </select>
         </label>
         <label class="block">
@@ -118,7 +117,7 @@ async function save() {
             class="form-select"
           >
             <option value="system">{{ t('settings.advanced.providerNames.systemMonitorTts') }}</option>
-            <option value="null">{{ t('settings.advanced.providerNames.null') }}</option>
+            <option value="null">{{ t('settings.advanced.providerNames.hearingMonitorOff') }}</option>
           </select>
         </label>
         <label class="block">
@@ -146,7 +145,6 @@ async function save() {
             class="form-select"
           >
             <option value="xunfei_simult">{{ t('settings.advanced.providerNames.xunfeiSimult') }}</option>
-            <option value="null">{{ t('settings.advanced.providerNames.null') }}</option>
           </select>
         </label>
         <label class="block">
@@ -167,7 +165,6 @@ async function save() {
           >
             <option value="system">{{ t('settings.advanced.providerNames.systemTts') }}</option>
             <option value="xunfei_voiceclone">{{ t('settings.advanced.providerNames.xunfeiVoiceClone') }}</option>
-            <option value="null">{{ t('settings.advanced.providerNames.null') }}</option>
           </select>
         </label>
         <div class="flex items-center justify-between bg-gray-900/40 rounded-lg px-4 py-3 border border-gray-700 md:col-span-2">

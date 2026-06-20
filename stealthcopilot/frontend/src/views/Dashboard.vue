@@ -459,7 +459,9 @@ function providerLabel(provider: string, stage?: string): string {
   const stageKeyMap: Record<string, string> = {
     'hearingAsr:xunfei_simult': 'xunfeiRtasr',
     'hearingTrans:xunfei_simult': 'xunfeiText',
+    'hearingTrans:null': 'sourceOnly',
     'hearingTts:system': 'systemMonitorTts',
+    'hearingTts:null': 'hearingMonitorOff',
     'speakingAsr:xunfei_simult': 'xunfeiSimult',
     'speakingTrans:xunfei_simult': 'xunfeiSimult',
     'speakingTrans:null': 'sourceOnly',
