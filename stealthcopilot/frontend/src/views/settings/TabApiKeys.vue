@@ -31,7 +31,7 @@ const services = reactive<ServiceConfig[]>([
     name: '讯飞实时转写、同声传译与机器翻译',
     docs: [
       { label: t('settings.apiKeys.docs.xunfeiRtasr'), url: 'https://www.xfyun.cn/doc/spark/asr_llm/rtasr_llm.html' },
-      { label: t('settings.apiKeys.docs.xunfeiSimult'), url: 'https://www.xfyun.cn/doc/nlp/simultaneous-interpretation/API.html' },
+      { label: t('settings.apiKeys.docs.xunfeiSimult'), url: 'https://www.xfyun.cn/doc/nlp/simultaneous-interpretation/API.html#%E6%8E%A5%E5%8F%A3%E8%AF%B4%E6%98%8E' },
       { label: t('settings.apiKeys.docs.xunfeiText'), url: 'https://www.xfyun.cn/doc/nlp/xftrans_new/API.html' },
     ],
     testStatus: 'untested',
