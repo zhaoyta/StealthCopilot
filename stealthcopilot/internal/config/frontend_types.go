@@ -21,10 +21,12 @@ type FrontendConfig struct {
 	DeepSeekModel         string  `json:"deepseek_model"`
 	LLMBaseURL            string  `json:"llm_base_url"`
 	HearingASRProvider    string  `json:"hearing_asr_provider"`
-	HearingTextProvider   string  `json:"hearing_text_provider"`
-	SpeakingTransProvider string  `json:"speaking_translation_provider"`
+	HearingTransProvider  string  `json:"hearing_trans_provider"`
+	HearingTTSProvider    string  `json:"hearing_tts_provider"`
+	SpeakingASRProvider   string  `json:"speaking_asr_provider"`
+	SpeakingTransProvider string  `json:"speaking_trans_provider"`
+	SpeakingTTSProvider   string  `json:"speaking_tts_provider"`
 	LLMProvider           string  `json:"llm_provider"`
-	TTSProvider           string  `json:"tts_provider"`
 	LipSyncProvider       string  `json:"lipsync_provider"`
 	EmbeddingProvider     string  `json:"embedding_provider"`
 	HearingSourceLang     string  `json:"hearing_source_lang"`
@@ -65,10 +67,12 @@ type SaveLocalConfigRequest struct {
 	DeepSeekModel         string  `json:"deepseek_model"`
 	LLMBaseURL            string  `json:"llm_base_url"`
 	HearingASRProvider    string  `json:"hearing_asr_provider"`
-	HearingTextProvider   string  `json:"hearing_text_provider"`
-	SpeakingTransProvider string  `json:"speaking_translation_provider"`
+	HearingTransProvider  string  `json:"hearing_trans_provider"`
+	HearingTTSProvider    string  `json:"hearing_tts_provider"`
+	SpeakingASRProvider   string  `json:"speaking_asr_provider"`
+	SpeakingTransProvider string  `json:"speaking_trans_provider"`
+	SpeakingTTSProvider   string  `json:"speaking_tts_provider"`
 	LLMProvider           string  `json:"llm_provider"`
-	TTSProvider           string  `json:"tts_provider"`
 	LipSyncProvider       string  `json:"lipsync_provider"`
 	EmbeddingProvider     string  `json:"embedding_provider"`
 	HearingSourceLang     string  `json:"hearing_source_lang"`

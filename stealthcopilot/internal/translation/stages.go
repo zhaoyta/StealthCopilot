@@ -31,3 +31,10 @@ type NoopResultStage struct{}
 func (NoopResultStage) Process(_ context.Context, result DualResult) (DualResult, error) {
 	return result, nil
 }
+
+type SourceOnlyResultStage struct{}
+
+func (SourceOnlyResultStage) Process(_ context.Context, result DualResult) (DualResult, error) {
+	result.DstText = result.SrcText
+	return result, nil
+}

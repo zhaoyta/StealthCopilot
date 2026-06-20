@@ -17,10 +17,12 @@ type LocalConfig struct {
 	DeepSeekModel         string                  `json:"deepseek_model"`
 	LLMBaseURL            string                  `json:"llm_base_url"`
 	HearingASRProvider    TranslationProviderType `json:"hearing_asr_provider"`
-	HearingTextProvider   TranslationProviderType `json:"hearing_text_provider"`
-	SpeakingTransProvider TranslationProviderType `json:"speaking_translation_provider"`
+	HearingTransProvider  TranslationProviderType `json:"hearing_trans_provider"`
+	HearingTTSProvider    TTSProviderType         `json:"hearing_tts_provider"`
+	SpeakingASRProvider   TranslationProviderType `json:"speaking_asr_provider"`
+	SpeakingTransProvider TranslationProviderType `json:"speaking_trans_provider"`
+	SpeakingTTSProvider   TTSProviderType         `json:"speaking_tts_provider"`
 	LLMProvider           LLMProviderType         `json:"llm_provider"`
-	TTSProvider           TTSProviderType         `json:"tts_provider"`
 	LipSyncProvider       LipSyncProviderType     `json:"lipsync_provider"`
 	EmbeddingProvider     EmbeddingProviderType   `json:"embedding_provider"`
 	HearingSourceLang     string                  `json:"hearing_source_lang"`

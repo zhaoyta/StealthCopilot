@@ -31,17 +31,23 @@ func TestManager_DefaultValues(t *testing.T) {
 	if m.Config.SpeakPolishPrompt == "" {
 		t.Error("SpeakPolishPrompt should not be empty")
 	}
-	if m.Config.TTSProvider != config.TTSProviderSystem {
-		t.Errorf("TTSProvider: want %q, got %q", config.TTSProviderSystem, m.Config.TTSProvider)
-	}
 	if m.Config.HearingASRProvider != config.TranslationProviderXunfeiSimult {
 		t.Errorf("HearingASRProvider: want %q, got %q", config.TranslationProviderXunfeiSimult, m.Config.HearingASRProvider)
 	}
-	if m.Config.HearingTextProvider != config.TranslationProviderXunfeiSimult {
-		t.Errorf("HearingTextProvider: want %q, got %q", config.TranslationProviderXunfeiSimult, m.Config.HearingTextProvider)
+	if m.Config.HearingTransProvider != config.TranslationProviderXunfeiSimult {
+		t.Errorf("HearingTransProvider: want %q, got %q", config.TranslationProviderXunfeiSimult, m.Config.HearingTransProvider)
+	}
+	if m.Config.HearingTTSProvider != config.TTSProviderSystem {
+		t.Errorf("HearingTTSProvider: want %q, got %q", config.TTSProviderSystem, m.Config.HearingTTSProvider)
+	}
+	if m.Config.SpeakingASRProvider != config.TranslationProviderXunfeiSimult {
+		t.Errorf("SpeakingASRProvider: want %q, got %q", config.TranslationProviderXunfeiSimult, m.Config.SpeakingASRProvider)
 	}
 	if m.Config.SpeakingTransProvider != config.TranslationProviderXunfeiSimult {
 		t.Errorf("SpeakingTransProvider: want %q, got %q", config.TranslationProviderXunfeiSimult, m.Config.SpeakingTransProvider)
+	}
+	if m.Config.SpeakingTTSProvider != config.TTSProviderSystem {
+		t.Errorf("SpeakingTTSProvider: want %q, got %q", config.TTSProviderSystem, m.Config.SpeakingTTSProvider)
 	}
 }
 
@@ -56,8 +62,11 @@ func TestManager_SaveLocalConfig(t *testing.T) {
 	lc := config.LocalConfig{
 		SetupCompleted:        true,
 		HearingASRProvider:    config.TranslationProviderNull,
-		HearingTextProvider:   config.TranslationProviderXunfeiSimult,
+		HearingTransProvider:  config.TranslationProviderXunfeiSimult,
+		HearingTTSProvider:    config.TTSProviderNull,
+		SpeakingASRProvider:   config.TranslationProviderXunfeiSimult,
 		SpeakingTransProvider: config.TranslationProviderNull,
+		SpeakingTTSProvider:   config.TTSProviderXunfeiVoiceClone,
 		HearingSourceLang:     "ja",
 		HearingTargetLang:     "zh",
 		GhostFontSize:         20,
@@ -81,6 +90,12 @@ func TestManager_SaveLocalConfig(t *testing.T) {
 	}
 	if m.Config.SpeakingTransProvider != config.TranslationProviderNull {
 		t.Errorf("SpeakingTransProvider: want %q, got %q", config.TranslationProviderNull, m.Config.SpeakingTransProvider)
+	}
+	if m.Config.HearingTTSProvider != config.TTSProviderNull {
+		t.Errorf("HearingTTSProvider: want %q, got %q", config.TTSProviderNull, m.Config.HearingTTSProvider)
+	}
+	if m.Config.SpeakingTTSProvider != config.TTSProviderXunfeiVoiceClone {
+		t.Errorf("SpeakingTTSProvider: want %q, got %q", config.TTSProviderXunfeiVoiceClone, m.Config.SpeakingTTSProvider)
 	}
 
 	// 验证文件确实写入

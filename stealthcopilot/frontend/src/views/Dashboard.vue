@@ -220,29 +220,34 @@ async function loadDashboardConfig() {
   uiLocale.value         = (cfg.ui_locale || 'zh-CN') as 'zh-CN' | 'en-US'
   hearingLangPair.value  = `${langLabel(cfg.hearing_source_lang || 'en')} → ${langLabel(cfg.hearing_target_lang || 'zh')}`
   speakingLangPair.value = `${langLabel(cfg.speaking_input_lang || 'zh')} → ${langLabel(cfg.speaking_output_lang || 'en')}`
-  const hearingAsrProvider = providerLabel(cfg.hearing_asr_provider || 'xunfei_simult')
-  const hearingTextProvider = providerLabel(cfg.hearing_text_provider || 'xunfei_simult')
-  const speakingTranslationProvider = providerLabel(cfg.speaking_translation_provider || 'xunfei_simult')
+  const hearingAsrProvider = providerLabel(cfg.hearing_asr_provider || 'xunfei_simult', 'hearingAsr')
+  const hearingTransProvider = providerLabel(cfg.hearing_trans_provider || 'xunfei_simult', 'hearingTrans')
+  const hearingTtsProvider = providerLabel(cfg.hearing_tts_provider || 'system', 'hearingTts')
+  const speakingAsrProvider = providerLabel(cfg.speaking_asr_provider || 'xunfei_simult', 'speakingAsr')
+  const speakingTransProvider = providerLabel(cfg.speaking_trans_provider || 'xunfei_simult', 'speakingTrans')
+  const speakingTtsProvider = providerLabel(cfg.speaking_tts_provider || 'system', 'speakingTts')
   const llmProvider = providerLabel(cfg.llm_provider || 'deepseek')
-  const ttsProvider = providerLabel(cfg.tts_provider || 'system')
   const lipsyncProvider = providerLabel(cfg.lipsync_provider || 'simli')
   const embeddingProvider = providerLabel(cfg.embedding_provider || 'python_bridge')
 
   channelNames.value = {
     meetingAudio: deviceLabel(cfg.virtual_mic_name),
     blackhole: deviceLabel(cfg.virtual_mic_name),
-    xunfeiTranslation: hearingTextProvider,
+    xunfeiTranslation: hearingTransProvider,
     xunfeiAsr: hearingAsrProvider,
-    speakingTranslation: speakingTranslationProvider,
+    hearingTts: hearingTtsProvider,
+    speakingAsr: speakingAsrProvider,
+    speakingTranslation: speakingTransProvider,
     ragDeepseek: `${embeddingProvider} + ${llmProvider}`,
     localVectorStore: embeddingProvider,
     deepseek: llmProvider,
-    systemTts: cfg.hearing_monitor_enabled
+    systemTts: hearingTtsProvider,
+    monitorOutput: cfg.hearing_monitor_enabled
       ? deviceLabel(cfg.monitor_output_name || t('settings.devices.systemDefaultOutput'))
-      : '',
+      : t('dashboard.channelUnset'),
     physicalMic: deviceLabel(cfg.physical_mic_name),
-    ttsOutput: ttsProvider,
-    xunfeiVoiceClone: ttsProvider,
+    ttsOutput: speakingTtsProvider,
+    xunfeiVoiceClone: speakingTtsProvider,
     virtualMic: deviceLabel(cfg.virtual_mic_name),
     physicalCamera: deviceLabel(cfg.physical_cam_name),
     simli: lipsyncProvider,
@@ -266,7 +271,11 @@ async function validateStartupTargets(targets: ChainTarget[]): Promise<boolean> 
     const needsSpeaking = targets.includes('speaking')
     const needsVideo = targets.includes('video')
     const needsVirtualAudio = needsHearing || needsSpeaking
-    const needsSimult = needsHearing || needsSpeaking
+    const hearingUsesXunfei = needsHearing &&
+      (cfg.hearing_asr_provider === 'xunfei_simult' || cfg.hearing_trans_provider === 'xunfei_simult')
+    const speakingUsesXunfei = needsSpeaking &&
+      (cfg.speaking_asr_provider === 'xunfei_simult' || cfg.speaking_trans_provider === 'xunfei_simult')
+    const needsSimult = hearingUsesXunfei || speakingUsesXunfei
 
     if ((needsVirtualAudio || needsSpeaking) && deps.ffmpeg !== 'installed') issues.push(t('dashboard.preflight.ffmpegMissing'))
     if (needsVirtualAudio && deps.virtual_mic !== 'installed') issues.push(t('dashboard.preflight.virtualAudioMissing'))
@@ -295,19 +304,21 @@ async function validateStartupTargets(targets: ChainTarget[]): Promise<boolean> 
     if (needsHearing && cfg.hearing_monitor_enabled && cfg.monitor_output_name && !deviceExists(audioOutputs, cfg.monitor_output_name)) {
       issues.push(t('dashboard.preflight.monitorOutputUnavailable', { name: cfg.monitor_output_name }))
     }
+    if (needsHearing && cfg.hearing_asr_provider === 'null') issues.push(t('dashboard.preflight.hearingAsrMissing'))
+    if (needsSpeaking && cfg.speaking_asr_provider === 'null') issues.push(t('dashboard.preflight.speakingAsrMissing'))
 
     if (needsSimult && (!cfg.xunfei_simult_app_id_set || !cfg.xunfei_simult_api_key_set || !cfg.xunfei_simult_api_secret_set)) {
       issues.push(t('dashboard.preflight.simultMissing'))
     }
-    if (needsSpeaking && !isXunfeiSimultPairSupported(cfg.speaking_input_lang || 'zh', cfg.speaking_output_lang || 'en')) {
+    if (speakingUsesXunfei && !isXunfeiSimultPairSupported(cfg.speaking_input_lang || 'zh', cfg.speaking_output_lang || 'en')) {
       issues.push(t('dashboard.preflight.simultLangUnsupported', {
         src: langLabel(cfg.speaking_input_lang || 'zh'),
         dst: langLabel(cfg.speaking_output_lang || 'en'),
       }))
     }
     if (needsHearing && !cfg.deepseek_key_set) warnings.push(t('dashboard.preflight.deepseekMissing'))
-    if (needsSpeaking && cfg.tts_provider === 'null') issues.push(t('dashboard.preflight.ttsMissing'))
-    if (needsSpeaking && cfg.tts_provider === 'xunfei_voiceclone' && !cfg.xunfei_tts_asset_id_set) {
+    if (needsSpeaking && cfg.speaking_tts_provider === 'null') issues.push(t('dashboard.preflight.ttsMissing'))
+    if (needsSpeaking && cfg.speaking_tts_provider === 'xunfei_voiceclone' && !cfg.xunfei_tts_asset_id_set) {
       issues.push(t('dashboard.preflight.voiceCloneMissing'))
     }
     if (needsVideo && cfg.lipsync_provider === 'simli' && (!cfg.simli_key_set || !cfg.simli_face_id_set)) {
@@ -444,7 +455,17 @@ function channelLabel(key: string): string {
   return channelNames.value[key] || t('dashboard.channelUnset')
 }
 
-function providerLabel(provider: string): string {
+function providerLabel(provider: string, stage?: string): string {
+  const stageKeyMap: Record<string, string> = {
+    'hearingAsr:xunfei_simult': 'xunfeiRtasr',
+    'hearingTrans:xunfei_simult': 'xunfeiText',
+    'hearingTts:system': 'systemMonitorTts',
+    'speakingAsr:xunfei_simult': 'xunfeiSimult',
+    'speakingTrans:xunfei_simult': 'xunfeiSimult',
+    'speakingTrans:null': 'sourceOnly',
+    'speakingTts:system': 'systemTts',
+    'speakingTts:xunfei_voiceclone': 'xunfeiVoiceClone',
+  }
   const keyMap: Record<string, string> = {
     xunfei_simult: 'xunfeiSimult',
     xunfei: 'xunfei',
@@ -456,7 +477,7 @@ function providerLabel(provider: string): string {
     python_bridge: 'pythonBridge',
     null: 'null',
   }
-  const key = keyMap[provider] || provider
+  const key = stageKeyMap[`${stage}:${provider}`] || keyMap[provider] || provider
   return t(`settings.advanced.providerNames.${key}`, provider || t('dashboard.channelUnset'))
 }
 

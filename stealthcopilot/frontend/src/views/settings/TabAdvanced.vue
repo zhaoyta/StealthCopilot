@@ -10,11 +10,13 @@ const config = reactive({
   speakPolishPrompt: '',
   polishEnabled: false,
   hearingAsrProvider: 'xunfei_simult',
-  hearingTextProvider: 'xunfei_simult',
-  speakingTranslationProvider: 'xunfei_simult',
+  hearingTransProvider: 'xunfei_simult',
+  hearingTtsProvider: 'system',
+  speakingAsrProvider: 'xunfei_simult',
+  speakingTransProvider: 'xunfei_simult',
+  speakingTtsProvider: 'system',
   llmProvider: 'deepseek',
   llmBaseURL: 'https://api.deepseek.com/v1',
-  ttsProvider: 'system',
   lipsyncProvider: 'simli',
   embeddingProvider: 'python_bridge',
 })
@@ -35,11 +37,13 @@ onMounted(async () => {
     config.speakPolishPrompt = cfg.speak_polish_prompt || ''
     config.polishEnabled = cfg.polish_enabled || false
     config.hearingAsrProvider = cfg.hearing_asr_provider || 'xunfei_simult'
-    config.hearingTextProvider = cfg.hearing_text_provider || 'xunfei_simult'
-    config.speakingTranslationProvider = cfg.speaking_translation_provider || 'xunfei_simult'
+    config.hearingTransProvider = cfg.hearing_trans_provider || 'xunfei_simult'
+    config.hearingTtsProvider = cfg.hearing_tts_provider || 'system'
+    config.speakingAsrProvider = cfg.speaking_asr_provider || 'xunfei_simult'
+    config.speakingTransProvider = cfg.speaking_trans_provider || 'xunfei_simult'
+    config.speakingTtsProvider = cfg.speaking_tts_provider || 'system'
     config.llmProvider = cfg.llm_provider || 'deepseek'
     config.llmBaseURL = cfg.llm_base_url || 'https://api.deepseek.com/v1'
-    config.ttsProvider = cfg.tts_provider || 'system'
     config.lipsyncProvider = cfg.lipsync_provider || 'simli'
     config.embeddingProvider = cfg.embedding_provider || 'python_bridge'
     defaults.ragPrompt = defs.rag_prompt
@@ -60,11 +64,13 @@ async function save() {
       speak_polish_prompt: config.speakPolishPrompt,
       polish_enabled: config.polishEnabled,
       hearing_asr_provider: config.hearingAsrProvider,
-      hearing_text_provider: config.hearingTextProvider,
-      speaking_translation_provider: config.speakingTranslationProvider,
+      hearing_trans_provider: config.hearingTransProvider,
+      hearing_tts_provider: config.hearingTtsProvider,
+      speaking_asr_provider: config.speakingAsrProvider,
+      speaking_trans_provider: config.speakingTransProvider,
+      speaking_tts_provider: config.speakingTtsProvider,
       llm_provider: config.llmProvider,
       llm_base_url: config.llmBaseURL,
-      tts_provider: config.ttsProvider,
       lipsync_provider: config.lipsyncProvider,
       embedding_provider: config.embeddingProvider,
     })
@@ -91,17 +97,27 @@ async function save() {
             v-model="config.hearingAsrProvider"
             class="form-select"
           >
-            <option value="xunfei_simult">{{ t('settings.advanced.providerNames.xunfeiSimult') }}</option>
+            <option value="xunfei_simult">{{ t('settings.advanced.providerNames.xunfeiRtasr') }}</option>
             <option value="null">{{ t('settings.advanced.providerNames.null') }}</option>
           </select>
         </label>
         <label class="block">
-          <span class="block text-xs text-gray-400 mb-1">{{ t('settings.advanced.hearingTextProvider') }}</span>
+          <span class="block text-xs text-gray-400 mb-1">{{ t('settings.advanced.hearingTransProvider') }}</span>
           <select
-            v-model="config.hearingTextProvider"
+            v-model="config.hearingTransProvider"
             class="form-select"
           >
             <option value="xunfei_simult">{{ t('settings.advanced.providerNames.xunfeiText') }}</option>
+            <option value="null">{{ t('settings.advanced.providerNames.null') }}</option>
+          </select>
+        </label>
+        <label class="block">
+          <span class="block text-xs text-gray-400 mb-1">{{ t('settings.advanced.hearingTtsProvider') }}</span>
+          <select
+            v-model="config.hearingTtsProvider"
+            class="form-select"
+          >
+            <option value="system">{{ t('settings.advanced.providerNames.systemMonitorTts') }}</option>
             <option value="null">{{ t('settings.advanced.providerNames.null') }}</option>
           </select>
         </label>
@@ -124,9 +140,9 @@ async function save() {
       </h3>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <label class="block">
-          <span class="block text-xs text-gray-400 mb-1">{{ t('settings.advanced.speakingTranslationProvider') }}</span>
+          <span class="block text-xs text-gray-400 mb-1">{{ t('settings.advanced.speakingAsrProvider') }}</span>
           <select
-            v-model="config.speakingTranslationProvider"
+            v-model="config.speakingAsrProvider"
             class="form-select"
           >
             <option value="xunfei_simult">{{ t('settings.advanced.providerNames.xunfeiSimult') }}</option>
@@ -134,9 +150,19 @@ async function save() {
           </select>
         </label>
         <label class="block">
-          <span class="block text-xs text-gray-400 mb-1">{{ t('settings.advanced.ttsProvider') }}</span>
+          <span class="block text-xs text-gray-400 mb-1">{{ t('settings.advanced.speakingTransProvider') }}</span>
           <select
-            v-model="config.ttsProvider"
+            v-model="config.speakingTransProvider"
+            class="form-select"
+          >
+            <option value="xunfei_simult">{{ t('settings.advanced.providerNames.xunfeiSimult') }}</option>
+            <option value="null">{{ t('settings.advanced.providerNames.sourceOnly') }}</option>
+          </select>
+        </label>
+        <label class="block">
+          <span class="block text-xs text-gray-400 mb-1">{{ t('settings.advanced.speakingTtsProvider') }}</span>
+          <select
+            v-model="config.speakingTtsProvider"
             class="form-select"
           >
             <option value="system">{{ t('settings.advanced.providerNames.systemTts') }}</option>

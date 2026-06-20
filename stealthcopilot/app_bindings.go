@@ -168,14 +168,14 @@ func hearingASRProviderFromApp(cfg *config.AppConfig, override translation.Provi
 	}
 }
 
-func speakingTranslationProviderFromApp(
+func speakingASRProviderFromApp(
 	cfg *config.AppConfig,
 	override translation.SpeakProvider,
 ) translation.SpeakProvider {
 	if override != nil {
 		return override
 	}
-	switch cfg.SpeakingTransProvider {
+	switch cfg.SpeakingASRProvider {
 	case config.TranslationProviderXunfeiSimult:
 		return translation.NewXunfeiSimultSpeakProvider(translation.XunfeiSimultConfig{
 			AppID:      cfg.XunfeiSimultAppID,
@@ -193,8 +193,8 @@ func translationProviderUsesXunfei(provider config.TranslationProviderType) bool
 	return provider == config.TranslationProviderXunfeiSimult
 }
 
-func hearingTextStageFromApp(cfg *config.AppConfig) translation.ResultStage {
-	switch cfg.HearingTextProvider {
+func hearingTransStageFromApp(cfg *config.AppConfig) translation.ResultStage {
+	switch cfg.HearingTransProvider {
 	case config.TranslationProviderXunfeiSimult:
 		return translation.NewXunfeiTextTranslateStage(translation.XunfeiTextTransConfig{
 			AppID:      cfg.XunfeiSimultAppID,
@@ -204,8 +204,15 @@ func hearingTextStageFromApp(cfg *config.AppConfig) translation.ResultStage {
 			TargetLang: cfg.HearingTargetLang,
 		})
 	default:
-		return translation.NoopResultStage{}
+		return translation.SourceOnlyResultStage{}
 	}
+}
+
+func speakingTransStageFromApp(cfg *config.AppConfig) translation.ResultStage {
+	if cfg.SpeakingTransProvider == config.TranslationProviderNull {
+		return translation.SourceOnlyResultStage{}
+	}
+	return translation.NoopResultStage{}
 }
 
 func secretLengthHint(key string) string {
@@ -511,16 +518,19 @@ func (a *App) GetStealthStatus() ui.StealthStatus {
 // 返回空字符串表示成功，否则返回错误描述。
 func (a *App) StartHearingChain() string {
 	cfg := a.ConfigSvc.InternalManager().Config
-	diag.Infof("hearing start requested virtual_mic=%q source_lang=%s target_lang=%s monitor_enabled=%t monitor_output=%q hearing_asr_provider=%s hearing_text_provider=%s llm_provider=%s",
-		cfg.VirtualMicName, cfg.HearingSourceLang, cfg.HearingTargetLang, cfg.HearingMonitorEnabled, cfg.MonitorOutputName, cfg.HearingASRProvider, cfg.HearingTextProvider, cfg.LLMProvider)
+	diag.Infof("hearing start requested virtual_mic=%q source_lang=%s target_lang=%s monitor_enabled=%t monitor_output=%q hearing_asr_provider=%s hearing_trans_provider=%s hearing_tts_provider=%s llm_provider=%s",
+		cfg.VirtualMicName, cfg.HearingSourceLang, cfg.HearingTargetLang, cfg.HearingMonitorEnabled, cfg.MonitorOutputName, cfg.HearingASRProvider, cfg.HearingTransProvider, cfg.HearingTTSProvider, cfg.LLMProvider)
 	retriever := rag.NewRetriever(a.ResumeSvc.InternalManager())
 	var translator translation.Provider
 	if cfg.HearingASRProvider == config.TranslationProviderNull {
 		return "听力链需要 ASR Provider，请在高级设置选择讯飞 RTASR"
 	}
-	if (translationProviderUsesXunfei(cfg.HearingASRProvider) || translationProviderUsesXunfei(cfg.HearingTextProvider)) &&
+	if (translationProviderUsesXunfei(cfg.HearingASRProvider) || translationProviderUsesXunfei(cfg.HearingTransProvider)) &&
 		(cfg.XunfeiSimultAppID == "" || cfg.XunfeiSimultAPIKey == "" || cfg.XunfeiSimultAPISecret == "") {
 		return "讯飞同声传译配置不完整：请配置 AppID、API Key 和 API Secret"
+	}
+	if cfg.HearingTTSProvider != config.TTSProviderSystem && cfg.HearingTTSProvider != config.TTSProviderNull {
+		return "听力链 TTS 当前支持系统语音播报或禁用"
 	}
 	asrCfg := translation.XunfeiRTASRLLMConfig{
 		AppID:      cfg.XunfeiSimultAppID,
@@ -537,14 +547,14 @@ func (a *App) StartHearingChain() string {
 	chainCfg := hearing.ChainConfig{
 		ASRConfig:        asrCfg,
 		ASRProvider:      hearingASRProviderFromApp(cfg, translator),
-		TransStage:       hearingTextStageFromApp(cfg),
+		TransStage:       hearingTransStageFromApp(cfg),
 		LLMConfig:        llmCfg,
 		DeepSeekKey:      cfg.DeepSeekKey,
 		DeepSeekModel:    cfg.DeepSeekModel,
 		RAGPrompt:        cfg.RAGPrompt,
 		VirtualMicDevice: cfg.VirtualMicName,
 		MonitorConfig: audio.MonitorConfig{
-			Enabled:      cfg.HearingMonitorEnabled,
+			Enabled:      cfg.HearingMonitorEnabled && cfg.HearingTTSProvider != config.TTSProviderNull,
 			OutputDevice: cfg.MonitorOutputName,
 			Rate:         cfg.HearingMonitorRate,
 			Volume:       cfg.HearingMonitorVolume,
@@ -613,13 +623,13 @@ func (a *App) StopHearingChain() {
 // 返回空字符串表示成功，否则返回错误描述。
 func (a *App) StartSpeakingChain() string {
 	cfg := a.ConfigSvc.InternalManager().Config
-	diag.Infof("speaking start requested physical_mic=%q virtual_mic=%q input_lang=%s output_lang=%s speaking_translation_provider=%s tts_provider=%s polish_enabled=%t",
-		cfg.PhysicalMicName, cfg.VirtualMicName, cfg.SpeakingInputLang, cfg.SpeakingOutputLang, cfg.SpeakingTransProvider, cfg.TTSProvider, cfg.PolishEnabled)
+	diag.Infof("speaking start requested physical_mic=%q virtual_mic=%q input_lang=%s output_lang=%s speaking_asr_provider=%s speaking_trans_provider=%s speaking_tts_provider=%s polish_enabled=%t",
+		cfg.PhysicalMicName, cfg.VirtualMicName, cfg.SpeakingInputLang, cfg.SpeakingOutputLang, cfg.SpeakingASRProvider, cfg.SpeakingTransProvider, cfg.SpeakingTTSProvider, cfg.PolishEnabled)
 	var translator translation.SpeakProvider
-	if cfg.SpeakingTransProvider == config.TranslationProviderNull {
-		return "说话链需要语音翻译 Provider，请在高级设置选择讯飞同声传译"
+	if cfg.SpeakingASRProvider == config.TranslationProviderNull {
+		return "说话链需要 ASR Provider，请在高级设置选择讯飞同声传译"
 	}
-	if translationProviderUsesXunfei(cfg.SpeakingTransProvider) &&
+	if (translationProviderUsesXunfei(cfg.SpeakingASRProvider) || translationProviderUsesXunfei(cfg.SpeakingTransProvider)) &&
 		(cfg.XunfeiSimultAppID == "" || cfg.XunfeiSimultAPIKey == "" || cfg.XunfeiSimultAPISecret == "") {
 		return "讯飞同声传译配置不完整：请配置 AppID、API Key 和 API Secret"
 	}
@@ -628,8 +638,8 @@ func (a *App) StartSpeakingChain() string {
 		return msg
 	}
 	var ttsProvider tts.Provider
-	resolvedTTSProvider := string(cfg.TTSProvider)
-	switch cfg.TTSProvider {
+	resolvedTTSProvider := string(cfg.SpeakingTTSProvider)
+	switch cfg.SpeakingTTSProvider {
 	case config.TTSProviderNull:
 		return "说话链需要 TTS Provider，请在高级设置选择默认音色或讯飞声音复刻"
 	case config.TTSProviderSystem:
@@ -644,7 +654,7 @@ func (a *App) StartSpeakingChain() string {
 		resolvedTTSProvider = string(config.TTSProviderSystem)
 		ttsProvider = tts.NewSystemProvider()
 	}
-	diag.Infof("speaking tts provider resolved requested=%s resolved=%s voiceclone_asset_set=%t", cfg.TTSProvider, resolvedTTSProvider, strings.TrimSpace(cfg.XunfeiTTSAssetID) != "")
+	diag.Infof("speaking tts provider resolved requested=%s resolved=%s voiceclone_asset_set=%t", cfg.SpeakingTTSProvider, resolvedTTSProvider, strings.TrimSpace(cfg.XunfeiTTSAssetID) != "")
 	llmCfg := llm.Config{
 		Provider: string(cfg.LLMProvider),
 		APIKey:   cfg.DeepSeekKey,
@@ -660,7 +670,8 @@ func (a *App) StartSpeakingChain() string {
 			TargetLang: cfg.SpeakingOutputLang,
 		},
 		XunfeiVoiceClone:   xunfeiVoiceCloneConfigFromApp(cfg),
-		Translator:         speakingTranslationProviderFromApp(cfg, translator),
+		Translator:         speakingASRProviderFromApp(cfg, translator),
+		TransStage:         speakingTransStageFromApp(cfg),
 		TTSProvider:        ttsProvider,
 		PhysicalMicDevice:  cfg.PhysicalMicName,
 		VirtualMicDevice:   cfg.VirtualMicName,

@@ -85,13 +85,15 @@ func (a *App) startup(ctx context.Context) {
 	}
 	a.ConfigSvc = cfgSvc
 	cfgSvc.Startup(ctx)
-	diag.Infof("config loaded setup_completed=%t ui_locale=%s hearing_asr_provider=%s hearing_text_provider=%s speaking_translation_provider=%s tts_provider=%s lipsync_provider=%s virtual_mic=%q physical_mic=%q monitor_enabled=%t monitor_output=%q physical_cam=%q virtual_cam=%q",
+	diag.Infof("config loaded setup_completed=%t ui_locale=%s hearing_asr_provider=%s hearing_trans_provider=%s hearing_tts_provider=%s speaking_asr_provider=%s speaking_trans_provider=%s speaking_tts_provider=%s lipsync_provider=%s virtual_mic=%q physical_mic=%q monitor_enabled=%t monitor_output=%q physical_cam=%q virtual_cam=%q",
 		cfgSvc.InternalManager().Config.SetupCompleted,
 		cfgSvc.InternalManager().Config.UILocale,
 		cfgSvc.InternalManager().Config.HearingASRProvider,
-		cfgSvc.InternalManager().Config.HearingTextProvider,
+		cfgSvc.InternalManager().Config.HearingTransProvider,
+		cfgSvc.InternalManager().Config.HearingTTSProvider,
+		cfgSvc.InternalManager().Config.SpeakingASRProvider,
 		cfgSvc.InternalManager().Config.SpeakingTransProvider,
-		cfgSvc.InternalManager().Config.TTSProvider,
+		cfgSvc.InternalManager().Config.SpeakingTTSProvider,
 		cfgSvc.InternalManager().Config.LipSyncProvider,
 		cfgSvc.InternalManager().Config.VirtualMicName,
 		cfgSvc.InternalManager().Config.PhysicalMicName,

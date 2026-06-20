@@ -50,10 +50,12 @@ const (
 // 运行时根据此配置实例化对应的实现。
 type ProviderConfig struct {
 	HearingASR    TranslationProviderType // 听力链 ASR 服务类型
-	HearingText   TranslationProviderType // 听力链文本翻译服务类型
-	SpeakingTrans TranslationProviderType // 说话链语音翻译服务类型
+	HearingTrans  TranslationProviderType // 听力链 Trans 服务类型
+	HearingTTS    TTSProviderType         // 听力链 TTS 服务类型
+	SpeakingASR   TranslationProviderType // 说话链 ASR 服务类型
+	SpeakingTrans TranslationProviderType // 说话链 Trans 服务类型
+	SpeakingTTS   TTSProviderType         // 说话链 TTS 服务类型
 	LLM           LLMProviderType         // LLM / chat completions 服务类型
-	TTS           TTSProviderType         // TTS 服务类型
 	LipSync       LipSyncProviderType     // 口型同步服务类型
 	Embedding     EmbeddingProviderType   // 简历 embedding 服务类型
 }
@@ -62,10 +64,12 @@ type ProviderConfig struct {
 func DefaultProviderConfig() ProviderConfig {
 	return ProviderConfig{
 		HearingASR:    TranslationProviderXunfeiSimult,
-		HearingText:   TranslationProviderXunfeiSimult,
+		HearingTrans:  TranslationProviderXunfeiSimult,
+		HearingTTS:    TTSProviderSystem,
+		SpeakingASR:   TranslationProviderXunfeiSimult,
 		SpeakingTrans: TranslationProviderXunfeiSimult,
+		SpeakingTTS:   TTSProviderSystem,
 		LLM:           LLMProviderDeepSeek,
-		TTS:           TTSProviderSystem,
 		LipSync:       LipSyncProviderSimli,
 		Embedding:     EmbeddingProviderPythonBridge,
 	}

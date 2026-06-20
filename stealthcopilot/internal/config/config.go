@@ -70,10 +70,12 @@ type AppConfig struct {
 
 	// Provider 选择
 	HearingASRProvider    TranslationProviderType
-	HearingTextProvider   TranslationProviderType
+	HearingTransProvider  TranslationProviderType
+	HearingTTSProvider    TTSProviderType
+	SpeakingASRProvider   TranslationProviderType
 	SpeakingTransProvider TranslationProviderType
+	SpeakingTTSProvider   TTSProviderType
 	LLMProvider           LLMProviderType
-	TTSProvider           TTSProviderType
 	LipSyncProvider       LipSyncProviderType
 	EmbeddingProvider     EmbeddingProviderType
 
@@ -163,10 +165,12 @@ func (m *Manager) applyLocalConfig(lc LocalConfig) {
 	m.Config.DeepSeekModel = stringOr(lc.DeepSeekModel, DefaultDeepSeekModel)
 	m.Config.LLMBaseURL = stringOr(lc.LLMBaseURL, DefaultLLMBaseURL)
 	m.Config.HearingASRProvider = translationProviderOr(lc.HearingASRProvider, TranslationProviderXunfeiSimult)
-	m.Config.HearingTextProvider = translationProviderOr(lc.HearingTextProvider, TranslationProviderXunfeiSimult)
+	m.Config.HearingTransProvider = translationProviderOr(lc.HearingTransProvider, TranslationProviderXunfeiSimult)
+	m.Config.HearingTTSProvider = hearingTTSProviderOr(lc.HearingTTSProvider, TTSProviderSystem)
+	m.Config.SpeakingASRProvider = translationProviderOr(lc.SpeakingASRProvider, TranslationProviderXunfeiSimult)
 	m.Config.SpeakingTransProvider = translationProviderOr(lc.SpeakingTransProvider, TranslationProviderXunfeiSimult)
 	m.Config.LLMProvider = llmProviderOr(lc.LLMProvider, LLMProviderDeepSeek)
-	m.Config.TTSProvider = ttsProviderOr(lc.TTSProvider, TTSProviderSystem)
+	m.Config.SpeakingTTSProvider = ttsProviderOr(lc.SpeakingTTSProvider, TTSProviderSystem)
 	m.Config.LipSyncProvider = lipSyncProviderOr(lc.LipSyncProvider, LipSyncProviderSimli)
 	m.Config.EmbeddingProvider = embeddingProviderOr(lc.EmbeddingProvider, EmbeddingProviderPythonBridge)
 	m.Config.HearingSourceLang = stringOr(lc.HearingSourceLang, DefaultHearingSourceLang)
@@ -270,10 +274,12 @@ func (m *Manager) ToLocalConfig() LocalConfig {
 		DeepSeekModel:         m.Config.DeepSeekModel,
 		LLMBaseURL:            m.Config.LLMBaseURL,
 		HearingASRProvider:    m.Config.HearingASRProvider,
-		HearingTextProvider:   m.Config.HearingTextProvider,
+		HearingTransProvider:  m.Config.HearingTransProvider,
+		HearingTTSProvider:    m.Config.HearingTTSProvider,
+		SpeakingASRProvider:   m.Config.SpeakingASRProvider,
 		SpeakingTransProvider: m.Config.SpeakingTransProvider,
+		SpeakingTTSProvider:   m.Config.SpeakingTTSProvider,
 		LLMProvider:           m.Config.LLMProvider,
-		TTSProvider:           m.Config.TTSProvider,
 		LipSyncProvider:       m.Config.LipSyncProvider,
 		EmbeddingProvider:     m.Config.EmbeddingProvider,
 		HearingSourceLang:     m.Config.HearingSourceLang,
@@ -339,6 +345,15 @@ func llmProviderOr(v LLMProviderType, def LLMProviderType) LLMProviderType {
 func ttsProviderOr(v TTSProviderType, def TTSProviderType) TTSProviderType {
 	switch v {
 	case TTSProviderXunfeiVoiceClone, TTSProviderSystem, TTSProviderNull:
+		return v
+	default:
+		return def
+	}
+}
+
+func hearingTTSProviderOr(v TTSProviderType, def TTSProviderType) TTSProviderType {
+	switch v {
+	case TTSProviderSystem, TTSProviderNull:
 		return v
 	default:
 		return def
