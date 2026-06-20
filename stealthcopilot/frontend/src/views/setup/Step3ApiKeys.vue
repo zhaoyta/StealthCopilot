@@ -14,7 +14,7 @@ interface KeyField {
   show: boolean
 }
 
-// 必填：讯飞语音识别/机器翻译、DeepSeek；可选：讯飞声音复刻、Simli
+// 必填：讯飞实时转写/同声传译/机器翻译、DeepSeek；可选：讯飞声音复刻、Simli
 const fields = reactive<KeyField[]>([
   { service: 'xunfei_simult', field: 'app_id', label: t('settings.apiKeys.xunfei.simultAppId'), required: true, value: '', show: false },
   { service: 'xunfei_simult', field: 'api_key', label: t('settings.apiKeys.xunfei.simultApiKey'), required: true, value: '', show: false },
@@ -72,9 +72,9 @@ async function saveAll() {
       <div
         v-for="f in fields"
         :key="f.service + '_' + f.field"
-        class="field-row flex items-center gap-3"
+        class="field-row flex items-start gap-3"
       >
-        <label class="w-32 shrink-0 text-sm text-gray-300 text-left">
+        <label class="w-56 shrink-0 pt-2 text-sm text-gray-300 text-left">
           {{ f.label }}
           <!-- eslint-disable @intlify/vue-i18n/no-raw-text -->
           <span

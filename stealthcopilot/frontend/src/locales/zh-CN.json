@@ -114,9 +114,9 @@
       "statusFail": "失败",
       "statusTesting": "测试中…",
       "xunfei": {
-        "simultAppId": "语音识别/机器翻译 App ID",
-        "simultApiKey": "语音识别/机器翻译 API Key",
-        "simultApiSecret": "语音识别/机器翻译 API Secret",
+        "simultAppId": "实时转写/同声传译/机器翻译 App ID",
+        "simultApiKey": "实时转写/同声传译/机器翻译 API Key",
+        "simultApiSecret": "实时转写/同声传译/机器翻译 API Secret",
         "ttsAppId": "声音复刻 App ID",
         "ttsApiKey": "声音复刻 API Key",
         "ttsApiSecret": "声音复刻 API Secret"
@@ -130,11 +130,16 @@
         "faceId": "Face ID"
       },
       "serviceNames": {
-        "xunfei": "讯飞语音识别与机器翻译",
-        "xunfei_simult": "讯飞语音识别与机器翻译",
+        "xunfei": "讯飞实时转写、同声传译与机器翻译",
+        "xunfei_simult": "讯飞实时转写、同声传译与机器翻译",
         "xunfei_tts": "讯飞声音复刻",
         "deepseek": "DeepSeek",
         "simli": "Simli AI"
+      },
+      "docs": {
+        "xunfeiRtasr": "实时转写文档",
+        "xunfeiSimult": "同声传译文档",
+        "xunfeiText": "机器翻译文档"
       }
     },
     "language": {
@@ -301,7 +306,7 @@
       "monitorOutputUnavailable": "之前选择的译文播放设备「{name}」当前不可用，请重新选择或改用系统默认输出。",
       "hearingAsrMissing": "听力链 ASR Extension 已禁用，请在高级设置选择讯飞 RTASR。",
       "speakingAsrMissing": "说话链 ASR Extension 已禁用，请在高级设置选择讯飞同声传译。",
-      "simultMissing": "讯飞语音识别/机器翻译 AppID / API Key / API Secret 未配置，听力链和说话链无法识别和翻译语音。",
+      "simultMissing": "讯飞实时转写/同声传译/机器翻译 AppID / API Key / API Secret 未配置，听力链和说话链无法识别和翻译语音。",
       "simultLangUnsupported": "讯飞同声传译当前只支持中文普通话 → 英文；当前语言方向为 {src} → {dst}。",
       "deepseekMissing": "DeepSeek Key 未配置，回答建议和润色能力会受限。",
       "ttsMissing": "TTS Provider 被禁用，说话链无法输出目标语言语音。",

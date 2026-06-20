@@ -10,6 +10,10 @@ type TestStatus = 'untested' | 'testing' | 'ok' | 'fail'
 
 interface ServiceConfig {
   name: string
+  docs?: {
+    label: string
+    url: string
+  }[]
   fields: {
     service: string
     field: string
@@ -24,7 +28,12 @@ interface ServiceConfig {
 
 const services = reactive<ServiceConfig[]>([
   {
-    name: '讯飞语音识别与翻译',
+    name: '讯飞实时转写、同声传译与机器翻译',
+    docs: [
+      { label: t('settings.apiKeys.docs.xunfeiRtasr'), url: 'https://www.xfyun.cn/doc/asr/rtasr/API.html' },
+      { label: t('settings.apiKeys.docs.xunfeiSimult'), url: 'https://www.xfyun.cn/doc/nlp/simultaneous-interpretation/API.html' },
+      { label: t('settings.apiKeys.docs.xunfeiText'), url: 'https://www.xfyun.cn/doc/nlp/xftrans/API.html' },
+    ],
     testStatus: 'untested',
     testMsg: '',
     fields: [
@@ -183,9 +192,9 @@ function clearMaskedValue(field: ServiceConfig['fields'][number]) {
         <div
           v-for="f in svc.fields"
           :key="f.field"
-          class="flex items-center gap-3"
+          class="flex items-start gap-3"
         >
-          <label class="w-28 shrink-0 text-xs text-gray-400 text-left">{{ f.label }}</label>
+          <label class="w-56 shrink-0 pt-2 text-xs text-gray-400 text-left">{{ f.label }}</label>
           <div class="flex flex-1 gap-2">
             <input
               v-model="f.value"
@@ -207,6 +216,22 @@ function clearMaskedValue(field: ServiceConfig['fields'][number]) {
             </button>
           </div>
         </div>
+      </div>
+
+      <div
+        v-if="svc.docs?.length"
+        class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs"
+      >
+        <a
+          v-for="doc in svc.docs"
+          :key="doc.url"
+          :href="doc.url"
+          target="_blank"
+          rel="noreferrer"
+          class="text-blue-300 hover:text-blue-200 underline underline-offset-2"
+        >
+          {{ doc.label }}
+        </a>
       </div>
 
       <div class="mt-3 flex justify-center">

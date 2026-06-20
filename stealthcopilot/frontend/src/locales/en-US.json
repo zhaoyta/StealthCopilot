@@ -114,9 +114,9 @@
       "statusFail": "Failed",
       "statusTesting": "Testing…",
       "xunfei": {
-        "simultAppId": "Speech Recognition / Text Translation App ID",
-        "simultApiKey": "Speech Recognition / Text Translation API Key",
-        "simultApiSecret": "Speech Recognition / Text Translation API Secret",
+        "simultAppId": "RTASR / Simultaneous Interpretation / Text Translation App ID",
+        "simultApiKey": "RTASR / Simultaneous Interpretation / Text Translation API Key",
+        "simultApiSecret": "RTASR / Simultaneous Interpretation / Text Translation API Secret",
         "ttsAppId": "VoiceClone App ID",
         "ttsApiKey": "VoiceClone API Key",
         "ttsApiSecret": "VoiceClone API Secret"
@@ -130,11 +130,16 @@
         "faceId": "Face ID"
       },
       "serviceNames": {
-        "xunfei": "iFlytek Speech Recognition & Text Translation",
-        "xunfei_simult": "iFlytek Speech Recognition & Text Translation",
+        "xunfei": "iFlytek RTASR, Simultaneous Interpretation & Text Translation",
+        "xunfei_simult": "iFlytek RTASR, Simultaneous Interpretation & Text Translation",
         "xunfei_tts": "iFlytek VoiceClone",
         "deepseek": "DeepSeek",
         "simli": "Simli AI"
+      },
+      "docs": {
+        "xunfeiRtasr": "RTASR docs",
+        "xunfeiSimult": "Simultaneous Interpretation docs",
+        "xunfeiText": "Text Translation docs"
       }
     },
     "language": {
@@ -301,7 +306,7 @@
       "monitorOutputUnavailable": "Previously selected translation playback device \"{name}\" is unavailable. Please select it again or use system default output.",
       "hearingAsrMissing": "Hearing chain ASR Extension is disabled. Select iFlytek RTASR in Advanced Settings.",
       "speakingAsrMissing": "Speaking chain ASR Extension is disabled. Select iFlytek Simultaneous Interpretation in Advanced Settings.",
-      "simultMissing": "iFlytek Speech Recognition / Text Translation App ID / API Key / API Secret is not configured, so hearing and speaking chains cannot recognize or translate speech.",
+      "simultMissing": "iFlytek RTASR / Simultaneous Interpretation / Text Translation App ID / API Key / API Secret is not configured, so hearing and speaking chains cannot recognize or translate speech.",
       "simultLangUnsupported": "iFlytek Simultaneous Interpretation currently supports Mandarin Chinese → English only. Current direction is {src} → {dst}.",
       "deepseekMissing": "DeepSeek Key is not configured, so answer suggestions and polishing will be limited.",
       "ttsMissing": "TTS Provider is disabled, so the speaking chain cannot output target-language speech.",
