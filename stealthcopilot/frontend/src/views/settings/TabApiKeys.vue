@@ -2,6 +2,7 @@
 import { reactive, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Eye, EyeOff } from 'lucide-vue-next'
+import { BrowserOpenURL } from '../../../wailsjs/runtime/runtime'
 
 const { t } = useI18n()
 const MASKED_VALUE = '••••••••'
@@ -154,6 +155,10 @@ function testStatusClass(s: TestStatus): string {
 function clearMaskedValue(field: ServiceConfig['fields'][number]) {
   if (field.value === MASKED_VALUE) field.value = ''
 }
+
+function openDoc(url: string) {
+  BrowserOpenURL(url)
+}
 </script>
 
 <template>
@@ -229,9 +234,8 @@ function clearMaskedValue(field: ServiceConfig['fields'][number]) {
           v-for="doc in svc.docs"
           :key="doc.url"
           :href="doc.url"
-          target="_blank"
-          rel="noreferrer"
           class="text-blue-300 hover:text-blue-200 underline underline-offset-2"
+          @click.prevent="openDoc(doc.url)"
         >
           {{ doc.label }}
         </a>
