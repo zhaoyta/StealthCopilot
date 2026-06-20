@@ -147,22 +147,22 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 	}
 	diag.Infof("speaking mic started device=%q", cfg.PhysicalMicDevice)
 
-	translator := cfg.ASRExtension
-	if translator == nil {
+	asrExtension := cfg.ASRExtension
+	if asrExtension == nil {
 		if cfg.PhysicalMicDevice != "" && !asr.XunfeiSimultConfigReady(cfg.Simult) {
 			cancel()
 			_ = mic.Close()
 			c.cancel = nil
-			diag.Errorf("speaking translator config incomplete source_lang=%s target_lang=%s", cfg.Simult.SourceLang, cfg.Simult.TargetLang)
+			diag.Errorf("speaking asr extension config incomplete source_lang=%s target_lang=%s", cfg.Simult.SourceLang, cfg.Simult.TargetLang)
 			return "讯飞同声传译配置不完整：请配置 AppID、API Key、API Secret 和说话链语言"
 		}
-		translator = asr.NewXunfeiSimultSegmentExtension(cfg.Simult)
+		asrExtension = asr.NewXunfeiSimultSegmentExtension(cfg.Simult)
 	}
 
 	var ttsExtension tts.Extension = cfg.TTSExtension
 	switch {
 	case ttsExtension != nil:
-		// injected provider
+		// injected extension
 	case tts.XunfeiVoiceCloneConfigReady(cfg.XunfeiVoiceClone):
 		ttsExtension = tts.NewXunfeiVoiceCloneExtension(cfg.XunfeiVoiceClone)
 	default:
@@ -201,7 +201,7 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
-		c.segmentWorker(ctx, wailsCtx, segmentQueue, translator, ttsQueue, cfg)
+		c.segmentWorker(ctx, wailsCtx, segmentQueue, asrExtension, ttsQueue, cfg)
 	}()
 
 	c.wg.Add(1)
@@ -273,7 +273,7 @@ func (c *Chain) segmentWorker(
 	ctx context.Context,
 	wailsCtx context.Context,
 	queue <-chan segmentQueueItem,
-	translator asr.SegmentExtension,
+	asrExtension asr.SegmentExtension,
 	ttsQueue chan<- ttsQueueItem,
 	cfg ChainConfig,
 ) {
@@ -284,7 +284,7 @@ func (c *Chain) segmentWorker(
 			return
 		case item := <-queue:
 			diag.Infof("speaking segment dequeued segment=%d queue_depth=%d", item.ID, len(queue))
-			c.handleSegment(ctx, wailsCtx, item, translator, ttsQueue, cfg)
+			c.handleSegment(ctx, wailsCtx, item, asrExtension, ttsQueue, cfg)
 		}
 	}
 }
@@ -292,7 +292,7 @@ func (c *Chain) segmentWorker(
 // handleSegment 处理一段 VAD 检测到的完整语音：翻译 → [DeepSeek润色] → TTS → 虚拟麦克风写入。
 // 流程（时序关键）：
 //  1. 立即 BeginZeroPCM（防止母语泄漏）
-//  2. 调用 ASR stage 获取源语言文本与目标语言文本
+//  2. 调用 ASR extension 获取源语言文本与目标语言文本
 //  3. [可选] PolishEnabled=true 时调用 DeepSeek 润色（约 1-2s，超时降级使用原文）
 //  4. 获取最终文本 → 调用 TTS 流式合成
 //  5. 首帧到达时 WriteChunk（原子切换 Zero-PCM → TTS 音频）
@@ -301,7 +301,7 @@ func (c *Chain) handleSegment(
 	ctx context.Context,
 	wailsCtx context.Context,
 	item segmentQueueItem,
-	translator asr.SegmentExtension,
+	asrExtension asr.SegmentExtension,
 	ttsQueue chan<- ttsQueueItem,
 	cfg ChainConfig,
 ) {
@@ -313,7 +313,7 @@ func (c *Chain) handleSegment(
 	// 2. 讯飞语音翻译（2s 超时）
 	asrStarted := time.Now()
 	diag.Infof("speaking asr_trans begin segment=%d pcm_ms=%d peak=%d", item.ID, pcmMs, audioPeak(item.Seg.PCM))
-	speechText, err := translator.Translate(ctx, item.Seg.PCM)
+	speechText, err := asrExtension.Translate(ctx, item.Seg.PCM)
 	if err != nil {
 		if errors.Is(err, asr.ErrNoSpeechRecognized) {
 			diag.Infof("speaking recognition skipped segment=%d asr_elapsed=%s elapsed=%s reason=%q", item.ID, diag.Since(asrStarted), diag.Since(started), err)
@@ -341,25 +341,25 @@ func (c *Chain) handleSegment(
 		IsFinal: true,
 	})
 
-	transStage := cfg.TransExtension
-	if transStage == nil {
-		transStage = trans.NoopExtension{}
+	transExtension := cfg.TransExtension
+	if transExtension == nil {
+		transExtension = trans.NoopExtension{}
 	}
 	transStarted := time.Now()
-	processedText, transErr := transStage.Process(ctx, asr.Result{
+	processedText, transErr := transExtension.Process(ctx, asr.Result{
 		SrcText: speechText.SrcText,
 		DstText: translatedText,
 		IsFinal: true,
 	})
 	if transErr != nil {
-		diag.Warnf("speaking trans stage skipped segment=%d elapsed=%s err=%v", item.ID, diag.Since(transStarted), transErr)
+		diag.Warnf("speaking trans extension skipped segment=%d elapsed=%s err=%v", item.ID, diag.Since(transStarted), transErr)
 	} else {
 		speechText = processedText
 		translatedText = speechText.DstText
 		if translatedText == "" {
 			translatedText = speechText.SrcText
 		}
-		diag.Infof("speaking trans stage done segment=%d elapsed=%s src_chars=%d dst_chars=%d", item.ID, diag.Since(transStarted), len(speechText.SrcText), len(translatedText))
+		diag.Infof("speaking trans extension done segment=%d elapsed=%s src_chars=%d dst_chars=%d", item.ID, diag.Since(transStarted), len(speechText.SrcText), len(translatedText))
 	}
 	diag.Infof("speaking translate ok segment=%d elapsed=%s translated_chars=%d", item.ID, diag.Since(started), len(translatedText))
 	runtime.EventsEmit(wailsCtx, EventSpeakStep, pipeline.StepEvent{

@@ -524,7 +524,7 @@ func (a *App) StartHearingChain() string {
 	retriever := rag.NewRetriever(a.ResumeSvc.InternalManager())
 	var speechExtension asr.StreamingExtension
 	if cfg.HearingASRProvider == config.TranslationProviderNull {
-		return "听力链需要 ASR Provider，请在高级设置选择讯飞 RTASR"
+		return "听力链需要 ASR Extension，请在高级设置选择讯飞 RTASR"
 	}
 	if (speechExtensionUsesXunfei(cfg.HearingASRProvider) || speechExtensionUsesXunfei(cfg.HearingTransProvider)) &&
 		(cfg.XunfeiSimultAppID == "" || cfg.XunfeiSimultAPIKey == "" || cfg.XunfeiSimultAPISecret == "") {
@@ -560,9 +560,9 @@ func (a *App) StartHearingChain() string {
 			Rate:         cfg.HearingMonitorRate,
 			Volume:       cfg.HearingMonitorVolume,
 		},
-		MonitorPrefersProviderAudio: false,
-		Retriever:                   retriever,
-		EventSink:                   a.emitTeleprompterEvent,
+		MonitorPrefersExtensionAudio: false,
+		Retriever:                    retriever,
+		EventSink:                    a.emitTeleprompterEvent,
 	}
 	if err := a.HearingChain.Start(a.ctx, chainCfg); err != "" {
 		diag.Errorf("hearing start failed err=%q", err)
@@ -628,7 +628,7 @@ func (a *App) StartSpeakingChain() string {
 		cfg.PhysicalMicName, cfg.VirtualMicName, cfg.SpeakingInputLang, cfg.SpeakingOutputLang, cfg.SpeakingASRProvider, cfg.SpeakingTransProvider, cfg.SpeakingTTSProvider, cfg.PolishEnabled)
 	var speechExtension asr.SegmentExtension
 	if cfg.SpeakingASRProvider == config.TranslationProviderNull {
-		return "说话链需要 ASR Provider，请在高级设置选择讯飞同声传译"
+		return "说话链需要 ASR Extension，请在高级设置选择讯飞同声传译"
 	}
 	if (speechExtensionUsesXunfei(cfg.SpeakingASRProvider) || speechExtensionUsesXunfei(cfg.SpeakingTransProvider)) &&
 		(cfg.XunfeiSimultAppID == "" || cfg.XunfeiSimultAPIKey == "" || cfg.XunfeiSimultAPISecret == "") {
@@ -642,7 +642,7 @@ func (a *App) StartSpeakingChain() string {
 	resolvedTTSExtension := string(cfg.SpeakingTTSProvider)
 	switch cfg.SpeakingTTSProvider {
 	case config.TTSProviderNull:
-		return "说话链需要 TTS Provider，请在高级设置选择默认音色或讯飞声音复刻"
+		return "说话链需要 TTS Extension，请在高级设置选择默认音色或讯飞声音复刻"
 	case config.TTSProviderSystem:
 		ttsExtension = tts.NewSystemExtension()
 	case config.TTSProviderXunfeiVoiceClone:
@@ -655,7 +655,7 @@ func (a *App) StartSpeakingChain() string {
 		resolvedTTSExtension = string(config.TTSProviderSystem)
 		ttsExtension = tts.NewSystemExtension()
 	}
-	diag.Infof("speaking tts provider resolved requested=%s resolved=%s voiceclone_asset_set=%t", cfg.SpeakingTTSProvider, resolvedTTSExtension, strings.TrimSpace(cfg.XunfeiTTSAssetID) != "")
+	diag.Infof("speaking tts extension resolved requested=%s resolved=%s voiceclone_asset_set=%t", cfg.SpeakingTTSProvider, resolvedTTSExtension, strings.TrimSpace(cfg.XunfeiTTSAssetID) != "")
 	llmCfg := llm.Config{
 		Provider: string(cfg.LLMProvider),
 		APIKey:   cfg.DeepSeekKey,

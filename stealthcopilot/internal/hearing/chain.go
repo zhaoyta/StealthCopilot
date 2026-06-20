@@ -75,8 +75,8 @@ type ChainConfig struct {
 	MonitorConfig audio.MonitorConfig
 	// MonitorSink allows tests or alternate runtimes to override system speech.
 	MonitorSink audio.MonitorSink
-	// MonitorPrefersProviderAudio uses audio returned by the speech translation provider.
-	MonitorPrefersProviderAudio bool
+	// MonitorPrefersExtensionAudio uses audio returned by the speech extension.
+	MonitorPrefersExtensionAudio bool
 	// Retriever RAG 检索器（依赖 resume.Manager）
 	Retriever *rag.Retriever
 	// EventSink mirrors hearing/answer events to non-Wails consumers such as the native teleprompter.
@@ -126,24 +126,24 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 	}
 	diag.Infof("hearing capture started device=%q", cfg.VirtualMicDevice)
 
-	translator := cfg.ASRExtension
-	if translator == nil {
+	asrExtension := cfg.ASRExtension
+	if asrExtension == nil {
 		if !asr.XunfeiRTASRLLMConfigReady(cfg.ASRConfig) {
 			cancel()
 			c.cancel = nil
 			diag.Errorf("hearing asr config incomplete source_lang=%s", cfg.ASRConfig.SourceLang)
 			return "讯飞实时转写配置不完整：请配置 AppID、API Key、API Secret 和听力链语言"
 		}
-		translator = asr.NewXunfeiRTASRLLMExtension(cfg.ASRConfig)
+		asrExtension = asr.NewXunfeiRTASRLLMExtension(cfg.ASRConfig)
 	}
-	resultCh, err := translator.Translate(ctx, audioStream)
+	resultCh, err := asrExtension.Translate(ctx, audioStream)
 	if err != nil {
 		cancel()
 		c.cancel = nil
-		diag.Errorf("hearing translator start failed err=%v", err)
+		diag.Errorf("hearing asr extension start failed err=%v", err)
 		return "讯飞同声传译启动失败：" + err.Error()
 	}
-	diag.Infof("hearing translator started elapsed=%s", diag.Since(started))
+	diag.Infof("hearing asr extension started elapsed=%s", diag.Since(started))
 
 	// 意图分类器
 	llmCfg := cfg.LLMConfig
@@ -183,12 +183,12 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
-		defer translator.Close()
-		transStage := cfg.TransExtension
-		if transStage == nil {
-			transStage = trans.NoopExtension{}
+		defer asrExtension.Close()
+		transExtension := cfg.TransExtension
+		if transExtension == nil {
+			transExtension = trans.NoopExtension{}
 		}
-		c.processLoop(ctx, resultCh, transStage, classifier, cfg.Retriever, generator, sessionID, cfg.RAGPrompt, combinedEmit, monitor, monitorAudioQueue, cfg.MonitorPrefersProviderAudio)
+		c.processLoop(ctx, resultCh, transExtension, classifier, cfg.Retriever, generator, sessionID, cfg.RAGPrompt, combinedEmit, monitor, monitorAudioQueue, cfg.MonitorPrefersExtensionAudio)
 	}()
 
 	return ""
@@ -230,7 +230,7 @@ func (c *Chain) Stop() {
 func (c *Chain) processLoop(
 	ctx context.Context,
 	results <-chan asr.Result,
-	transStage trans.Extension,
+	transExtension trans.Extension,
 	classifier *intent.Classifier,
 	retriever *rag.Retriever,
 	generator *llm.AnswerGenerator,
@@ -239,7 +239,7 @@ func (c *Chain) processLoop(
 	emitFn llm.EventEmitter,
 	monitor audio.MonitorSink,
 	monitorAudioQueue chan<- []byte,
-	monitorPrefersProviderAudio bool,
+	monitorPrefersExtensionAudio bool,
 ) {
 	transQueue := make(chan hearingTransItem, hearingTransQueueSize)
 	ttsQueue := make(chan hearingTTSItem, hearingTTSQueueSize)
@@ -247,7 +247,7 @@ func (c *Chain) processLoop(
 	c.wg.Add(2)
 	go func() {
 		defer c.wg.Done()
-		c.transWorker(ctx, transQueue, ttsQueue, transStage, classifier, retriever, generator, sessionID, ragPromptTpl, emitFn, monitor, monitorAudioQueue, monitorPrefersProviderAudio)
+		c.transWorker(ctx, transQueue, ttsQueue, transExtension, classifier, retriever, generator, sessionID, ragPromptTpl, emitFn, monitor, monitorAudioQueue, monitorPrefersExtensionAudio)
 	}()
 	go func() {
 		defer c.wg.Done()
@@ -402,7 +402,7 @@ func (c *Chain) transWorker(
 	ctx context.Context,
 	queue <-chan hearingTransItem,
 	ttsQueue chan<- hearingTTSItem,
-	transStage trans.Extension,
+	transExtension trans.Extension,
 	classifier *intent.Classifier,
 	retriever *rag.Retriever,
 	generator *llm.AnswerGenerator,
@@ -411,7 +411,7 @@ func (c *Chain) transWorker(
 	emitFn llm.EventEmitter,
 	monitor audio.MonitorSink,
 	monitorAudioQueue chan<- []byte,
-	monitorPrefersProviderAudio bool,
+	monitorPrefersExtensionAudio bool,
 ) {
 	defer close(ttsQueue)
 	for {
@@ -423,12 +423,12 @@ func (c *Chain) transWorker(
 				return
 			}
 			result := item.Result
-			if result.IsFinal && transStage != nil {
+			if result.IsFinal && transExtension != nil {
 				started := time.Now()
 				diag.Infof("hearing trans begin src_chars=%d queue_depth=%d", len(result.SrcText), len(queue))
-				processed, err := transStage.Process(ctx, result)
+				processed, err := transExtension.Process(ctx, result)
 				if err != nil {
-					diag.Warnf("hearing trans stage skipped err=%v", err)
+					diag.Warnf("hearing trans extension skipped err=%v", err)
 				} else {
 					result = processed
 					diag.Infof("hearing trans done elapsed=%s src_chars=%d dst_chars=%d", diag.Since(started), len(result.SrcText), len(result.DstText))
@@ -443,7 +443,7 @@ func (c *Chain) transWorker(
 				})
 			}
 			if len(result.AudioPCM) > 0 && monitor != nil {
-				c.queueProviderAudio(ctx, result, emitFn, monitor, monitorAudioQueue)
+				c.queueExtensionAudio(ctx, result, emitFn, monitor, monitorAudioQueue)
 			}
 			if result.SrcText == "" && result.DstText == "" && len(result.AudioPCM) > 0 {
 				continue
@@ -459,7 +459,7 @@ func (c *Chain) transWorker(
 					IsFinal: result.IsFinal,
 				})
 			}
-			if result.IsFinal && result.DstText != "" && !monitorPrefersProviderAudio && monitor != nil {
+			if result.IsFinal && result.DstText != "" && !monitorPrefersExtensionAudio && monitor != nil {
 				select {
 				case ttsQueue <- hearingTTSItem{Text: result.DstText, IsFinal: result.IsFinal}:
 					diag.Infof("hearing tts queued chars=%d queue_depth=%d", len(result.DstText), len(ttsQueue))
@@ -503,7 +503,7 @@ func (c *Chain) ttsWorker(ctx context.Context, queue <-chan hearingTTSItem, moni
 	}
 }
 
-func (c *Chain) queueProviderAudio(
+func (c *Chain) queueExtensionAudio(
 	ctx context.Context,
 	result asr.Result,
 	emitFn llm.EventEmitter,
