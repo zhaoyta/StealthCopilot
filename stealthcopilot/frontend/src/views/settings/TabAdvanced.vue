@@ -9,7 +9,9 @@ const config = reactive({
   ragPrompt: '',
   speakPolishPrompt: '',
   polishEnabled: false,
-  translationProvider: 'xunfei_simult',
+  hearingAsrProvider: 'xunfei_simult',
+  hearingTextProvider: 'xunfei_simult',
+  speakingTranslationProvider: 'xunfei_simult',
   llmProvider: 'deepseek',
   llmBaseURL: 'https://api.deepseek.com/v1',
   ttsProvider: 'system',
@@ -32,7 +34,9 @@ onMounted(async () => {
     config.ragPrompt = cfg.rag_prompt || ''
     config.speakPolishPrompt = cfg.speak_polish_prompt || ''
     config.polishEnabled = cfg.polish_enabled || false
-    config.translationProvider = cfg.translation_provider || 'xunfei_simult'
+    config.hearingAsrProvider = cfg.hearing_asr_provider || 'xunfei_simult'
+    config.hearingTextProvider = cfg.hearing_text_provider || 'xunfei_simult'
+    config.speakingTranslationProvider = cfg.speaking_translation_provider || 'xunfei_simult'
     config.llmProvider = cfg.llm_provider || 'deepseek'
     config.llmBaseURL = cfg.llm_base_url || 'https://api.deepseek.com/v1'
     config.ttsProvider = cfg.tts_provider || 'system'
@@ -55,7 +59,9 @@ async function save() {
       rag_prompt: config.ragPrompt,
       speak_polish_prompt: config.speakPolishPrompt,
       polish_enabled: config.polishEnabled,
-      translation_provider: config.translationProvider,
+      hearing_asr_provider: config.hearingAsrProvider,
+      hearing_text_provider: config.hearingTextProvider,
+      speaking_translation_provider: config.speakingTranslationProvider,
       llm_provider: config.llmProvider,
       llm_base_url: config.llmBaseURL,
       tts_provider: config.ttsProvider,
@@ -74,39 +80,33 @@ async function save() {
       {{ t('settings.tabs.advanced') }}
     </h2>
 
-    <!-- 说话润色开关 -->
-    <div class="flex items-center justify-between bg-gray-800 rounded-xl px-5 py-4 border border-gray-700">
-      <label class="text-sm text-gray-200">{{ t('settings.advanced.polishEnabled') }}</label>
-      <button
-        class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
-        :class="config.polishEnabled ? 'bg-blue-500' : 'bg-gray-600'"
-        @click="config.polishEnabled = !config.polishEnabled"
-      >
-        <span
-          class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
-          :class="config.polishEnabled ? 'translate-x-6' : 'translate-x-1'"
-        />
-      </button>
-    </div>
-
     <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 space-y-4">
       <h3 class="text-sm font-medium text-gray-200">
-        {{ t('settings.advanced.providers') }}
+        {{ t('settings.advanced.hearingExtensions') }}
       </h3>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <label class="block">
-          <span class="block text-xs text-gray-400 mb-1">{{ t('settings.advanced.translationProvider') }}</span>
+          <span class="block text-xs text-gray-400 mb-1">{{ t('settings.advanced.hearingAsrProvider') }}</span>
           <select
-            v-model="config.translationProvider"
+            v-model="config.hearingAsrProvider"
             class="form-select"
           >
             <option value="xunfei_simult">{{ t('settings.advanced.providerNames.xunfeiSimult') }}</option>
-            <option value="xunfei">{{ t('settings.advanced.providerNames.xunfei') }}</option>
             <option value="null">{{ t('settings.advanced.providerNames.null') }}</option>
           </select>
         </label>
         <label class="block">
-          <span class="block text-xs text-gray-400 mb-1">{{ t('settings.advanced.llmProvider') }}</span>
+          <span class="block text-xs text-gray-400 mb-1">{{ t('settings.advanced.hearingTextProvider') }}</span>
+          <select
+            v-model="config.hearingTextProvider"
+            class="form-select"
+          >
+            <option value="xunfei_simult">{{ t('settings.advanced.providerNames.xunfeiText') }}</option>
+            <option value="null">{{ t('settings.advanced.providerNames.null') }}</option>
+          </select>
+        </label>
+        <label class="block">
+          <span class="block text-xs text-gray-400 mb-1">{{ t('settings.advanced.answerLlmProvider') }}</span>
           <select
             v-model="config.llmProvider"
             class="form-select"
@@ -115,14 +115,23 @@ async function save() {
             <option value="openai_compatible">{{ t('settings.advanced.providerNames.openaiCompatible') }}</option>
           </select>
         </label>
-        <label class="block md:col-span-2">
-          <span class="block text-xs text-gray-400 mb-1">{{ t('settings.advanced.llmBaseURL') }}</span>
-          <input
-            v-model="config.llmBaseURL"
-            type="text"
-            class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white
-                   focus:outline-none focus:border-blue-400"
+      </div>
+    </div>
+
+    <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 space-y-4">
+      <h3 class="text-sm font-medium text-gray-200">
+        {{ t('settings.advanced.speakingExtensions') }}
+      </h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <label class="block">
+          <span class="block text-xs text-gray-400 mb-1">{{ t('settings.advanced.speakingTranslationProvider') }}</span>
+          <select
+            v-model="config.speakingTranslationProvider"
+            class="form-select"
           >
+            <option value="xunfei_simult">{{ t('settings.advanced.providerNames.xunfeiSimult') }}</option>
+            <option value="null">{{ t('settings.advanced.providerNames.null') }}</option>
+          </select>
         </label>
         <label class="block">
           <span class="block text-xs text-gray-400 mb-1">{{ t('settings.advanced.ttsProvider') }}</span>
@@ -135,27 +144,67 @@ async function save() {
             <option value="null">{{ t('settings.advanced.providerNames.null') }}</option>
           </select>
         </label>
-        <label class="block">
-          <span class="block text-xs text-gray-400 mb-1">{{ t('settings.advanced.lipsyncProvider') }}</span>
-          <select
-            v-model="config.lipsyncProvider"
-            class="form-select"
+        <div class="flex items-center justify-between bg-gray-900/40 rounded-lg px-4 py-3 border border-gray-700 md:col-span-2">
+          <label class="text-sm text-gray-200">{{ t('settings.advanced.polishEnabled') }}</label>
+          <button
+            class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
+            :class="config.polishEnabled ? 'bg-blue-500' : 'bg-gray-600'"
+            @click="config.polishEnabled = !config.polishEnabled"
           >
-            <option value="simli">{{ t('settings.advanced.providerNames.simli') }}</option>
-            <option value="null">{{ t('settings.advanced.providerNames.null') }}</option>
-          </select>
-        </label>
-        <label class="block">
-          <span class="block text-xs text-gray-400 mb-1">{{ t('settings.advanced.embeddingProvider') }}</span>
-          <select
-            v-model="config.embeddingProvider"
-            class="form-select"
-          >
-            <option value="python_bridge">{{ t('settings.advanced.providerNames.pythonBridge') }}</option>
-            <option value="null">{{ t('settings.advanced.providerNames.null') }}</option>
-          </select>
-        </label>
+            <span
+              class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
+              :class="config.polishEnabled ? 'translate-x-6' : 'translate-x-1'"
+            />
+          </button>
+        </div>
       </div>
+    </div>
+
+    <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 space-y-4">
+      <h3 class="text-sm font-medium text-gray-200">
+        {{ t('settings.advanced.videoExtensions') }}
+      </h3>
+      <label class="block">
+        <span class="block text-xs text-gray-400 mb-1">{{ t('settings.advanced.lipsyncProvider') }}</span>
+        <select
+          v-model="config.lipsyncProvider"
+          class="form-select"
+        >
+          <option value="simli">{{ t('settings.advanced.providerNames.simli') }}</option>
+          <option value="null">{{ t('settings.advanced.providerNames.null') }}</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 space-y-4">
+      <h3 class="text-sm font-medium text-gray-200">
+        {{ t('settings.advanced.resumeExtensions') }}
+      </h3>
+      <label class="block">
+        <span class="block text-xs text-gray-400 mb-1">{{ t('settings.advanced.embeddingProvider') }}</span>
+        <select
+          v-model="config.embeddingProvider"
+          class="form-select"
+        >
+          <option value="python_bridge">{{ t('settings.advanced.providerNames.pythonBridge') }}</option>
+          <option value="null">{{ t('settings.advanced.providerNames.null') }}</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 space-y-4">
+      <h3 class="text-sm font-medium text-gray-200">
+        {{ t('settings.advanced.sharedLlmSettings') }}
+      </h3>
+      <label class="block">
+        <span class="block text-xs text-gray-400 mb-1">{{ t('settings.advanced.llmBaseURL') }}</span>
+        <input
+          v-model="config.llmBaseURL"
+          type="text"
+          class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white
+                 focus:outline-none focus:border-blue-400"
+        >
+      </label>
     </div>
 
     <!-- RAG 回答生成 Prompt -->

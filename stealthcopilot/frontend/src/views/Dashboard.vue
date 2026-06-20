@@ -220,7 +220,9 @@ async function loadDashboardConfig() {
   uiLocale.value         = (cfg.ui_locale || 'zh-CN') as 'zh-CN' | 'en-US'
   hearingLangPair.value  = `${langLabel(cfg.hearing_source_lang || 'en')} → ${langLabel(cfg.hearing_target_lang || 'zh')}`
   speakingLangPair.value = `${langLabel(cfg.speaking_input_lang || 'zh')} → ${langLabel(cfg.speaking_output_lang || 'en')}`
-  const translationProvider = providerLabel(cfg.translation_provider || 'xunfei_simult')
+  const hearingAsrProvider = providerLabel(cfg.hearing_asr_provider || 'xunfei_simult')
+  const hearingTextProvider = providerLabel(cfg.hearing_text_provider || 'xunfei_simult')
+  const speakingTranslationProvider = providerLabel(cfg.speaking_translation_provider || 'xunfei_simult')
   const llmProvider = providerLabel(cfg.llm_provider || 'deepseek')
   const ttsProvider = providerLabel(cfg.tts_provider || 'system')
   const lipsyncProvider = providerLabel(cfg.lipsync_provider || 'simli')
@@ -229,8 +231,9 @@ async function loadDashboardConfig() {
   channelNames.value = {
     meetingAudio: deviceLabel(cfg.virtual_mic_name),
     blackhole: deviceLabel(cfg.virtual_mic_name),
-    xunfeiTranslation: translationProvider,
-    xunfeiAsr: translationProvider,
+    xunfeiTranslation: hearingTextProvider,
+    xunfeiAsr: hearingAsrProvider,
+    speakingTranslation: speakingTranslationProvider,
     ragDeepseek: `${embeddingProvider} + ${llmProvider}`,
     localVectorStore: embeddingProvider,
     deepseek: llmProvider,
@@ -769,8 +772,8 @@ async function switchLocale(code: 'zh-CN' | 'en-US') {
             />
             <ChevronRight :size="12" class="text-gray-600 flex-shrink-0" />
             <PipelineStep
-              :label="t('pipeline.xunfeiAsr')"
-              :channel="channelLabel('xunfeiAsr')"
+              :label="t('pipeline.speakingTranslation')"
+              :channel="channelLabel('speakingTranslation')"
             />
             <ChevronRight :size="12" class="text-gray-600 flex-shrink-0" />
             <PipelineStep

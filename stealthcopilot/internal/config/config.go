@@ -69,11 +69,13 @@ type AppConfig struct {
 	SimliFaceID           string
 
 	// Provider 选择
-	TranslationProvider TranslationProviderType
-	LLMProvider         LLMProviderType
-	TTSProvider         TTSProviderType
-	LipSyncProvider     LipSyncProviderType
-	EmbeddingProvider   EmbeddingProviderType
+	HearingASRProvider    TranslationProviderType
+	HearingTextProvider   TranslationProviderType
+	SpeakingTransProvider TranslationProviderType
+	LLMProvider           LLMProviderType
+	TTSProvider           TTSProviderType
+	LipSyncProvider       LipSyncProviderType
+	EmbeddingProvider     EmbeddingProviderType
 
 	// 语言设置
 	HearingSourceLang  string
@@ -160,7 +162,9 @@ func (m *Manager) applyLocalConfig(lc LocalConfig) {
 	m.Config.UILocale = stringOr(lc.UILocale, "zh-CN")
 	m.Config.DeepSeekModel = stringOr(lc.DeepSeekModel, DefaultDeepSeekModel)
 	m.Config.LLMBaseURL = stringOr(lc.LLMBaseURL, DefaultLLMBaseURL)
-	m.Config.TranslationProvider = translationProviderOr(lc.TranslationProvider, TranslationProviderXunfeiSimult)
+	m.Config.HearingASRProvider = translationProviderOr(lc.HearingASRProvider, TranslationProviderXunfeiSimult)
+	m.Config.HearingTextProvider = translationProviderOr(lc.HearingTextProvider, TranslationProviderXunfeiSimult)
+	m.Config.SpeakingTransProvider = translationProviderOr(lc.SpeakingTransProvider, TranslationProviderXunfeiSimult)
 	m.Config.LLMProvider = llmProviderOr(lc.LLMProvider, LLMProviderDeepSeek)
 	m.Config.TTSProvider = ttsProviderOr(lc.TTSProvider, TTSProviderSystem)
 	m.Config.LipSyncProvider = lipSyncProviderOr(lc.LipSyncProvider, LipSyncProviderSimli)
@@ -265,7 +269,9 @@ func (m *Manager) ToLocalConfig() LocalConfig {
 		UILocale:              m.Config.UILocale,
 		DeepSeekModel:         m.Config.DeepSeekModel,
 		LLMBaseURL:            m.Config.LLMBaseURL,
-		TranslationProvider:   m.Config.TranslationProvider,
+		HearingASRProvider:    m.Config.HearingASRProvider,
+		HearingTextProvider:   m.Config.HearingTextProvider,
+		SpeakingTransProvider: m.Config.SpeakingTransProvider,
 		LLMProvider:           m.Config.LLMProvider,
 		TTSProvider:           m.Config.TTSProvider,
 		LipSyncProvider:       m.Config.LipSyncProvider,
@@ -314,7 +320,7 @@ func floatOr(v, def float64) float64 {
 
 func translationProviderOr(v TranslationProviderType, def TranslationProviderType) TranslationProviderType {
 	switch v {
-	case TranslationProviderXunfeiSimult, TranslationProviderXunfei, TranslationProviderNull:
+	case TranslationProviderXunfeiSimult, TranslationProviderNull:
 		return v
 	default:
 		return def

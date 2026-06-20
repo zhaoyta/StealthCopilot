@@ -108,7 +108,7 @@ func (a *App) TestAPIConnection(service string) APIConnectionResult {
 			return APIConnectionResult{OK: true, Message: "Simli API Key 已配置"}
 		}
 		return result
-	case "xunfei_simult", "xunfei":
+	case "xunfei_simult":
 		if cfg.XunfeiSimultAppID == "" || cfg.XunfeiSimultAPIKey == "" || cfg.XunfeiSimultAPISecret == "" {
 			return APIConnectionResult{Message: "讯飞同声传译 AppID/API Key/API Secret 未完整配置"}
 		}
@@ -155,8 +155,8 @@ func hearingASRProviderFromApp(cfg *config.AppConfig, override translation.Provi
 	if override != nil {
 		return override
 	}
-	switch cfg.TranslationProvider {
-	case config.TranslationProviderXunfeiSimult, config.TranslationProviderXunfei:
+	switch cfg.HearingASRProvider {
+	case config.TranslationProviderXunfeiSimult:
 		return translation.NewXunfeiRTASRLLMProvider(translation.XunfeiRTASRLLMConfig{
 			AppID:      cfg.XunfeiSimultAppID,
 			APIKey:     cfg.XunfeiSimultAPIKey,
@@ -175,8 +175,8 @@ func speakingTranslationProviderFromApp(
 	if override != nil {
 		return override
 	}
-	switch cfg.TranslationProvider {
-	case config.TranslationProviderXunfeiSimult, config.TranslationProviderXunfei:
+	switch cfg.SpeakingTransProvider {
+	case config.TranslationProviderXunfeiSimult:
 		return translation.NewXunfeiSimultSpeakProvider(translation.XunfeiSimultConfig{
 			AppID:      cfg.XunfeiSimultAppID,
 			APIKey:     cfg.XunfeiSimultAPIKey,
@@ -186,6 +186,25 @@ func speakingTranslationProviderFromApp(
 		})
 	default:
 		return override
+	}
+}
+
+func translationProviderUsesXunfei(provider config.TranslationProviderType) bool {
+	return provider == config.TranslationProviderXunfeiSimult
+}
+
+func hearingTextStageFromApp(cfg *config.AppConfig) translation.ResultStage {
+	switch cfg.HearingTextProvider {
+	case config.TranslationProviderXunfeiSimult:
+		return translation.NewXunfeiTextTranslateStage(translation.XunfeiTextTransConfig{
+			AppID:      cfg.XunfeiSimultAppID,
+			APIKey:     cfg.XunfeiSimultAPIKey,
+			APISecret:  cfg.XunfeiSimultAPISecret,
+			SourceLang: cfg.HearingSourceLang,
+			TargetLang: cfg.HearingTargetLang,
+		})
+	default:
+		return translation.NoopResultStage{}
 	}
 }
 
@@ -492,14 +511,15 @@ func (a *App) GetStealthStatus() ui.StealthStatus {
 // 返回空字符串表示成功，否则返回错误描述。
 func (a *App) StartHearingChain() string {
 	cfg := a.ConfigSvc.InternalManager().Config
-	diag.Infof("hearing start requested virtual_mic=%q source_lang=%s target_lang=%s monitor_enabled=%t monitor_output=%q translation_provider=%s llm_provider=%s",
-		cfg.VirtualMicName, cfg.HearingSourceLang, cfg.HearingTargetLang, cfg.HearingMonitorEnabled, cfg.MonitorOutputName, cfg.TranslationProvider, cfg.LLMProvider)
+	diag.Infof("hearing start requested virtual_mic=%q source_lang=%s target_lang=%s monitor_enabled=%t monitor_output=%q hearing_asr_provider=%s hearing_text_provider=%s llm_provider=%s",
+		cfg.VirtualMicName, cfg.HearingSourceLang, cfg.HearingTargetLang, cfg.HearingMonitorEnabled, cfg.MonitorOutputName, cfg.HearingASRProvider, cfg.HearingTextProvider, cfg.LLMProvider)
 	retriever := rag.NewRetriever(a.ResumeSvc.InternalManager())
 	var translator translation.Provider
-	if cfg.TranslationProvider == config.TranslationProviderNull {
-		return "听力链需要真实翻译 Provider，请在高级设置选择讯飞"
+	if cfg.HearingASRProvider == config.TranslationProviderNull {
+		return "听力链需要 ASR Provider，请在高级设置选择讯飞 RTASR"
 	}
-	if cfg.XunfeiSimultAppID == "" || cfg.XunfeiSimultAPIKey == "" || cfg.XunfeiSimultAPISecret == "" {
+	if (translationProviderUsesXunfei(cfg.HearingASRProvider) || translationProviderUsesXunfei(cfg.HearingTextProvider)) &&
+		(cfg.XunfeiSimultAppID == "" || cfg.XunfeiSimultAPIKey == "" || cfg.XunfeiSimultAPISecret == "") {
 		return "讯飞同声传译配置不完整：请配置 AppID、API Key 和 API Secret"
 	}
 	asrCfg := translation.XunfeiRTASRLLMConfig{
@@ -507,13 +527,6 @@ func (a *App) StartHearingChain() string {
 		APIKey:     cfg.XunfeiSimultAPIKey,
 		APISecret:  cfg.XunfeiSimultAPISecret,
 		SourceLang: cfg.HearingSourceLang,
-	}
-	transCfg := translation.XunfeiTextTransConfig{
-		AppID:      cfg.XunfeiSimultAppID,
-		APIKey:     cfg.XunfeiSimultAPIKey,
-		APISecret:  cfg.XunfeiSimultAPISecret,
-		SourceLang: cfg.HearingSourceLang,
-		TargetLang: cfg.HearingTargetLang,
 	}
 	llmCfg := llm.Config{
 		Provider: string(cfg.LLMProvider),
@@ -524,7 +537,7 @@ func (a *App) StartHearingChain() string {
 	chainCfg := hearing.ChainConfig{
 		ASRConfig:        asrCfg,
 		ASRProvider:      hearingASRProviderFromApp(cfg, translator),
-		TransStage:       translation.NewXunfeiTextTranslateStage(transCfg),
+		TransStage:       hearingTextStageFromApp(cfg),
 		LLMConfig:        llmCfg,
 		DeepSeekKey:      cfg.DeepSeekKey,
 		DeepSeekModel:    cfg.DeepSeekModel,
@@ -600,13 +613,14 @@ func (a *App) StopHearingChain() {
 // 返回空字符串表示成功，否则返回错误描述。
 func (a *App) StartSpeakingChain() string {
 	cfg := a.ConfigSvc.InternalManager().Config
-	diag.Infof("speaking start requested physical_mic=%q virtual_mic=%q input_lang=%s output_lang=%s translation_provider=%s tts_provider=%s polish_enabled=%t",
-		cfg.PhysicalMicName, cfg.VirtualMicName, cfg.SpeakingInputLang, cfg.SpeakingOutputLang, cfg.TranslationProvider, cfg.TTSProvider, cfg.PolishEnabled)
+	diag.Infof("speaking start requested physical_mic=%q virtual_mic=%q input_lang=%s output_lang=%s speaking_translation_provider=%s tts_provider=%s polish_enabled=%t",
+		cfg.PhysicalMicName, cfg.VirtualMicName, cfg.SpeakingInputLang, cfg.SpeakingOutputLang, cfg.SpeakingTransProvider, cfg.TTSProvider, cfg.PolishEnabled)
 	var translator translation.SpeakProvider
-	if cfg.TranslationProvider == config.TranslationProviderNull {
-		return "说话链需要真实翻译 Provider，请在高级设置选择讯飞"
+	if cfg.SpeakingTransProvider == config.TranslationProviderNull {
+		return "说话链需要语音翻译 Provider，请在高级设置选择讯飞同声传译"
 	}
-	if cfg.XunfeiSimultAppID == "" || cfg.XunfeiSimultAPIKey == "" || cfg.XunfeiSimultAPISecret == "" {
+	if translationProviderUsesXunfei(cfg.SpeakingTransProvider) &&
+		(cfg.XunfeiSimultAppID == "" || cfg.XunfeiSimultAPIKey == "" || cfg.XunfeiSimultAPISecret == "") {
 		return "讯飞同声传译配置不完整：请配置 AppID、API Key 和 API Secret"
 	}
 	if msg := xunfeiSimultLangPairMessage(cfg.SpeakingInputLang, cfg.SpeakingOutputLang); msg != "" {

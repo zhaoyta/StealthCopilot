@@ -20,7 +20,9 @@ type FrontendConfig struct {
 	UILocale              string  `json:"ui_locale"` // "zh-CN" | "en-US"
 	DeepSeekModel         string  `json:"deepseek_model"`
 	LLMBaseURL            string  `json:"llm_base_url"`
-	TranslationProvider   string  `json:"translation_provider"`
+	HearingASRProvider    string  `json:"hearing_asr_provider"`
+	HearingTextProvider   string  `json:"hearing_text_provider"`
+	SpeakingTransProvider string  `json:"speaking_translation_provider"`
 	LLMProvider           string  `json:"llm_provider"`
 	TTSProvider           string  `json:"tts_provider"`
 	LipSyncProvider       string  `json:"lipsync_provider"`
@@ -62,7 +64,9 @@ type SaveLocalConfigRequest struct {
 	UILocale              string  `json:"ui_locale"`
 	DeepSeekModel         string  `json:"deepseek_model"`
 	LLMBaseURL            string  `json:"llm_base_url"`
-	TranslationProvider   string  `json:"translation_provider"`
+	HearingASRProvider    string  `json:"hearing_asr_provider"`
+	HearingTextProvider   string  `json:"hearing_text_provider"`
+	SpeakingTransProvider string  `json:"speaking_translation_provider"`
 	LLMProvider           string  `json:"llm_provider"`
 	TTSProvider           string  `json:"tts_provider"`
 	LipSyncProvider       string  `json:"lipsync_provider"`

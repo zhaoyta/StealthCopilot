@@ -34,6 +34,15 @@ func TestManager_DefaultValues(t *testing.T) {
 	if m.Config.TTSProvider != config.TTSProviderSystem {
 		t.Errorf("TTSProvider: want %q, got %q", config.TTSProviderSystem, m.Config.TTSProvider)
 	}
+	if m.Config.HearingASRProvider != config.TranslationProviderXunfeiSimult {
+		t.Errorf("HearingASRProvider: want %q, got %q", config.TranslationProviderXunfeiSimult, m.Config.HearingASRProvider)
+	}
+	if m.Config.HearingTextProvider != config.TranslationProviderXunfeiSimult {
+		t.Errorf("HearingTextProvider: want %q, got %q", config.TranslationProviderXunfeiSimult, m.Config.HearingTextProvider)
+	}
+	if m.Config.SpeakingTransProvider != config.TranslationProviderXunfeiSimult {
+		t.Errorf("SpeakingTransProvider: want %q, got %q", config.TranslationProviderXunfeiSimult, m.Config.SpeakingTransProvider)
+	}
 }
 
 // TestManager_SaveLocalConfig 验证 SaveLocalConfig 持久化并同步内存。
@@ -45,11 +54,14 @@ func TestManager_SaveLocalConfig(t *testing.T) {
 	}
 
 	lc := config.LocalConfig{
-		SetupCompleted:    true,
-		HearingSourceLang: "ja",
-		HearingTargetLang: "zh",
-		GhostFontSize:     20,
-		GhostOpacity:      0.5,
+		SetupCompleted:        true,
+		HearingASRProvider:    config.TranslationProviderNull,
+		HearingTextProvider:   config.TranslationProviderXunfeiSimult,
+		SpeakingTransProvider: config.TranslationProviderNull,
+		HearingSourceLang:     "ja",
+		HearingTargetLang:     "zh",
+		GhostFontSize:         20,
+		GhostOpacity:          0.5,
 	}
 	if err := m.SaveLocalConfig(lc); err != nil {
 		t.Fatalf("SaveLocalConfig: %v", err)
@@ -63,6 +75,12 @@ func TestManager_SaveLocalConfig(t *testing.T) {
 	}
 	if m.Config.GhostFontSize != 20 {
 		t.Errorf("GhostFontSize: want 20, got %d", m.Config.GhostFontSize)
+	}
+	if m.Config.HearingASRProvider != config.TranslationProviderNull {
+		t.Errorf("HearingASRProvider: want %q, got %q", config.TranslationProviderNull, m.Config.HearingASRProvider)
+	}
+	if m.Config.SpeakingTransProvider != config.TranslationProviderNull {
+		t.Errorf("SpeakingTransProvider: want %q, got %q", config.TranslationProviderNull, m.Config.SpeakingTransProvider)
 	}
 
 	// 验证文件确实写入
