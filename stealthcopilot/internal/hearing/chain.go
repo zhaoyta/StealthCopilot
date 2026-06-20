@@ -320,14 +320,15 @@ func (c *Chain) processLoop(
 					IsFinal: result.IsFinal,
 				})
 			}
-			if result.SrcText != "" && result.IsFinal {
+			switch {
+			case result.SrcText != "" && result.IsFinal:
 				pendingInterim = ""
 				stopIdleTimer()
 				sentences := sentenceBuffer.Add(result.SrcText, result.IsFinal)
 				// IsFinal 是讯飞明确的句子结束信号，无论 hearingLooksCompleteEnough 结果如何都强制 flush
 				sentences = append(sentences, sentenceBuffer.Flush()...)
 				c.queueHearingSentences(ctx, transQueue, sentences)
-			} else if result.SrcText != "" {
+			case result.SrcText != "":
 				normalized := normalizeHearingText(result.SrcText)
 				// 讯飞把前一句的结束标点放在下一段 interim 的开头（如 ". Where are you from"）。
 				// 开头标点 = 前一句已结束的可靠信号 → 立即发出 pendingInterim，以标点后的内容开始新积累。
@@ -353,14 +354,14 @@ func (c *Chain) processLoop(
 					diag.Infof("hearing asr interim pending chars=%d", len(pendingInterim))
 					resetIdleTimer()
 				}
-			} else if result.DstText == "" && len(result.AudioPCM) == 0 {
+			case result.DstText == "" && len(result.AudioPCM) == 0:
 				select {
 				case transQueue <- hearingTransItem{Result: result}:
 					diag.Infof("hearing trans queued empty final=%t queue_depth=%d", result.IsFinal, len(transQueue))
 				case <-ctx.Done():
 					return
 				}
-			} else if result.DstText != "" || len(result.AudioPCM) > 0 {
+			case result.DstText != "" || len(result.AudioPCM) > 0:
 				select {
 				case transQueue <- hearingTransItem{Result: result}:
 					diag.Infof("hearing trans queued final=%t src_chars=%d dst_chars=%d audio_bytes=%d queue_depth=%d", result.IsFinal, len(result.SrcText), len(result.DstText), len(result.AudioPCM), len(transQueue))
