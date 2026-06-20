@@ -139,7 +139,8 @@
       "docs": {
         "xunfeiRtasr": "实时转写文档",
         "xunfeiSimult": "同声传译文档",
-        "xunfeiText": "机器翻译文档"
+        "xunfeiText": "机器翻译文档",
+        "xunfeiVoiceClone": "声音复刻文档"
       }
     },
     "language": {

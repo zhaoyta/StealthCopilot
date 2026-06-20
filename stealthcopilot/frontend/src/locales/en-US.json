@@ -139,7 +139,8 @@
       "docs": {
         "xunfeiRtasr": "RTASR docs",
         "xunfeiSimult": "Simultaneous Interpretation docs",
-        "xunfeiText": "Text Translation docs"
+        "xunfeiText": "Text Translation docs",
+        "xunfeiVoiceClone": "VoiceClone docs"
       }
     },
     "language": {

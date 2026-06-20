@@ -32,7 +32,7 @@ const services = reactive<ServiceConfig[]>([
     docs: [
       { label: t('settings.apiKeys.docs.xunfeiRtasr'), url: 'https://www.xfyun.cn/doc/spark/asr_llm/rtasr_llm.html' },
       { label: t('settings.apiKeys.docs.xunfeiSimult'), url: 'https://www.xfyun.cn/doc/nlp/simultaneous-interpretation/API.html' },
-      { label: t('settings.apiKeys.docs.xunfeiText'), url: 'https://www.xfyun.cn/doc/nlp/xftrans/API.html' },
+      { label: t('settings.apiKeys.docs.xunfeiText'), url: 'https://www.xfyun.cn/doc/nlp/xftrans_new/API.html' },
     ],
     testStatus: 'untested',
     testMsg: '',
@@ -44,6 +44,9 @@ const services = reactive<ServiceConfig[]>([
   },
   {
     name: '讯飞声音复刻',
+    docs: [
+      { label: t('settings.apiKeys.docs.xunfeiVoiceClone'), url: 'https://www.xfyun.cn/doc/spark/voiceclone.html#%E6%9C%8D%E5%8A%A1%E4%BB%8B%E7%BB%8D' },
+    ],
     testStatus: 'untested',
     testMsg: '',
     fields: [
