@@ -1,6 +1,7 @@
 package audio
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"os/exec"
@@ -29,13 +30,15 @@ type MonitorConfig struct {
 // MonitorSink speaks translated text to the interviewer's private monitor path.
 type MonitorSink interface {
 	Speak(ctx context.Context, text string) error
+	PlayPCM(ctx context.Context, pcm []byte) error
 	Close() error
 }
 
 type NullMonitorSink struct{}
 
-func (NullMonitorSink) Speak(context.Context, string) error { return nil }
-func (NullMonitorSink) Close() error                        { return nil }
+func (NullMonitorSink) Speak(context.Context, string) error   { return nil }
+func (NullMonitorSink) PlayPCM(context.Context, []byte) error { return nil }
+func (NullMonitorSink) Close() error                          { return nil }
 
 func NewSystemMonitorSink(cfg MonitorConfig) MonitorSink {
 	if !cfg.Enabled {
@@ -81,6 +84,35 @@ func (m *systemSpeechMonitor) Speak(ctx context.Context, text string) error {
 	default:
 		return nil
 	}
+}
+
+func (m *systemSpeechMonitor) PlayPCM(ctx context.Context, pcm []byte) error {
+	if len(pcm) == 0 {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if runtime.GOOS != "darwin" {
+		return nil
+	}
+	args := []string{
+		"-hide_banner", "-loglevel", "error",
+		"-nostdin",
+		"-f", "s16le",
+		"-ar", "16000",
+		"-ac", "1",
+		"-i", "pipe:0",
+	}
+	if idx, ok := resolveAudioDeviceIndex(m.outputDevice); ok {
+		args = append(args, "-f", "audiotoolbox", "-audio_device_index", strconv.Itoa(idx), "-")
+		diag.Infof("monitor play pcm via audiotoolbox output=%q index=%d bytes=%d", m.outputDevice, idx, len(pcm))
+	} else {
+		args = append(args, "-f", "audiotoolbox", "-")
+		diag.Infof("monitor play pcm via audiotoolbox default output=%q bytes=%d", m.outputDevice, len(pcm))
+	}
+	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
+	cmd.Stdin = bytes.NewReader(pcm)
+	return cmd.Run()
 }
 
 func (m *systemSpeechMonitor) Close() error { return nil }

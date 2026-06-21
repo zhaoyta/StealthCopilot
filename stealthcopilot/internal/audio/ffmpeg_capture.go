@@ -7,8 +7,15 @@ import (
 	"os/exec"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/zhaoyta/stealthcopilot/internal/diag"
+)
+
+const (
+	captureFrameLogEvery = 1000
+	captureQueueSize     = 512
+	captureSlowSendWarn  = 200
 )
 
 // NewSystemCaptureProvider returns the best available audio capture provider.
@@ -96,7 +103,7 @@ func (p *FFmpegCaptureProvider) Start(ctx context.Context, deviceName string) (<
 	p.cmd = cmd
 	p.mu.Unlock()
 
-	ch := make(chan []byte, 8)
+	ch := make(chan []byte, captureQueueSize)
 	go func() {
 		defer close(ch)
 		defer func() {
@@ -118,17 +125,18 @@ func (p *FFmpegCaptureProvider) Start(ctx context.Context, deviceName string) (<
 				return
 			}
 			frameCount++
-			if frameCount == 1 || frameCount%100 == 0 {
-				diag.Infof("audio capture frame device=%q frames=%d peak=%d", deviceName, frameCount, pcmPeak(frame))
+			peak := pcmPeak(frame)
+			if frameCount == 1 || frameCount%captureFrameLogEvery == 0 {
+				diag.Infof("audio capture summary device=%q frames=%d peak=%d queue_depth=%d", deviceName, frameCount, peak, len(ch))
 			}
+			sendStarted := time.Now()
 			select {
 			case ch <- frame:
 			case <-runCtx.Done():
 				return
-			default:
-				if frameCount%100 == 0 {
-					diag.Warnf("audio capture frame dropped device=%q frames=%d", deviceName, frameCount)
-				}
+			}
+			if blockedMs := time.Since(sendStarted).Milliseconds(); blockedMs >= captureSlowSendWarn {
+				diag.Warnf("audio capture backpressure device=%q frames=%d blocked_ms=%d queue_depth=%d peak=%d", deviceName, frameCount, blockedMs, len(ch), peak)
 			}
 		}
 	}()

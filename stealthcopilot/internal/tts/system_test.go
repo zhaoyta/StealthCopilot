@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-func TestSystemProviderEmptyText(t *testing.T) {
-	ch, err := NewSystemProvider().Synthesize(context.Background(), "  ")
+func TestSystemExtensionEmptyText(t *testing.T) {
+	ch, err := NewSystemExtension().Synthesize(context.Background(), "  ")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -16,8 +16,8 @@ func TestSystemProviderEmptyText(t *testing.T) {
 	}
 }
 
-func TestSystemProviderVoiceID(t *testing.T) {
-	if got := NewSystemProvider().VoiceID(); got != "system-default" {
+func TestSystemExtensionVoiceID(t *testing.T) {
+	if got := NewSystemExtension().VoiceID(); got != "system-default" {
 		t.Fatalf("VoiceID() = %q", got)
 	}
 }

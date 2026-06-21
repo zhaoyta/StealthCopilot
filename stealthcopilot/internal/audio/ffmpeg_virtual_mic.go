@@ -42,14 +42,19 @@ func NewSystemVirtualMicWriterChecked(deviceName string) (VirtualMicWriter, stri
 // FFmpegVirtualMicWriter streams PCM into a writable platform audio sink and
 // preserves the Zero-PCM/TTS state machine used by the speaking chain.
 type FFmpegVirtualMicWriter struct {
-	state  atomic.Int32
-	device string
-	mu     sync.Mutex
-	stdin  io.WriteCloser
-	cmd    *exec.Cmd
-	done   chan struct{}
-	once   sync.Once
-	closed bool
+	state       atomic.Int32
+	device      string
+	mu          sync.Mutex
+	stdin       io.WriteCloser
+	cmd         *exec.Cmd
+	done        chan struct{}
+	procDone    chan struct{}
+	once        sync.Once
+	closed      bool
+	ttsSession  int64
+	ttsBytes    int64
+	ttsWrites   int64
+	writeErrors int64
 }
 
 func NewFFmpegVirtualMicWriter(deviceName string) (*FFmpegVirtualMicWriter, error) {
@@ -75,12 +80,21 @@ func NewFFmpegVirtualMicWriter(deviceName string) (*FFmpegVirtualMicWriter, erro
 	diag.Infof("virtual mic ffmpeg started pid=%d device=%q", cmd.Process.Pid, deviceName)
 
 	w := &FFmpegVirtualMicWriter{
-		device: deviceName,
-		stdin:  stdin,
-		cmd:    cmd,
-		done:   make(chan struct{}),
+		device:   deviceName,
+		stdin:    stdin,
+		cmd:      cmd,
+		done:     make(chan struct{}),
+		procDone: make(chan struct{}),
 	}
 	go w.zeroPCMLoop()
+	go func() {
+		defer close(w.procDone)
+		if err := cmd.Wait(); err != nil {
+			diag.Warnf("virtual mic ffmpeg exited device=%q err=%v", deviceName, err)
+		} else {
+			diag.Infof("virtual mic ffmpeg exited device=%q", deviceName)
+		}
+	}()
 	go func() {
 		buf, _ := io.ReadAll(stderr)
 		if len(buf) > 0 {
@@ -91,19 +105,32 @@ func NewFFmpegVirtualMicWriter(deviceName string) (*FFmpegVirtualMicWriter, erro
 }
 
 func (w *FFmpegVirtualMicWriter) BeginZeroPCM() {
-	diag.Infof("virtual mic begin zero-pcm device=%q", w.device)
+	session := atomic.AddInt64(&w.ttsSession, 1)
+	diag.Infof("virtual mic begin zero-pcm device=%q session=%d", w.device, session)
+	atomic.StoreInt64(&w.ttsBytes, 0)
+	atomic.StoreInt64(&w.ttsWrites, 0)
+	atomic.StoreInt64(&w.writeErrors, 0)
 	w.state.Store(int32(micStateZeroPCM))
 }
 
 func (w *FFmpegVirtualMicWriter) WriteChunk(chunk []byte) {
+	session := atomic.LoadInt64(&w.ttsSession)
 	if w.state.CompareAndSwap(int32(micStateZeroPCM), int32(micStateTTS)) {
-		diag.Infof("virtual mic first tts chunk device=%q bytes=%d peak=%d", w.device, len(chunk), pcmPeak(chunk))
+		diag.Infof("virtual mic first tts chunk device=%q session=%d bytes=%d peak=%d", w.device, session, len(chunk), pcmPeak(chunk))
 	}
-	w.write(chunk)
+	if err := w.write(chunk); err != nil {
+		errCount := atomic.AddInt64(&w.writeErrors, 1)
+		if errCount == 1 || errCount%20 == 0 {
+			diag.Warnf("virtual mic write failed device=%q session=%d errors=%d err=%v", w.device, session, errCount, err)
+		}
+		return
+	}
+	atomic.AddInt64(&w.ttsBytes, int64(len(chunk)))
+	atomic.AddInt64(&w.ttsWrites, 1)
 }
 
 func (w *FFmpegVirtualMicWriter) EndTTS() {
-	diag.Infof("virtual mic end tts device=%q", w.device)
+	diag.Infof("virtual mic end tts device=%q session=%d writes=%d bytes=%d write_errors=%d", w.device, atomic.LoadInt64(&w.ttsSession), atomic.LoadInt64(&w.ttsWrites), atomic.LoadInt64(&w.ttsBytes), atomic.LoadInt64(&w.writeErrors))
 	w.state.Store(int32(micStateIdle))
 }
 
@@ -124,7 +151,11 @@ func (w *FFmpegVirtualMicWriter) Close() {
 			if cmd.Process != nil {
 				_ = cmd.Process.Kill()
 			}
-			_ = cmd.Wait()
+			select {
+			case <-w.procDone:
+			case <-time.After(500 * time.Millisecond):
+				diag.Warnf("virtual mic ffmpeg wait timed out device=%q", w.device)
+			}
 		}
 		diag.Infof("virtual mic closed device=%q", w.device)
 	})
@@ -139,23 +170,41 @@ func (w *FFmpegVirtualMicWriter) zeroPCMLoop() {
 		case <-w.done:
 			return
 		case <-ticker.C:
-			if virtualMicState(w.state.Load()) == micStateZeroPCM {
-				w.write(silence)
+			state := virtualMicState(w.state.Load())
+			if state == micStateIdle || state == micStateZeroPCM {
+				if err := w.write(silence); err != nil {
+					errCount := atomic.AddInt64(&w.writeErrors, 1)
+					if errCount == 1 || errCount%100 == 0 {
+						diag.Warnf("virtual mic silence write failed device=%q state=%d errors=%d err=%v", w.device, state, errCount, err)
+					}
+				}
 			}
 		}
 	}
 }
 
-func (w *FFmpegVirtualMicWriter) write(chunk []byte) {
+func (w *FFmpegVirtualMicWriter) write(chunk []byte) error {
 	if len(chunk) == 0 {
-		return
+		return nil
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.closed || w.stdin == nil {
-		return
+		return fmt.Errorf("writer closed")
 	}
-	_, _ = w.stdin.Write(chunk)
+	select {
+	case <-w.procDone:
+		return fmt.Errorf("ffmpeg process exited")
+	default:
+	}
+	n, err := w.stdin.Write(chunk)
+	if err != nil {
+		return err
+	}
+	if n != len(chunk) {
+		return io.ErrShortWrite
+	}
+	return nil
 }
 
 func ffmpegVirtualMicArgs(deviceName string) ([]string, error) {

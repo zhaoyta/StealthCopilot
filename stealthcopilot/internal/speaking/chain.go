@@ -1,45 +1,72 @@
 // Package speaking 实现说话链的完整管道协调：
-// 物理麦克风捕获 → VAD 语音段检测 → 讯飞 RTASR → 讯飞声音复刻流式 TTS → 虚拟麦克风写入。
+// 物理麦克风捕获 → VAD 语音段检测 → ASR/Trans/TTS 扩展步骤 → 虚拟麦克风写入。
 // Chain 由 app_bindings.go 通过 Wails binding 启动和停止。
 package speaking
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"github.com/zhaoyta/stealthcopilot/internal/asr"
 	"github.com/zhaoyta/stealthcopilot/internal/audio"
 	"github.com/zhaoyta/stealthcopilot/internal/diag"
 	"github.com/zhaoyta/stealthcopilot/internal/llm"
-	"github.com/zhaoyta/stealthcopilot/internal/translation"
+	"github.com/zhaoyta/stealthcopilot/internal/pipeline"
+	"github.com/zhaoyta/stealthcopilot/internal/trans"
 	"github.com/zhaoyta/stealthcopilot/internal/tts"
 	"github.com/zhaoyta/stealthcopilot/internal/vad"
 )
 
 // 说话链向前端推送的 Wails 事件名常量
 const (
+	speakingMaxSpeechMs = 2400
+
 	// EventSpeakStart VAD 触发后通知前端"正在翻译中"
 	EventSpeakStart = "speaking:start"
 	// EventSpeakDone TTS 播放完毕通知前端
 	EventSpeakDone = "speaking:done"
 	// EventSpeakError 翻译/TTS 出错或超时降级时通知前端
 	EventSpeakError = "speaking:error"
+	// EventSpeakResult 携带说话链最终输出文本（TTS 前）
+	EventSpeakResult = "speaking:result"
+	// EventSpeakStep 携带说话链 ASR/Trans/TTS 扩展步骤的实时产出。
+	EventSpeakStep = "speaking:step"
 )
+
+type ResultEvent struct {
+	SrcText string `json:"srcText"`
+	DstText string `json:"dstText"`
+}
+
+type ttsQueueItem struct {
+	SegmentID int64
+	SrcText   string
+	Text      string
+	Index     int
+	Total     int
+}
+
+type segmentQueueItem struct {
+	ID  int64
+	Seg vad.SpeechSegment
+}
 
 // ChainConfig 说话链运行时所需的配置和服务依赖。
 type ChainConfig struct {
-	// Xunfei 讯飞 RTASR 配置（复用听力链凭据）
-	Xunfei translation.XunfeiSpeakConfig
-	// Translator overrides Xunfei when a different speech translation provider is selected.
-	Translator translation.SpeakProvider
-	// TextTranslator translates recognized speech text into the output language.
-	TextTranslator translation.TextTranslator
+	// Simult 语音同传配置，默认用于获取原文和译文。
+	Simult asr.XunfeiSimultConfig
+	// ASRExtension overrides Xunfei when a different segmented ASR extension is selected.
+	ASRExtension asr.SegmentExtension
+	// TransExtension allows replacing the text translation/post-processing extension.
+	TransExtension trans.Extension
 	// XunfeiVoiceClone TTS 配置
 	XunfeiVoiceClone tts.XunfeiVoiceCloneConfig
-	// TTSProvider overrides XunfeiVoiceClone when a different TTS provider is selected.
-	TTSProvider tts.Provider
+	// TTSExtension overrides XunfeiVoiceClone when a different TTS extension is selected.
+	TTSExtension tts.Extension
 	// PhysicalMicDevice 物理麦克风设备名称
 	PhysicalMicDevice string
 	// VirtualMicDevice 虚拟声卡设备名称（BlackHole/VB-Cable）
@@ -69,6 +96,7 @@ type Chain struct {
 	cancel    context.CancelFunc
 	wg        sync.WaitGroup
 	vadDetect *vad.EnergyDetector
+	nextID    int64
 }
 
 // Start 以给定配置启动说话链。已在运行时幂等（先停止后重启）。
@@ -94,8 +122,9 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 
 	// VAD 检测器
 	detector := vad.NewEnergyDetector(threshMs, 40)
+	detector.SetMaxSpeechMs(speakingMaxSpeechMs)
 	c.vadDetect = detector
-	diag.Infof("speaking vad initialized silence_threshold_ms=%d", threshMs)
+	diag.Infof("speaking vad initialized silence_threshold_ms=%d max_speech_ms=%d", threshMs, speakingMaxSpeechMs)
 
 	// 物理麦克风捕获：用户选择设备时使用系统采集；未配置设备时保持静音降级。
 	var mic audio.MicProvider = &audio.NullMicProvider{}
@@ -118,30 +147,24 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 	}
 	diag.Infof("speaking mic started device=%q", cfg.PhysicalMicDevice)
 
-	translator := cfg.Translator
-	if translator == nil {
-		if cfg.PhysicalMicDevice != "" && !translation.XunfeiConfigReady(translation.XunfeiConfig(cfg.Xunfei)) {
+	asrExtension := cfg.ASRExtension
+	if asrExtension == nil {
+		if cfg.PhysicalMicDevice != "" && !asr.XunfeiSimultConfigReady(cfg.Simult) {
 			cancel()
 			_ = mic.Close()
 			c.cancel = nil
-			diag.Errorf("speaking translator config incomplete source_lang=%s target_lang=%s", cfg.Xunfei.SourceLang, cfg.Xunfei.TargetLang)
-			return "讯飞 RTASR 配置不完整：请配置 AppID、API Key 和说话链语言"
+			diag.Errorf("speaking asr extension config incomplete source_lang=%s target_lang=%s", cfg.Simult.SourceLang, cfg.Simult.TargetLang)
+			return "讯飞同声传译配置不完整：请配置 AppID、API Key、API Secret 和说话链语言"
 		}
-		if cfg.Xunfei.SourceLang != cfg.Xunfei.TargetLang && cfg.TextTranslator == nil {
-			cancel()
-			_ = mic.Close()
-			c.cancel = nil
-			return "文本翻译 Provider 未配置：跨语言说话链需要机器翻译或 LLM 翻译"
-		}
-		translator = translation.NewXunfeiSpeakProvider(cfg.Xunfei, cfg.TextTranslator)
+		asrExtension = asr.NewXunfeiSimultSegmentExtension(cfg.Simult)
 	}
 
-	var ttsProvider tts.Provider = cfg.TTSProvider
+	var ttsExtension tts.Extension = cfg.TTSExtension
 	switch {
-	case ttsProvider != nil:
-		// injected provider
+	case ttsExtension != nil:
+		// injected extension
 	case tts.XunfeiVoiceCloneConfigReady(cfg.XunfeiVoiceClone):
-		ttsProvider = tts.NewXunfeiVoiceCloneProvider(cfg.XunfeiVoiceClone)
+		ttsExtension = tts.NewXunfeiVoiceCloneExtension(cfg.XunfeiVoiceClone)
 	default:
 		if cfg.VirtualMicDevice != "" {
 			cancel()
@@ -150,7 +173,7 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 			diag.Errorf("speaking tts config incomplete virtual_mic=%q", cfg.VirtualMicDevice)
 			return "讯飞声音复刻 TTS 配置不完整：请配置 AppID、API Key、API Secret，并完成音色训练获得 Asset ID"
 		}
-		ttsProvider = &tts.NullTTSProvider{}
+		ttsExtension = &tts.NullExtension{}
 	}
 
 	// 虚拟麦克风写入：未配置时允许 Null，用户选择设备时必须是真实 writer。
@@ -168,21 +191,52 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 	}
 	diag.Infof("speaking chain started elapsed=%s virtual_mic=%q", diag.Since(started), cfg.VirtualMicDevice)
 
+	segmentQueue := make(chan segmentQueueItem, 8)
+	ttsQueue := make(chan ttsQueueItem, 16)
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		c.ttsWorker(ctx, wailsCtx, ttsQueue, ttsExtension, virtualMic, cfg)
+	}()
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		c.segmentWorker(ctx, wailsCtx, segmentQueue, asrExtension, ttsQueue, cfg)
+	}()
+
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
 		defer mic.Close()
-		defer ttsProvider.Close()
-		defer virtualMic.Close()
+		defer diag.Infof("speaking vad worker stopped")
 
 		// VAD 回调：每当检测到完整语音段时触发说话链管道
 		detector.Run(ctx, audioStream, func(seg vad.SpeechSegment) {
-			diag.Infof("speaking vad segment bytes=%d peak=%d", len(seg.PCM), audioPeak(seg.PCM))
-			c.handleSegment(ctx, wailsCtx, seg, translator, ttsProvider, virtualMic, cfg)
+			parts := splitSegmentForSpeaking(seg)
+			if len(parts) > 1 {
+				diag.Warnf("speaking vad segment split original_bytes=%d original_pcm_ms=%d parts=%d max_ms=%d", len(seg.PCM), pcmDurationMs(seg.PCM), len(parts), speakingMaxSpeechMs)
+			}
+			for _, part := range parts {
+				segmentID := c.nextSegmentID()
+				item := segmentQueueItem{ID: segmentID, Seg: part}
+				select {
+				case segmentQueue <- item:
+					diag.Infof("speaking vad segment queued segment=%d bytes=%d duration_ms=%d pcm_ms=%d peak=%d queue_depth=%d", segmentID, len(part.PCM), part.DurationMs, pcmDurationMs(part.PCM), audioPeak(part.PCM), len(segmentQueue))
+				case <-ctx.Done():
+					return
+				}
+			}
 		})
 	}()
 
 	return ""
+}
+
+func (c *Chain) nextSegmentID() int64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.nextID++
+	return c.nextID
 }
 
 // Stop 停止说话链，等待所有 goroutine 退出后返回。
@@ -193,8 +247,17 @@ func (c *Chain) Stop() {
 		c.cancel = nil
 	}
 	c.mu.Unlock()
-	c.wg.Wait()
-	diag.Infof("speaking chain stopped")
+	done := make(chan struct{})
+	go func() {
+		c.wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		diag.Infof("speaking chain stopped")
+	case <-time.After(3 * time.Second):
+		diag.Warnf("speaking chain stop timed out")
+	}
 }
 
 // SetSilenceThreshold 运行时更新 VAD 静音阈值（毫秒），即时生效。
@@ -206,10 +269,30 @@ func (c *Chain) SetSilenceThreshold(ms int) {
 	}
 }
 
+func (c *Chain) segmentWorker(
+	ctx context.Context,
+	wailsCtx context.Context,
+	queue <-chan segmentQueueItem,
+	asrExtension asr.SegmentExtension,
+	ttsQueue chan<- ttsQueueItem,
+	cfg ChainConfig,
+) {
+	defer diag.Infof("speaking segment worker stopped")
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case item := <-queue:
+			diag.Infof("speaking segment dequeued segment=%d queue_depth=%d", item.ID, len(queue))
+			c.handleSegment(ctx, wailsCtx, item, asrExtension, ttsQueue, cfg)
+		}
+	}
+}
+
 // handleSegment 处理一段 VAD 检测到的完整语音：翻译 → [DeepSeek润色] → TTS → 虚拟麦克风写入。
 // 流程（时序关键）：
 //  1. 立即 BeginZeroPCM（防止母语泄漏）
-//  2. 调用讯飞 RTASR 获取源语言文本，并按需通过文本翻译得到目标语言文本
+//  2. 调用 ASR extension 获取源语言文本与目标语言文本
 //  3. [可选] PolishEnabled=true 时调用 DeepSeek 润色（约 1-2s，超时降级使用原文）
 //  4. 获取最终文本 → 调用 TTS 流式合成
 //  5. 首帧到达时 WriteChunk（原子切换 Zero-PCM → TTS 音频）
@@ -217,28 +300,78 @@ func (c *Chain) SetSilenceThreshold(ms int) {
 func (c *Chain) handleSegment(
 	ctx context.Context,
 	wailsCtx context.Context,
-	seg vad.SpeechSegment,
-	translator translation.SpeakProvider,
-	ttsProvider tts.Provider,
-	virtualMic audio.VirtualMicWriter,
+	item segmentQueueItem,
+	asrExtension asr.SegmentExtension,
+	ttsQueue chan<- ttsQueueItem,
 	cfg ChainConfig,
 ) {
 	started := time.Now()
-	// 1. 立即开始写 Zero-PCM，阻断母语泄漏
-	virtualMic.BeginZeroPCM()
 	runtime.EventsEmit(wailsCtx, EventSpeakStart)
-	diag.Infof("speaking segment start bytes=%d", len(seg.PCM))
+	pcmMs := pcmDurationMs(item.Seg.PCM)
+	diag.Infof("speaking segment start segment=%d bytes=%d duration_ms=%d pcm_ms=%d", item.ID, len(item.Seg.PCM), item.Seg.DurationMs, pcmMs)
 
 	// 2. 讯飞语音翻译（2s 超时）
-	translatedText, err := translator.Translate(ctx, seg.PCM)
+	asrStarted := time.Now()
+	diag.Infof("speaking asr_trans begin segment=%d pcm_ms=%d peak=%d", item.ID, pcmMs, audioPeak(item.Seg.PCM))
+	speechText, err := asrExtension.Translate(ctx, item.Seg.PCM)
 	if err != nil {
-		// 超时或翻译失败：停止 Zero-PCM，降级（真实麦克风直通由用户手动切换）
-		virtualMic.EndTTS()
-		diag.Warnf("speaking translate failed elapsed=%s err=%v", diag.Since(started), err)
-		runtime.EventsEmit(wailsCtx, EventSpeakError, "语音翻译超时，请检查讯飞 API 配置")
+		if errors.Is(err, asr.ErrNoSpeechRecognized) {
+			diag.Infof("speaking recognition skipped segment=%d asr_elapsed=%s elapsed=%s reason=%q", item.ID, diag.Since(asrStarted), diag.Since(started), err)
+			runtime.EventsEmit(wailsCtx, EventSpeakDone)
+			return
+		}
+		if errors.Is(err, asr.ErrNoTranslationReturned) {
+			diag.Warnf("speaking translation missing segment=%d asr_elapsed=%s elapsed=%s err=%v", item.ID, diag.Since(asrStarted), diag.Since(started), err)
+			runtime.EventsEmit(wailsCtx, EventSpeakError, "同传已识别到语音，但没有返回目标语言译文；请检查说话链源语言/目标语言设置和讯飞同传权限")
+			return
+		}
+		diag.Warnf("speaking translate failed segment=%d asr_elapsed=%s elapsed=%s err=%v", item.ID, diag.Since(asrStarted), diag.Since(started), err)
+		runtime.EventsEmit(wailsCtx, EventSpeakError, "语音翻译失败，请检查讯飞 API 配置、网络或输入语言")
 		return
 	}
-	diag.Infof("speaking translate ok elapsed=%s translated_chars=%d", diag.Since(started), len(translatedText))
+	diag.Infof("speaking asr_trans done segment=%d elapsed=%s src_chars=%d dst_chars=%d final=%t", item.ID, diag.Since(asrStarted), len(speechText.SrcText), len(speechText.DstText), speechText.IsFinal)
+	translatedText := speechText.DstText
+	if translatedText == "" {
+		translatedText = speechText.SrcText
+	}
+	runtime.EventsEmit(wailsCtx, EventSpeakStep, pipeline.StepEvent{
+		Chain:   "speaking",
+		Step:    pipeline.StepASR,
+		SrcText: speechText.SrcText,
+		IsFinal: true,
+	})
+
+	transExtension := cfg.TransExtension
+	if transExtension == nil {
+		transExtension = trans.NoopExtension{}
+	}
+	transStarted := time.Now()
+	processedText, transErr := transExtension.Process(ctx, asr.Result{
+		SrcText: speechText.SrcText,
+		DstText: translatedText,
+		IsFinal: true,
+	})
+	if transErr != nil {
+		diag.Warnf("speaking trans extension skipped segment=%d elapsed=%s err=%v", item.ID, diag.Since(transStarted), transErr)
+	} else {
+		speechText = processedText
+		translatedText = speechText.DstText
+		if translatedText == "" {
+			translatedText = speechText.SrcText
+		}
+		diag.Infof("speaking trans extension done segment=%d elapsed=%s src_chars=%d dst_chars=%d", item.ID, diag.Since(transStarted), len(speechText.SrcText), len(translatedText))
+	}
+	diag.Infof("speaking translate ok segment=%d elapsed=%s translated_chars=%d", item.ID, diag.Since(started), len(translatedText))
+	runtime.EventsEmit(wailsCtx, EventSpeakStep, pipeline.StepEvent{
+		Chain:   "speaking",
+		Step:    pipeline.StepTrans,
+		DstText: translatedText,
+		IsFinal: true,
+	})
+	runtime.EventsEmit(wailsCtx, EventSpeakResult, ResultEvent{
+		SrcText: speechText.SrcText,
+		DstText: translatedText,
+	})
 
 	// 3. [可选] DeepSeek 润色：将目标文本润色为更流利的英文
 	//    PolishEnabled=true 且 DeepSeekKey 非空时调用；超时/失败时静默降级使用原译文。
@@ -250,53 +383,187 @@ func (c *Chain) handleSegment(
 		llmCfg.Model = cfg.DeepSeekModel
 	}
 	if cfg.PolishEnabled && llmCfg.APIKey != "" {
+		polishStarted := time.Now()
+		diag.Infof("speaking polish begin segment=%d chars=%d", item.ID, len(translatedText))
 		if polished, polishErr := llm.PolishWithConfig(ctx, llmCfg, cfg.PolishPrompt, translatedText); polishErr == nil {
 			translatedText = polished
-			diag.Infof("speaking polish ok chars=%d", len(translatedText))
+			diag.Infof("speaking polish ok segment=%d elapsed=%s chars=%d", item.ID, diag.Since(polishStarted), len(translatedText))
+			runtime.EventsEmit(wailsCtx, EventSpeakResult, ResultEvent{
+				SrcText: speechText.SrcText,
+				DstText: translatedText,
+			})
 		} else {
-			diag.Warnf("speaking polish skipped err=%v", polishErr)
+			diag.Warnf("speaking polish skipped segment=%d elapsed=%s err=%v", item.ID, diag.Since(polishStarted), polishErr)
 		}
 		// polish 出错时 translatedText 保持文本翻译原文，不中断流程
 	}
 
-	// 4. TTS 流式合成
-	audioCh, err := ttsProvider.Synthesize(ctx, translatedText)
+	sentences := splitForTTS(translatedText)
+	if len(sentences) == 0 {
+		runtime.EventsEmit(wailsCtx, EventSpeakDone)
+		return
+	}
+	for i, sentence := range sentences {
+		item := ttsQueueItem{
+			SegmentID: item.ID,
+			SrcText:   speechText.SrcText,
+			Text:      sentence,
+			Index:     i + 1,
+			Total:     len(sentences),
+		}
+		select {
+		case ttsQueue <- item:
+			diag.Infof("speaking tts queued segment=%d sentence=%d/%d chars=%d queue_depth=%d", item.SegmentID, item.Index, item.Total, len(item.Text), len(ttsQueue))
+		case <-ctx.Done():
+			return
+		}
+	}
+	diag.Infof("speaking segment queued segment=%d elapsed=%s sentences=%d", item.ID, diag.Since(started), len(sentences))
+}
+
+func (c *Chain) ttsWorker(
+	ctx context.Context,
+	wailsCtx context.Context,
+	queue <-chan ttsQueueItem,
+	ttsExtension tts.Extension,
+	virtualMic audio.VirtualMicWriter,
+	cfg ChainConfig,
+) {
+	defer ttsExtension.Close()
+	defer virtualMic.Close()
+	defer diag.Infof("speaking tts worker stopped")
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case item := <-queue:
+			diag.Infof("speaking tts dequeued segment=%d sentence=%d/%d queue_depth=%d", item.SegmentID, item.Index, item.Total, len(queue))
+			c.playTTSItem(ctx, wailsCtx, item, ttsExtension, virtualMic, cfg)
+			if item.Index == item.Total && len(queue) == 0 {
+				runtime.EventsEmit(wailsCtx, EventSpeakDone)
+			}
+		}
+	}
+}
+
+func (c *Chain) playTTSItem(
+	ctx context.Context,
+	wailsCtx context.Context,
+	item ttsQueueItem,
+	ttsExtension tts.Extension,
+	virtualMic audio.VirtualMicWriter,
+	cfg ChainConfig,
+) {
+	started := time.Now()
+	diag.Infof("speaking tts sentence begin segment=%d sentence=%d/%d virtual_mic=%q chars=%d", item.SegmentID, item.Index, item.Total, cfg.VirtualMicDevice, len(item.Text))
+	runtime.EventsEmit(wailsCtx, EventSpeakStep, pipeline.StepEvent{
+		Chain:   "speaking",
+		Step:    pipeline.StepTTS,
+		DstText: item.Text,
+		IsFinal: item.Index == item.Total,
+	})
+	virtualMic.BeginZeroPCM()
+	stopLoopbackCheck := startVirtualMicLoopbackCheck(ctx, cfg.VirtualMicDevice, item.SegmentID)
+	defer stopLoopbackCheck()
+	audioCh, err := ttsExtension.Synthesize(ctx, item.Text)
 	if err != nil {
 		virtualMic.EndTTS()
-		diag.Warnf("speaking tts failed err=%v", err)
+		diag.Warnf("speaking tts failed segment=%d sentence=%d/%d err=%v", item.SegmentID, item.Index, item.Total, err)
 		runtime.EventsEmit(wailsCtx, EventSpeakError, "TTS 合成失败："+err.Error())
 		return
 	}
-	diag.Infof("speaking tts stream started chars=%d", len(translatedText))
+	diag.Infof("speaking tts stream started segment=%d sentence=%d/%d chars=%d", item.SegmentID, item.Index, item.Total, len(item.Text))
 
-	// 5. 流式写入虚拟麦克风（首帧自动切换 Zero-PCM → TTS 音频）
 	chunkCount := 0
 	byteCount := 0
+	var playbackStarted time.Time
 	for chunk := range audioCh {
 		select {
 		case <-ctx.Done():
 			virtualMic.EndTTS()
-			diag.Warnf("speaking tts stream canceled chunks=%d bytes=%d", chunkCount, byteCount)
+			diag.Warnf("speaking tts stream canceled segment=%d chunks=%d bytes=%d", item.SegmentID, chunkCount, byteCount)
 			return
 		default:
-			chunkCount++
-			byteCount += len(chunk)
-			if chunkCount == 1 || chunkCount%20 == 0 {
-				diag.Infof("speaking tts chunk chunks=%d bytes=%d last_chunk=%d peak=%d", chunkCount, byteCount, len(chunk), audioPeak(chunk))
-			}
-			virtualMic.WriteChunk(chunk)
-			if cfg.AudioSink != nil {
-				cfg.AudioSink(chunk)
-			}
+		}
+		chunkCount++
+		byteCount += len(chunk)
+		if playbackStarted.IsZero() {
+			playbackStarted = time.Now()
+		}
+		if chunkCount == 1 || chunkCount%20 == 0 {
+			diag.Infof("speaking tts chunk segment=%d sentence=%d/%d chunks=%d bytes=%d last_chunk=%d peak=%d", item.SegmentID, item.Index, item.Total, chunkCount, byteCount, len(chunk), audioPeak(chunk))
+		}
+		virtualMic.WriteChunk(chunk)
+		if cfg.AudioSink != nil {
+			cfg.AudioSink(chunk)
+		}
+		if !sleepUntilAudioClock(ctx, playbackStarted, byteCount) {
+			virtualMic.EndTTS()
+			diag.Warnf("speaking tts pacing canceled segment=%d chunks=%d bytes=%d", item.SegmentID, chunkCount, byteCount)
+			return
 		}
 	}
-
-	// 5. TTS 结束，回到 Idle
 	virtualMic.EndTTS()
-	diag.Infof("speaking segment done elapsed=%s chunks=%d bytes=%d", diag.Since(started), chunkCount, byteCount)
-	runtime.EventsEmit(wailsCtx, EventSpeakDone)
+	diag.Infof("speaking tts sentence done segment=%d elapsed=%s sentence=%d/%d chunks=%d bytes=%d", item.SegmentID, diag.Since(started), item.Index, item.Total, chunkCount, byteCount)
 }
 
 func audioPeak(frame []byte) int {
 	return audio.PCMPeak(frame)
+}
+
+func splitSegmentForSpeaking(seg vad.SpeechSegment) []vad.SpeechSegment {
+	if pcmDurationMs(seg.PCM) <= speakingMaxSpeechMs {
+		return []vad.SpeechSegment{seg}
+	}
+	maxFrames := speakingMaxSpeechMs / int(audio.FrameDur.Milliseconds())
+	if maxFrames <= 0 {
+		maxFrames = 1
+	}
+	chunkBytes := maxFrames * audio.FrameBytes
+	if chunkBytes <= 0 {
+		return []vad.SpeechSegment{seg}
+	}
+	parts := make([]vad.SpeechSegment, 0, (len(seg.PCM)+chunkBytes-1)/chunkBytes)
+	for offset := 0; offset < len(seg.PCM); offset += chunkBytes {
+		end := offset + chunkBytes
+		if end > len(seg.PCM) {
+			end = len(seg.PCM)
+		}
+		pcm := append([]byte(nil), seg.PCM[offset:end]...)
+		parts = append(parts, vad.SpeechSegment{
+			PCM:        pcm,
+			DurationMs: pcmDurationMs(pcm),
+		})
+	}
+	return parts
+}
+
+func pcmDurationMs(pcm []byte) int {
+	if len(pcm) == 0 {
+		return 0
+	}
+	return len(pcm) * 1000 / (audio.SampleRate * audio.BytesPerSample)
+}
+
+func virtualMicPCMDuration(bytes int) time.Duration {
+	if bytes <= 0 {
+		return 0
+	}
+	return time.Duration(bytes) * time.Second / time.Duration(audio.VirtualMicSampleRate*audio.BytesPerSample)
+}
+
+func sleepUntilAudioClock(ctx context.Context, started time.Time, bytes int) bool {
+	target := started.Add(virtualMicPCMDuration(bytes))
+	wait := time.Until(target)
+	if wait <= 0 {
+		return true
+	}
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
 }

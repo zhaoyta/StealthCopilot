@@ -33,7 +33,6 @@ async function checkDeps() {
 }
 
 async function install(dep: DepItem) {
-  dep.status = 'installing'
   dep.installMsg = ''
   try {
     // @ts-expect-error — Wails 运行时注入
@@ -41,10 +40,7 @@ async function install(dep: DepItem) {
     dep.installMsg = result?.message ?? ''
   } catch {
     dep.status = 'failed'
-    return
   }
-  // 无论是否自动安装，都重新检测实际状态
-  await checkDeps()
 }
 
 function statusIcon(status: DepStatus): string {
@@ -95,7 +91,7 @@ onMounted(checkDeps)
               :class="statusClass(dep.status)"
             >
               <template v-if="dep.status === 'installed'">{{ t('setup.deps.installed') }}</template>
-              <template v-else-if="dep.status === 'checking' || dep.status === 'installing'">
+              <template v-else-if="dep.status === 'checking'">
                 {{ t('common.loading') }}
               </template>
               <template v-else-if="dep.status === 'failed'">{{ t('setup.deps.failed') }}</template>
@@ -106,7 +102,7 @@ onMounted(checkDeps)
               class="px-4 py-1.5 text-sm bg-blue-500 hover:bg-blue-600 rounded-lg transition-colors"
               @click="install(dep)"
             >
-              {{ t('setup.deps.install') }}
+              {{ t('setup.deps.installGuide') }}
             </button>
           </div>
         </div>

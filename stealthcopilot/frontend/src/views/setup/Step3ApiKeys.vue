@@ -14,13 +14,11 @@ interface KeyField {
   show: boolean
 }
 
-// 必填：讯飞 RTASR、讯飞机器翻译、DeepSeek；可选：讯飞声音复刻、Simli
+// 必填：讯飞实时转写/同声传译/机器翻译、DeepSeek；可选：讯飞声音复刻、Simli
 const fields = reactive<KeyField[]>([
-  { service: 'xunfei_rtasr', field: 'app_id', label: t('settings.apiKeys.xunfei.rtasrAppId'), required: true, value: '', show: false },
-  { service: 'xunfei_rtasr', field: 'api_key', label: t('settings.apiKeys.xunfei.rtasrApiKey'), required: true, value: '', show: false },
-  { service: 'xunfei_mt', field: 'app_id', label: t('settings.apiKeys.xunfei.mtAppId'), required: true, value: '', show: false },
-  { service: 'xunfei_mt', field: 'api_key', label: t('settings.apiKeys.xunfei.mtApiKey'), required: true, value: '', show: false },
-  { service: 'xunfei_mt', field: 'api_secret', label: t('settings.apiKeys.xunfei.mtApiSecret'), required: true, value: '', show: false },
+  { service: 'xunfei_simult', field: 'app_id', label: t('settings.apiKeys.xunfei.simultAppId'), required: true, value: '', show: false },
+  { service: 'xunfei_simult', field: 'api_key', label: t('settings.apiKeys.xunfei.simultApiKey'), required: true, value: '', show: false },
+  { service: 'xunfei_simult', field: 'api_secret', label: t('settings.apiKeys.xunfei.simultApiSecret'), required: true, value: '', show: false },
   { service: 'xunfei_tts', field: 'app_id', label: t('settings.apiKeys.xunfei.ttsAppId'), required: false, value: '', show: false },
   { service: 'xunfei_tts', field: 'api_key', label: t('settings.apiKeys.xunfei.ttsApiKey'), required: false, value: '', show: false },
   { service: 'xunfei_tts', field: 'api_secret', label: t('settings.apiKeys.xunfei.ttsApiSecret'), required: false, value: '', show: false },
@@ -74,9 +72,9 @@ async function saveAll() {
       <div
         v-for="f in fields"
         :key="f.service + '_' + f.field"
-        class="field-row flex items-center gap-3"
+        class="field-row flex items-start gap-3"
       >
-        <label class="w-32 shrink-0 text-sm text-gray-300 text-left">
+        <label class="w-56 shrink-0 pt-2 text-sm text-gray-300 text-left">
           {{ f.label }}
           <!-- eslint-disable @intlify/vue-i18n/no-raw-text -->
           <span

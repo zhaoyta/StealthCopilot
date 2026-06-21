@@ -2,6 +2,7 @@
 import { reactive, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Eye, EyeOff } from 'lucide-vue-next'
+import { BrowserOpenURL } from '../../../wailsjs/runtime/runtime'
 
 const { t } = useI18n()
 const MASKED_VALUE = '••••••••'
@@ -10,6 +11,10 @@ type TestStatus = 'untested' | 'testing' | 'ok' | 'fail'
 
 interface ServiceConfig {
   name: string
+  docs?: {
+    label: string
+    url: string
+  }[]
   fields: {
     service: string
     field: string
@@ -24,26 +29,25 @@ interface ServiceConfig {
 
 const services = reactive<ServiceConfig[]>([
   {
-    name: '讯飞 RTASR',
-    testStatus: 'untested',
-    testMsg: '',
-    fields: [
-      { service: 'xunfei_rtasr', field: 'app_id',  label: t('settings.apiKeys.xunfei.rtasrAppId'),  secret: true, value: '', show: false },
-      { service: 'xunfei_rtasr', field: 'api_key', label: t('settings.apiKeys.xunfei.rtasrApiKey'), secret: true, value: '', show: false },
+    name: '讯飞实时转写、同声传译与机器翻译',
+    docs: [
+      { label: t('settings.apiKeys.docs.xunfeiRtasr'), url: 'https://www.xfyun.cn/doc/spark/asr_llm/rtasr_llm.html' },
+      { label: t('settings.apiKeys.docs.xunfeiSimult'), url: 'https://www.xfyun.cn/doc/nlp/simultaneous-interpretation/API.html#%E6%8E%A5%E5%8F%A3%E8%AF%B4%E6%98%8E' },
+      { label: t('settings.apiKeys.docs.xunfeiText'), url: 'https://www.xfyun.cn/doc/nlp/xftrans_new/API.html' },
     ],
-  },
-  {
-    name: '讯飞机器翻译',
     testStatus: 'untested',
     testMsg: '',
     fields: [
-      { service: 'xunfei_mt', field: 'app_id',     label: t('settings.apiKeys.xunfei.mtAppId'),     secret: true, value: '', show: false },
-      { service: 'xunfei_mt', field: 'api_key',    label: t('settings.apiKeys.xunfei.mtApiKey'),    secret: true, value: '', show: false },
-      { service: 'xunfei_mt', field: 'api_secret', label: t('settings.apiKeys.xunfei.mtApiSecret'), secret: true, value: '', show: false },
+      { service: 'xunfei_simult', field: 'app_id',     label: t('settings.apiKeys.xunfei.simultAppId'),     secret: true, value: '', show: false },
+      { service: 'xunfei_simult', field: 'api_key',    label: t('settings.apiKeys.xunfei.simultApiKey'),    secret: true, value: '', show: false },
+      { service: 'xunfei_simult', field: 'api_secret', label: t('settings.apiKeys.xunfei.simultApiSecret'), secret: true, value: '', show: false },
     ],
   },
   {
     name: '讯飞声音复刻',
+    docs: [
+      { label: t('settings.apiKeys.docs.xunfeiVoiceClone'), url: 'https://www.xfyun.cn/doc/spark/voiceclone.html#%E6%9C%8D%E5%8A%A1%E4%BB%8B%E7%BB%8D' },
+    ],
     testStatus: 'untested',
     testMsg: '',
     fields: [
@@ -79,11 +83,9 @@ onMounted(async () => {
     // @ts-expect-error — Wails 运行时注入，window.go/window.runtime 无类型定义
     const cfg = await window.go.main.App.GetConfig()
     const setMap: Record<string, boolean> = {
-      xunfei_rtasr_app_id: cfg.xunfei_rtasr_app_id_set,
-      xunfei_rtasr_api_key: cfg.xunfei_rtasr_api_key_set,
-      xunfei_mt_app_id: cfg.xunfei_mt_app_id_set,
-      xunfei_mt_api_key: cfg.xunfei_mt_api_key_set,
-      xunfei_mt_api_secret: cfg.xunfei_mt_api_secret_set,
+      xunfei_simult_app_id: cfg.xunfei_simult_app_id_set,
+      xunfei_simult_api_key: cfg.xunfei_simult_api_key_set,
+      xunfei_simult_api_secret: cfg.xunfei_simult_api_secret_set,
       xunfei_tts_app_id: cfg.xunfei_tts_app_id_set,
       xunfei_tts_api_key: cfg.xunfei_tts_api_key_set,
       xunfei_tts_api_secret: cfg.xunfei_tts_api_secret_set,
@@ -153,6 +155,10 @@ function testStatusClass(s: TestStatus): string {
 function clearMaskedValue(field: ServiceConfig['fields'][number]) {
   if (field.value === MASKED_VALUE) field.value = ''
 }
+
+function openDoc(url: string) {
+  BrowserOpenURL(url)
+}
 </script>
 
 <template>
@@ -194,9 +200,9 @@ function clearMaskedValue(field: ServiceConfig['fields'][number]) {
         <div
           v-for="f in svc.fields"
           :key="f.field"
-          class="flex items-center gap-3"
+          class="flex items-start gap-3"
         >
-          <label class="w-28 shrink-0 text-xs text-gray-400 text-left">{{ f.label }}</label>
+          <label class="w-56 shrink-0 pt-2 text-xs text-gray-400 text-left">{{ f.label }}</label>
           <div class="flex flex-1 gap-2">
             <input
               v-model="f.value"
@@ -218,6 +224,21 @@ function clearMaskedValue(field: ServiceConfig['fields'][number]) {
             </button>
           </div>
         </div>
+      </div>
+
+      <div
+        v-if="svc.docs?.length"
+        class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs"
+      >
+        <a
+          v-for="doc in svc.docs"
+          :key="doc.url"
+          :href="doc.url"
+          class="text-blue-300 hover:text-blue-200 underline underline-offset-2"
+          @click.prevent="openDoc(doc.url)"
+        >
+          {{ doc.label }}
+        </a>
       </div>
 
       <div class="mt-3 flex justify-center">

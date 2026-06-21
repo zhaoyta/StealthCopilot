@@ -5,28 +5,28 @@ import (
 	"testing"
 )
 
-func TestNullTTSProvider_Synthesize(t *testing.T) {
-	p := &NullTTSProvider{}
+func TestNullExtension_Synthesize(t *testing.T) {
+	p := &NullExtension{}
 	ch, err := p.Synthesize(context.Background(), "hello")
 	if err != nil {
-		t.Fatalf("NullTTSProvider.Synthesize: unexpected error: %v", err)
+		t.Fatalf("NullExtension.Synthesize: unexpected error: %v", err)
 	}
 	_, open := <-ch
 	if open {
-		t.Error("NullTTSProvider channel should be closed immediately")
+		t.Error("NullExtension channel should be closed immediately")
 	}
 }
 
-func TestNullTTSProvider_VoiceID(t *testing.T) {
-	p := &NullTTSProvider{}
+func TestNullExtension_VoiceID(t *testing.T) {
+	p := &NullExtension{}
 	if p.VoiceID() != "" {
-		t.Error("NullTTSProvider VoiceID should be empty string")
+		t.Error("NullExtension VoiceID should be empty string")
 	}
 }
 
-func TestNullTTSProvider_Close(t *testing.T) {
-	p := &NullTTSProvider{}
+func TestNullExtension_Close(t *testing.T) {
+	p := &NullExtension{}
 	if err := p.Close(); err != nil {
-		t.Errorf("NullTTSProvider.Close: unexpected error: %v", err)
+		t.Errorf("NullExtension.Close: unexpected error: %v", err)
 	}
 }

@@ -16,9 +16,13 @@ type LocalConfig struct {
 	UILocale              string                  `json:"ui_locale"` // "zh-CN" | "en-US"
 	DeepSeekModel         string                  `json:"deepseek_model"`
 	LLMBaseURL            string                  `json:"llm_base_url"`
-	TranslationProvider   TranslationProviderType `json:"translation_provider"`
+	HearingASRProvider    TranslationProviderType `json:"hearing_asr_provider"`
+	HearingTransProvider  TranslationProviderType `json:"hearing_trans_provider"`
+	HearingTTSProvider    TTSProviderType         `json:"hearing_tts_provider"`
+	SpeakingASRProvider   TranslationProviderType `json:"speaking_asr_provider"`
+	SpeakingTransProvider TranslationProviderType `json:"speaking_trans_provider"`
+	SpeakingTTSProvider   TTSProviderType         `json:"speaking_tts_provider"`
 	LLMProvider           LLMProviderType         `json:"llm_provider"`
-	TTSProvider           TTSProviderType         `json:"tts_provider"`
 	LipSyncProvider       LipSyncProviderType     `json:"lipsync_provider"`
 	EmbeddingProvider     EmbeddingProviderType   `json:"embedding_provider"`
 	HearingSourceLang     string                  `json:"hearing_source_lang"`

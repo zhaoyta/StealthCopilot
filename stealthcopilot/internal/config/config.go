@@ -4,19 +4,17 @@ import "strings"
 
 // keyring key 常量 —— 严禁在代码中硬编码字符串
 const (
-	keyXunfeiRTASRAppID   = "xunfei_rtasr_app_id"
-	keyXunfeiRTASRAPIKey  = "xunfei_rtasr_api_key"
-	keyXunfeiMTAppID      = "xunfei_mt_app_id"
-	keyXunfeiMTAPIKey     = "xunfei_mt_api_key"
-	keyXunfeiMTAPISecret  = "xunfei_mt_api_secret"
-	keyXunfeiTTSAppID     = "xunfei_tts_app_id"
-	keyXunfeiTTSAPIKey    = "xunfei_tts_api_key"
-	keyXunfeiTTSAPISecret = "xunfei_tts_api_secret"
-	keyXunfeiTTSAssetID   = "xunfei_tts_asset_id"
-	keyXunfeiTTSTaskID    = "xunfei_tts_task_id"
-	keyDeepSeekKey        = "deepseek_key"
-	keySimliKey           = "simli_key"
-	keySimliFaceID        = "simli_face_id"
+	keyXunfeiSimultAppID     = "xunfei_simult_app_id"
+	keyXunfeiSimultAPIKey    = "xunfei_simult_api_key"
+	keyXunfeiSimultAPISecret = "xunfei_simult_api_secret"
+	keyXunfeiTTSAppID        = "xunfei_tts_app_id"
+	keyXunfeiTTSAPIKey       = "xunfei_tts_api_key"
+	keyXunfeiTTSAPISecret    = "xunfei_tts_api_secret"
+	keyXunfeiTTSAssetID      = "xunfei_tts_asset_id"
+	keyXunfeiTTSTaskID       = "xunfei_tts_task_id"
+	keyDeepSeekKey           = "deepseek_key"
+	keySimliKey              = "simli_key"
+	keySimliFaceID           = "simli_face_id"
 )
 
 // 默认值常量
@@ -56,28 +54,30 @@ const DefaultSpeakPolishPrompt = `将以下中文内容翻译并润色为流利�
 // AppConfig 是应用运行时的完整内存配置，由 Manager 在启动时从 Keychain + 本地文件加载。
 type AppConfig struct {
 	// API 密钥（来自 Keychain）
-	XunfeiRTASRAppID   string
-	XunfeiRTASRAPIKey  string
-	XunfeiMTAppID      string
-	XunfeiMTAPIKey     string
-	XunfeiMTAPISecret  string
-	XunfeiTTSAppID     string
-	XunfeiTTSAPIKey    string
-	XunfeiTTSAPISecret string
-	XunfeiTTSAssetID   string
-	XunfeiTTSTaskID    string
-	DeepSeekKey        string
-	DeepSeekModel      string
-	LLMBaseURL         string
-	SimliKey           string
-	SimliFaceID        string
+	XunfeiSimultAppID     string
+	XunfeiSimultAPIKey    string
+	XunfeiSimultAPISecret string
+	XunfeiTTSAppID        string
+	XunfeiTTSAPIKey       string
+	XunfeiTTSAPISecret    string
+	XunfeiTTSAssetID      string
+	XunfeiTTSTaskID       string
+	DeepSeekKey           string
+	DeepSeekModel         string
+	LLMBaseURL            string
+	SimliKey              string
+	SimliFaceID           string
 
 	// Provider 选择
-	TranslationProvider TranslationProviderType
-	LLMProvider         LLMProviderType
-	TTSProvider         TTSProviderType
-	LipSyncProvider     LipSyncProviderType
-	EmbeddingProvider   EmbeddingProviderType
+	HearingASRProvider    TranslationProviderType
+	HearingTransProvider  TranslationProviderType
+	HearingTTSProvider    TTSProviderType
+	SpeakingASRProvider   TranslationProviderType
+	SpeakingTransProvider TranslationProviderType
+	SpeakingTTSProvider   TTSProviderType
+	LLMProvider           LLMProviderType
+	LipSyncProvider       LipSyncProviderType
+	EmbeddingProvider     EmbeddingProviderType
 
 	// 语言设置
 	HearingSourceLang  string
@@ -141,11 +141,9 @@ func NewManager(dataDir string) (*Manager, error) {
 // reload 从 Keychain 和本地文件重新加载所有配置到内存。
 // 任何读取错误均静默处理（返回空字符串）以避免阻塞启动。
 func (m *Manager) reload() {
-	m.Config.XunfeiRTASRAppID, _ = m.store.Get(keyXunfeiRTASRAppID)
-	m.Config.XunfeiRTASRAPIKey, _ = m.store.Get(keyXunfeiRTASRAPIKey)
-	m.Config.XunfeiMTAppID, _ = m.store.Get(keyXunfeiMTAppID)
-	m.Config.XunfeiMTAPIKey, _ = m.store.Get(keyXunfeiMTAPIKey)
-	m.Config.XunfeiMTAPISecret, _ = m.store.Get(keyXunfeiMTAPISecret)
+	m.Config.XunfeiSimultAppID, _ = m.store.Get(keyXunfeiSimultAppID)
+	m.Config.XunfeiSimultAPIKey, _ = m.store.Get(keyXunfeiSimultAPIKey)
+	m.Config.XunfeiSimultAPISecret, _ = m.store.Get(keyXunfeiSimultAPISecret)
 	m.Config.XunfeiTTSAppID, _ = m.store.Get(keyXunfeiTTSAppID)
 	m.Config.XunfeiTTSAPIKey, _ = m.store.Get(keyXunfeiTTSAPIKey)
 	m.Config.XunfeiTTSAPISecret, _ = m.store.Get(keyXunfeiTTSAPISecret)
@@ -166,9 +164,13 @@ func (m *Manager) applyLocalConfig(lc LocalConfig) {
 	m.Config.UILocale = stringOr(lc.UILocale, "zh-CN")
 	m.Config.DeepSeekModel = stringOr(lc.DeepSeekModel, DefaultDeepSeekModel)
 	m.Config.LLMBaseURL = stringOr(lc.LLMBaseURL, DefaultLLMBaseURL)
-	m.Config.TranslationProvider = translationProviderOr(lc.TranslationProvider, TranslationProviderXunfei)
+	m.Config.HearingASRProvider = translationProviderOr(lc.HearingASRProvider, TranslationProviderXunfeiSimult)
+	m.Config.HearingTransProvider = translationProviderOr(lc.HearingTransProvider, TranslationProviderXunfeiSimult)
+	m.Config.HearingTTSProvider = hearingTTSProviderOr(lc.HearingTTSProvider, TTSProviderSystem)
+	m.Config.SpeakingASRProvider = translationProviderOr(lc.SpeakingASRProvider, TranslationProviderXunfeiSimult)
+	m.Config.SpeakingTransProvider = translationProviderOr(lc.SpeakingTransProvider, TranslationProviderXunfeiSimult)
 	m.Config.LLMProvider = llmProviderOr(lc.LLMProvider, LLMProviderDeepSeek)
-	m.Config.TTSProvider = ttsProviderOr(lc.TTSProvider, TTSProviderSystem)
+	m.Config.SpeakingTTSProvider = ttsProviderOr(lc.SpeakingTTSProvider, TTSProviderSystem)
 	m.Config.LipSyncProvider = lipSyncProviderOr(lc.LipSyncProvider, LipSyncProviderSimli)
 	m.Config.EmbeddingProvider = embeddingProviderOr(lc.EmbeddingProvider, EmbeddingProviderPythonBridge)
 	m.Config.HearingSourceLang = stringOr(lc.HearingSourceLang, DefaultHearingSourceLang)
@@ -192,7 +194,7 @@ func (m *Manager) applyLocalConfig(lc LocalConfig) {
 }
 
 // SaveAPIKey 将单个 API Key 写入 Keychain 并同步内存配置。
-// service 为服务名（xunfei_rtasr/xunfei_mt/xunfei_tts/deepseek/simli），field 为字段名。
+// service 为服务名（xunfei_simult/xunfei_tts/deepseek/simli），field 为字段名。
 func (m *Manager) SaveAPIKey(service, field, value string) error {
 	value = strings.TrimSpace(value)
 	key := service + "_" + field
@@ -218,16 +220,12 @@ func (m *Manager) saveKey(key, value string) error {
 	}
 	// 同步到内存
 	switch key {
-	case keyXunfeiRTASRAppID:
-		m.Config.XunfeiRTASRAppID = value
-	case keyXunfeiRTASRAPIKey:
-		m.Config.XunfeiRTASRAPIKey = value
-	case keyXunfeiMTAppID:
-		m.Config.XunfeiMTAppID = value
-	case keyXunfeiMTAPIKey:
-		m.Config.XunfeiMTAPIKey = value
-	case keyXunfeiMTAPISecret:
-		m.Config.XunfeiMTAPISecret = value
+	case keyXunfeiSimultAppID:
+		m.Config.XunfeiSimultAppID = value
+	case keyXunfeiSimultAPIKey:
+		m.Config.XunfeiSimultAPIKey = value
+	case keyXunfeiSimultAPISecret:
+		m.Config.XunfeiSimultAPISecret = value
 	case keyXunfeiTTSAppID:
 		m.Config.XunfeiTTSAppID = value
 	case keyXunfeiTTSAPIKey:
@@ -275,9 +273,13 @@ func (m *Manager) ToLocalConfig() LocalConfig {
 		UILocale:              m.Config.UILocale,
 		DeepSeekModel:         m.Config.DeepSeekModel,
 		LLMBaseURL:            m.Config.LLMBaseURL,
-		TranslationProvider:   m.Config.TranslationProvider,
+		HearingASRProvider:    m.Config.HearingASRProvider,
+		HearingTransProvider:  m.Config.HearingTransProvider,
+		HearingTTSProvider:    m.Config.HearingTTSProvider,
+		SpeakingASRProvider:   m.Config.SpeakingASRProvider,
+		SpeakingTransProvider: m.Config.SpeakingTransProvider,
+		SpeakingTTSProvider:   m.Config.SpeakingTTSProvider,
 		LLMProvider:           m.Config.LLMProvider,
-		TTSProvider:           m.Config.TTSProvider,
 		LipSyncProvider:       m.Config.LipSyncProvider,
 		EmbeddingProvider:     m.Config.EmbeddingProvider,
 		HearingSourceLang:     m.Config.HearingSourceLang,
@@ -324,7 +326,7 @@ func floatOr(v, def float64) float64 {
 
 func translationProviderOr(v TranslationProviderType, def TranslationProviderType) TranslationProviderType {
 	switch v {
-	case TranslationProviderXunfei, TranslationProviderNull:
+	case TranslationProviderXunfeiSimult, TranslationProviderNull:
 		return v
 	default:
 		return def
@@ -343,6 +345,15 @@ func llmProviderOr(v LLMProviderType, def LLMProviderType) LLMProviderType {
 func ttsProviderOr(v TTSProviderType, def TTSProviderType) TTSProviderType {
 	switch v {
 	case TTSProviderXunfeiVoiceClone, TTSProviderSystem, TTSProviderNull:
+		return v
+	default:
+		return def
+	}
+}
+
+func hearingTTSProviderOr(v TTSProviderType, def TTSProviderType) TTSProviderType {
+	switch v {
+	case TTSProviderSystem, TTSProviderNull:
 		return v
 	default:
 		return def

@@ -6,9 +6,9 @@ package config
 type TranslationProviderType string
 
 const (
-	// TranslationProviderXunfei 使用讯飞 RTASR 实时语音转写。
-	TranslationProviderXunfei TranslationProviderType = "xunfei"
-	TranslationProviderNull   TranslationProviderType = "null"
+	// TranslationProviderXunfeiSimult 使用讯飞同声传译获取原文和译文。
+	TranslationProviderXunfeiSimult TranslationProviderType = "xunfei_simult"
+	TranslationProviderNull         TranslationProviderType = "null"
 )
 
 type LLMProviderType string
@@ -49,20 +49,28 @@ const (
 // ProviderConfig 持有所有 Provider 类型选择配置。
 // 运行时根据此配置实例化对应的实现。
 type ProviderConfig struct {
-	Translation TranslationProviderType // ASR/翻译服务类型
-	LLM         LLMProviderType         // LLM / chat completions 服务类型
-	TTS         TTSProviderType         // TTS 服务类型
-	LipSync     LipSyncProviderType     // 口型同步服务类型
-	Embedding   EmbeddingProviderType   // 简历 embedding 服务类型
+	HearingASR    TranslationProviderType // 听力链 ASR 服务类型
+	HearingTrans  TranslationProviderType // 听力链 Trans 服务类型
+	HearingTTS    TTSProviderType         // 听力链 TTS 服务类型
+	SpeakingASR   TranslationProviderType // 说话链 ASR 服务类型
+	SpeakingTrans TranslationProviderType // 说话链 Trans 服务类型
+	SpeakingTTS   TTSProviderType         // 说话链 TTS 服务类型
+	LLM           LLMProviderType         // LLM / chat completions 服务类型
+	LipSync       LipSyncProviderType     // 口型同步服务类型
+	Embedding     EmbeddingProviderType   // 简历 embedding 服务类型
 }
 
 // DefaultProviderConfig 返回生产环境默认配置。
 func DefaultProviderConfig() ProviderConfig {
 	return ProviderConfig{
-		Translation: TranslationProviderXunfei,
-		LLM:         LLMProviderDeepSeek,
-		TTS:         TTSProviderSystem,
-		LipSync:     LipSyncProviderSimli,
-		Embedding:   EmbeddingProviderPythonBridge,
+		HearingASR:    TranslationProviderXunfeiSimult,
+		HearingTrans:  TranslationProviderXunfeiSimult,
+		HearingTTS:    TTSProviderSystem,
+		SpeakingASR:   TranslationProviderXunfeiSimult,
+		SpeakingTrans: TranslationProviderXunfeiSimult,
+		SpeakingTTS:   TTSProviderSystem,
+		LLM:           LLMProviderDeepSeek,
+		LipSync:       LipSyncProviderSimli,
+		Embedding:     EmbeddingProviderPythonBridge,
 	}
 }

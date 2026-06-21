@@ -60,6 +60,9 @@ func TestInstallDep_KnownKey_HasMessage(t *testing.T) {
 			if result.Message == "" {
 				t.Errorf("InstallDep(%q) 返回了空消息", key)
 			}
+			if result.AutoInstalled {
+				t.Errorf("InstallDep(%q) 不应自动安装或拉起包管理器", key)
+			}
 		})
 	}
 }
