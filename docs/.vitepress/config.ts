@@ -21,6 +21,7 @@ export default defineConfig({
         items: [
           { text: '快速开始', link: '/guide/' },
           { text: '服务密钥配置', link: '/guide/api-keys' },
+          { text: '数字人与 OBS 配置', link: '/guide/digital-human' },
           { text: '面试历史记录', link: '/guide/history' },
           { text: '隐私说明', link: '/guide/privacy' },
         ],
