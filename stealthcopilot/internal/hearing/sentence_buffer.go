@@ -87,7 +87,7 @@ func equalHearingWord(left, right string) bool {
 }
 
 func normalizeHearingWord(word string) string {
-	word = strings.ToLower(strings.Trim(word, ".,!?;:，。！？；：，、\"'“”‘’()[]{}"))
+	word = strings.ToLower(strings.Trim(word, “.,!?;:，。！？；：、\”’””’’()[]{}”))
 	if strings.HasSuffix(word, "s") && len(word) > 4 {
 		return strings.TrimSuffix(word, "s")
 	}
