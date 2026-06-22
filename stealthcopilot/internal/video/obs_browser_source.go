@@ -121,9 +121,7 @@ func (w *OBSBrowserSourceWriter) encodeLoop() {
 	ticker := time.NewTicker(time.Second / 30)
 	defer ticker.Stop()
 	for {
-		select {
-		case <-ticker.C:
-		}
+		<-ticker.C
 
 		w.mu.Lock()
 		for !w.closed && (w.rawSeq == 0 || w.rawSeq == w.encodedSeq) {

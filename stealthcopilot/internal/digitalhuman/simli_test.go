@@ -62,7 +62,7 @@ func TestResample24to16(t *testing.T) {
 	}
 	// 验证 out[1] == round((s1+s2)/2) = 250
 	got1 := int16(uint16(out[2]) | uint16(out[3])<<8)
-	want1 := int16((int32(s1)+int32(s2)+1)/2)
+	want1 := int16((int32(s1) + int32(s2) + 1) / 2)
 	if got1 != want1 {
 		t.Errorf("out[1]=%d want=%d", got1, want1)
 	}
@@ -213,7 +213,8 @@ func TestSimliDriverFullStartMock(t *testing.T) {
 			return "tok", nil
 		},
 		wsDialer: func(ctx context.Context, _ string) (*websocket.Conn, error) {
-			conn, _, err := websocket.DefaultDialer.DialContext(ctx, wsURL, nil)
+			conn, resp, err := websocket.DefaultDialer.DialContext(ctx, wsURL, nil)
+			closeWebsocketResponse(resp)
 			return conn, err
 		},
 		// pcFactory 返回一个真实的 pion peer connection（无视频轨道）

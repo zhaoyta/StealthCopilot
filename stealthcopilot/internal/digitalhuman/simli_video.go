@@ -14,6 +14,7 @@ import (
 
 	"github.com/pion/rtp/codecs"
 	"github.com/pion/webrtc/v3"
+
 	"github.com/zhaoyta/stealthcopilot/internal/diag"
 	"github.com/zhaoyta/stealthcopilot/internal/video"
 )
@@ -151,12 +152,20 @@ func reserveUDPPort() (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer conn.Close()
-	return conn.LocalAddr().(*net.UDPAddr).Port, nil
+	defer func() { _ = conn.Close() }()
+	addr, ok := conn.LocalAddr().(*net.UDPAddr)
+	if !ok {
+		return 0, fmt.Errorf("unexpected UDP local addr type %T", conn.LocalAddr())
+	}
+	return addr.Port, nil
 }
 
 func pipeDecodedSimliFrames(stdout io.Reader, cw video.VirtualCameraWriter, cmd *exec.Cmd) {
-	defer cmd.Wait()
+	defer func() {
+		if err := cmd.Wait(); err != nil {
+			diag.Warnf("simli video: ffmpeg wait err=%v", err)
+		}
+	}()
 	buf := make([]byte, simliVideoBGRASize)
 	var pts int64
 	var frames int64

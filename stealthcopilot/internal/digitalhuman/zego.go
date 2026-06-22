@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+
 	"github.com/zhaoyta/stealthcopilot/internal/diag"
 	"github.com/zhaoyta/stealthcopilot/internal/video"
 )
@@ -129,7 +130,8 @@ func (d *ZegoDriver) Start(ctx context.Context, audioSink func([]byte)) error {
 		_ = d.client.StopStreamTask(context.Background(), taskID)
 		return err
 	}
-	conn, _, err := websocket.DefaultDialer.DialContext(ctx, drive.WssAddress, nil)
+	conn, resp, err := websocket.DefaultDialer.DialContext(ctx, drive.WssAddress, nil)
+	closeWebsocketResponse(resp)
 	if err != nil {
 		cancel()
 		_ = d.client.StopStreamTask(context.Background(), taskID)

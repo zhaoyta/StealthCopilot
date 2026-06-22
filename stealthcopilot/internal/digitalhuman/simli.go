@@ -22,6 +22,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/pion/webrtc/v3"
+
 	"github.com/zhaoyta/stealthcopilot/internal/diag"
 	"github.com/zhaoyta/stealthcopilot/internal/video"
 )
@@ -31,14 +32,6 @@ const (
 	simliTokenEndpoint = "https://api.simli.ai/compose/token"
 	// simliWSEndpoint WebSocket 端点，用于 SDP 信令交换和音频发送。
 	simliWSEndpoint = "wss://api.simli.ai/compose/webrtc/p2p"
-
-	// simliAudioSampleRate Simli 要求的 PCM 输入采样率（Hz）。
-	simliAudioSampleRate = 16000
-	// ttsOutputSampleRate 讯飞声音复刻 TTS 输出采样率（Hz），需降采样后发给 Simli。
-	ttsOutputSampleRate = 24000
-
-	// simliICEGatherTimeout ICE 候选收集超时。
-	simliICEGatherTimeout = 15 * time.Second
 )
 
 // SimliConfig 持有 Simli AI 数字人驱动的全部配置。
@@ -401,8 +394,15 @@ func (d *SimliDriver) dial(ctx context.Context, token string) (*websocket.Conn, 
 		return d.cfg.wsDialer(ctx, token)
 	}
 	wsURL := simliWSEndpoint + "?session_token=" + token
-	conn, _, err := websocket.DefaultDialer.DialContext(ctx, wsURL, nil)
+	conn, resp, err := websocket.DefaultDialer.DialContext(ctx, wsURL, nil)
+	closeWebsocketResponse(resp)
 	return conn, err
+}
+
+func closeWebsocketResponse(resp *http.Response) {
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
 }
 
 func (d *SimliDriver) newPeerConnection() (*webrtc.PeerConnection, error) {

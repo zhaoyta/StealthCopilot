@@ -75,21 +75,6 @@ func TestClientAPIErrorIsSecretSafe(t *testing.T) {
 	}
 }
 
-type failingPull struct {
-	started bool
-	closed  bool
-}
-
-func (p *failingPull) Start(context.Context, PullConfig, func([]byte), func(VideoFrame)) error {
-	p.started = true
-	return context.Canceled
-}
-
-func (p *failingPull) Close() error {
-	p.closed = true
-	return nil
-}
-
 func TestConfigReady(t *testing.T) {
 	if ConfigReady(Config{}) {
 		t.Fatal("empty config should not be ready")
