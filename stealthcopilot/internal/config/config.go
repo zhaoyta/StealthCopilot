@@ -13,8 +13,9 @@ const (
 	keyXunfeiTTSAssetID      = "xunfei_tts_asset_id"
 	keyXunfeiTTSTaskID       = "xunfei_tts_task_id"
 	keyDeepSeekKey           = "deepseek_key"
-	keySimliKey              = "simli_key"
-	keySimliFaceID           = "simli_face_id"
+	keyZegoDigitalHumanAppID = "zego_digital_human_app_id"
+	keyZegoServerSecret      = "zego_digital_human_server_secret"
+	keySimliAPIKey           = "simli_api_key"
 )
 
 // 默认值常量
@@ -66,8 +67,8 @@ type AppConfig struct {
 	DeepSeekKey           string
 	DeepSeekModel         string
 	LLMBaseURL            string
-	SimliKey              string
-	SimliFaceID           string
+	ZegoDigitalHumanAppID string
+	ZegoServerSecret      string
 
 	// Provider 选择
 	HearingASRProvider    TranslationProviderType
@@ -77,8 +78,17 @@ type AppConfig struct {
 	SpeakingTransProvider TranslationProviderType
 	SpeakingTTSProvider   TTSProviderType
 	LLMProvider           LLMProviderType
-	LipSyncProvider       LipSyncProviderType
 	EmbeddingProvider     EmbeddingProviderType
+	DigitalHumanEnabled   bool
+	DigitalHumanProvider  DigitalHumanProviderType
+	// Simli AI 数字人配置（API Key 存 Keychain，FaceID 存本地文件）
+	SimliAPIKey  string
+	SimaliFaceID string
+	// ZEGO 数字人配置（企业级）
+	ZegoDigitalHumanID string
+	ZegoRoomID         string
+	ZegoStreamID       string
+	ZegoRTMPPullURL    string
 
 	// 语言设置
 	HearingSourceLang  string
@@ -89,7 +99,6 @@ type AppConfig struct {
 	// 设备绑定
 	VirtualMicName    string
 	PhysicalMicName   string
-	PhysicalCamName   string
 	VirtualCamName    string
 	MonitorOutputName string
 
@@ -152,8 +161,9 @@ func (m *Manager) reload() {
 	m.Config.XunfeiTTSAssetID, _ = m.store.Get(keyXunfeiTTSAssetID)
 	m.Config.XunfeiTTSTaskID, _ = m.store.Get(keyXunfeiTTSTaskID)
 	m.Config.DeepSeekKey, _ = m.store.Get(keyDeepSeekKey)
-	m.Config.SimliKey, _ = m.store.Get(keySimliKey)
-	m.Config.SimliFaceID, _ = m.store.Get(keySimliFaceID)
+	m.Config.ZegoDigitalHumanAppID, _ = m.store.Get(keyZegoDigitalHumanAppID)
+	m.Config.ZegoServerSecret, _ = m.store.Get(keyZegoServerSecret)
+	m.Config.SimliAPIKey, _ = m.store.Get(keySimliAPIKey)
 
 	lc := m.local.load()
 	m.applyLocalConfig(lc)
@@ -173,15 +183,20 @@ func (m *Manager) applyLocalConfig(lc LocalConfig) {
 	m.Config.SpeakingTransProvider = translationProviderOr(lc.SpeakingTransProvider, TranslationProviderXunfeiSimult)
 	m.Config.LLMProvider = llmProviderOr(lc.LLMProvider, LLMProviderDeepSeek)
 	m.Config.SpeakingTTSProvider = ttsProviderOr(lc.SpeakingTTSProvider, TTSProviderSystem)
-	m.Config.LipSyncProvider = lipSyncProviderOr(lc.LipSyncProvider, LipSyncProviderSimli)
 	m.Config.EmbeddingProvider = embeddingProviderOr(lc.EmbeddingProvider, EmbeddingProviderPythonBridge)
+	m.Config.DigitalHumanEnabled = lc.DigitalHumanEnabled
+	m.Config.DigitalHumanProvider = digitalHumanProviderOr(lc.DigitalHumanProvider, DigitalHumanProviderSimli)
+	m.Config.SimaliFaceID = lc.SimaliFaceID
+	m.Config.ZegoDigitalHumanID = lc.ZegoDigitalHumanID
+	m.Config.ZegoRoomID = lc.ZegoRoomID
+	m.Config.ZegoStreamID = lc.ZegoStreamID
+	m.Config.ZegoRTMPPullURL = lc.ZegoRTMPPullURL
 	m.Config.HearingSourceLang = stringOr(lc.HearingSourceLang, DefaultHearingSourceLang)
 	m.Config.HearingTargetLang = stringOr(lc.HearingTargetLang, DefaultHearingTargetLang)
 	m.Config.SpeakingInputLang = stringOr(lc.SpeakingInputLang, DefaultSpeakingInputLang)
 	m.Config.SpeakingOutputLang = stringOr(lc.SpeakingOutputLang, DefaultSpeakingOutputLang)
 	m.Config.VirtualMicName = lc.VirtualMicName
 	m.Config.PhysicalMicName = lc.PhysicalMicName
-	m.Config.PhysicalCamName = lc.PhysicalCamName
 	m.Config.VirtualCamName = lc.VirtualCamName
 	m.Config.MonitorOutputName = lc.MonitorOutputName
 	m.Config.HearingMonitorEnabled = lc.HearingMonitorEnabled
@@ -197,7 +212,7 @@ func (m *Manager) applyLocalConfig(lc LocalConfig) {
 }
 
 // SaveAPIKey 将单个 API Key 写入 Keychain 并同步内存配置。
-// service 为服务名（xunfei_simult/xunfei_tts/deepseek/simli），field 为字段名。
+// service 为服务名（xunfei_simult/xunfei_tts/deepseek/zego_digital_human），field 为字段名。
 func (m *Manager) SaveAPIKey(service, field, value string) error {
 	value = strings.TrimSpace(value)
 	key := service + "_" + field
@@ -241,10 +256,12 @@ func (m *Manager) saveKey(key, value string) error {
 		m.Config.XunfeiTTSTaskID = value
 	case keyDeepSeekKey:
 		m.Config.DeepSeekKey = value
-	case keySimliKey:
-		m.Config.SimliKey = value
-	case keySimliFaceID:
-		m.Config.SimliFaceID = value
+	case keyZegoDigitalHumanAppID:
+		m.Config.ZegoDigitalHumanAppID = value
+	case keyZegoServerSecret:
+		m.Config.ZegoServerSecret = value
+	case keySimliAPIKey:
+		m.Config.SimliAPIKey = value
 	}
 	return nil
 }
@@ -283,15 +300,20 @@ func (m *Manager) ToLocalConfig() LocalConfig {
 		SpeakingTransProvider: m.Config.SpeakingTransProvider,
 		SpeakingTTSProvider:   m.Config.SpeakingTTSProvider,
 		LLMProvider:           m.Config.LLMProvider,
-		LipSyncProvider:       m.Config.LipSyncProvider,
 		EmbeddingProvider:     m.Config.EmbeddingProvider,
+		DigitalHumanEnabled:   m.Config.DigitalHumanEnabled,
+		DigitalHumanProvider:  m.Config.DigitalHumanProvider,
+		SimaliFaceID:          m.Config.SimaliFaceID,
+		ZegoDigitalHumanID:    m.Config.ZegoDigitalHumanID,
+		ZegoRoomID:            m.Config.ZegoRoomID,
+		ZegoStreamID:          m.Config.ZegoStreamID,
+		ZegoRTMPPullURL:       m.Config.ZegoRTMPPullURL,
 		HearingSourceLang:     m.Config.HearingSourceLang,
 		HearingTargetLang:     m.Config.HearingTargetLang,
 		SpeakingInputLang:     m.Config.SpeakingInputLang,
 		SpeakingOutputLang:    m.Config.SpeakingOutputLang,
 		VirtualMicName:        m.Config.VirtualMicName,
 		PhysicalMicName:       m.Config.PhysicalMicName,
-		PhysicalCamName:       m.Config.PhysicalCamName,
 		VirtualCamName:        m.Config.VirtualCamName,
 		MonitorOutputName:     m.Config.MonitorOutputName,
 		HearingMonitorEnabled: m.Config.HearingMonitorEnabled,
@@ -374,18 +396,18 @@ func hearingTTSProviderOr(v TTSProviderType, def TTSProviderType) TTSProviderTyp
 	}
 }
 
-func lipSyncProviderOr(v LipSyncProviderType, def LipSyncProviderType) LipSyncProviderType {
+func embeddingProviderOr(v EmbeddingProviderType, def EmbeddingProviderType) EmbeddingProviderType {
 	switch v {
-	case LipSyncProviderSimli, LipSyncProviderStealth, LipSyncProviderNull:
+	case EmbeddingProviderPythonBridge, EmbeddingProviderNull:
 		return v
 	default:
 		return def
 	}
 }
 
-func embeddingProviderOr(v EmbeddingProviderType, def EmbeddingProviderType) EmbeddingProviderType {
+func digitalHumanProviderOr(v DigitalHumanProviderType, def DigitalHumanProviderType) DigitalHumanProviderType {
 	switch v {
-	case EmbeddingProviderPythonBridge, EmbeddingProviderNull:
+	case DigitalHumanProviderSimli, DigitalHumanProviderZego:
 		return v
 	default:
 		return def

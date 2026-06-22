@@ -1,28 +1,20 @@
 ## ADDED Requirements
 
-### Requirement: 熔断器与硬件直通降级
-系统 SHALL 实现熔断器，在云端管道（Simli AI / 讯飞声音复刻）不可用时，在 ≤10ms 内切换到真实摄像头 + 真实麦克风直通，面试过程无中断。
+### Requirement: 数字人输出失败降级
+系统 SHALL 在数字人 Provider、视频解码或 OBS 输出链路不可用时停止当前数字人输出并提示用户。系统 SHALL 保留听力链和不启用数字人的说话链能力，避免数字人故障阻断会议音频。
 
-#### Scenario: UDP 心跳检测
-- **WHEN** 视频管道激活
-- **THEN** 后端每 50ms 向 Simli API 发送 UDP 心跳包，维护连续丢包计数器
+#### Scenario: Simli 启动失败
+- **WHEN** Simli token、WebSocket、WebRTC SDP 或视频轨道接收失败
+- **THEN** 系统 SHALL 拒绝启动数字人输出并展示明确错误；用户可关闭数字人后启动说话链虚拟麦克风音频
 
-#### Scenario: 心跳丢失触发熔断
-- **WHEN** 连续 3 次心跳（150ms）无响应
-- **THEN** 立即触发熔断：断开 Simli WebSocket，停止讯飞声音复刻输出，清空环形缓冲区，在 ≤10ms 内将真实摄像头帧直通虚拟摄像头，真实麦克风直通虚拟麦克风
+#### Scenario: 视频解码失败
+- **WHEN** ffmpeg VP8/H264 解码失败或无法持续输出帧
+- **THEN** 系统 SHALL 记录 `simli video: ffmpeg stderr=` 或相关诊断日志，并提示用户检查 Simli/ffmpeg/OBS 配置
 
-#### Scenario: 视频延迟触发熔断
-- **WHEN** 视频帧 PTS 落后音频 PTS 超过 300ms
-- **THEN** 同上，立即触发熔断器
+#### Scenario: OBS 不可用
+- **WHEN** OBS App 未运行、OBS Browser Source 未添加或 OBS Virtual Camera 未启动
+- **THEN** 系统 SHALL 提示用户按 OBS 配置指南操作；系统 SHALL NOT 尝试将真实摄像头直通到自研虚拟摄像头
 
-#### Scenario: 熔断期间用户体验
-- **WHEN** 熔断器已激活
-- **THEN** 幽灵提词窗顶部出现橙色警告条"云端管道已断开，当前为本地直通模式"，听力链字幕和 RAG 建议保持正常工作
-
-#### Scenario: 熔断器自动恢复
-- **WHEN** 熔断后连续 3 次心跳恢复正常（150ms）
-- **THEN** 自动重建 Simli WebSocket 连接，恢复云端管道，警告条消失，恢复前提示用户"云端管道已恢复"
-
-#### Scenario: 手动触发熔断
-- **WHEN** 用户在幽灵提词窗点击"紧急降级"按钮
-- **THEN** 立即触发熔断，无论心跳状态如何
+#### Scenario: 保留音频路径
+- **WHEN** 用户关闭数字人输出
+- **THEN** 说话链 SHALL 继续使用虚拟麦克风输出目标语言 TTS，不要求 Simli 或 OBS 可用

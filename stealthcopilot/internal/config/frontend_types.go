@@ -13,8 +13,9 @@ type FrontendConfig struct {
 	XunfeiTTSAssetIDSet      bool `json:"xunfei_tts_asset_id_set"`
 	XunfeiTTSTaskIDSet       bool `json:"xunfei_tts_task_id_set"`
 	DeepSeekKeySet           bool `json:"deepseek_key_set"`
-	SimliKeySet              bool `json:"simli_key_set"`
-	SimliFaceIDSet           bool `json:"simli_face_id_set"`
+	ZegoAppIDSet             bool `json:"zego_app_id_set"`
+	ZegoServerSecretSet      bool `json:"zego_server_secret_set"`
+	SimliAPIKeySet           bool `json:"simli_api_key_set"`
 
 	// 非敏感配置（明文）
 	UILocale              string  `json:"ui_locale"` // "zh-CN" | "en-US"
@@ -27,15 +28,20 @@ type FrontendConfig struct {
 	SpeakingTransProvider string  `json:"speaking_trans_provider"`
 	SpeakingTTSProvider   string  `json:"speaking_tts_provider"`
 	LLMProvider           string  `json:"llm_provider"`
-	LipSyncProvider       string  `json:"lipsync_provider"`
 	EmbeddingProvider     string  `json:"embedding_provider"`
+	DigitalHumanEnabled   bool    `json:"digital_human_enabled"`
+	DigitalHumanProvider  string  `json:"digital_human_provider"`
+	SimaliFaceID          string  `json:"simli_face_id"`
+	ZegoDigitalHumanID    string  `json:"zego_digital_human_id"`
+	ZegoRoomID            string  `json:"zego_room_id"`
+	ZegoStreamID          string  `json:"zego_stream_id"`
+	ZegoRTMPPullURL       string  `json:"zego_rtmp_pull_url"`
 	HearingSourceLang     string  `json:"hearing_source_lang"`
 	HearingTargetLang     string  `json:"hearing_target_lang"`
 	SpeakingInputLang     string  `json:"speaking_input_lang"`
 	SpeakingOutputLang    string  `json:"speaking_output_lang"`
 	VirtualMicName        string  `json:"virtual_mic_name"`
 	PhysicalMicName       string  `json:"physical_mic_name"`
-	PhysicalCamName       string  `json:"physical_cam_name"`
 	VirtualCamName        string  `json:"virtual_cam_name"`
 	MonitorOutputName     string  `json:"monitor_output_name"`
 	HearingMonitorEnabled bool    `json:"hearing_monitor_enabled"`
@@ -53,8 +59,8 @@ type FrontendConfig struct {
 }
 
 // SaveAPIKeyRequest 前端传入的 API Key 写入请求。
-// service 取值：xunfei_simult / xunfei_tts / deepseek / simli
-// field  取值：app_id / api_key / api_secret / key / face_id 等。
+// service 取值：xunfei_simult / xunfei_tts / deepseek / zego_digital_human
+// field  取值：app_id / api_key / api_secret / key / server_secret 等。
 // 声音复刻 task_id / asset_id 只能由训练流程内部写入，不接受前端手填。
 type SaveAPIKeyRequest struct {
 	Service string `json:"service"`
@@ -74,15 +80,20 @@ type SaveLocalConfigRequest struct {
 	SpeakingTransProvider string  `json:"speaking_trans_provider"`
 	SpeakingTTSProvider   string  `json:"speaking_tts_provider"`
 	LLMProvider           string  `json:"llm_provider"`
-	LipSyncProvider       string  `json:"lipsync_provider"`
 	EmbeddingProvider     string  `json:"embedding_provider"`
+	DigitalHumanEnabled   bool    `json:"digital_human_enabled"`
+	DigitalHumanProvider  string  `json:"digital_human_provider"`
+	SimaliFaceID          string  `json:"simli_face_id"`
+	ZegoDigitalHumanID    string  `json:"zego_digital_human_id"`
+	ZegoRoomID            string  `json:"zego_room_id"`
+	ZegoStreamID          string  `json:"zego_stream_id"`
+	ZegoRTMPPullURL       string  `json:"zego_rtmp_pull_url"`
 	HearingSourceLang     string  `json:"hearing_source_lang"`
 	HearingTargetLang     string  `json:"hearing_target_lang"`
 	SpeakingInputLang     string  `json:"speaking_input_lang"`
 	SpeakingOutputLang    string  `json:"speaking_output_lang"`
 	VirtualMicName        string  `json:"virtual_mic_name"`
 	PhysicalMicName       string  `json:"physical_mic_name"`
-	PhysicalCamName       string  `json:"physical_cam_name"`
 	VirtualCamName        string  `json:"virtual_cam_name"`
 	MonitorOutputName     string  `json:"monitor_output_name"`
 	HearingMonitorEnabled bool    `json:"hearing_monitor_enabled"`

@@ -25,7 +25,8 @@ import (
 
 // 说话链向前端推送的 Wails 事件名常量
 const (
-	speakingMaxSpeechMs = 2400
+	speakingMaxSpeechMs   = 2400
+	simliDirectAudioDelay = 700 * time.Millisecond
 
 	// EventSpeakStart VAD 触发后通知前端"正在翻译中"
 	EventSpeakStart = "speaking:start"
@@ -74,10 +75,12 @@ type ChainConfig struct {
 	PhysicalMicDevice string
 	// VirtualMicDevice 虚拟声卡设备名称（BlackHole/VB-Cable）
 	VirtualMicDevice string
+	// DigitalHumanEnabled routes TTS PCM into a digital-human driver instead of writing local TTS directly.
+	DigitalHumanEnabled bool
+	// DigitalHumanDriver receives TTS PCM and owns synchronized audio/video output.
+	DigitalHumanDriver DigitalHumanDriver
 	// SilenceThresholdMs VAD 静音阈值（毫秒），从用户设置读取
 	SilenceThresholdMs int
-	// AudioSink 接收 TTS 音频 chunk，用于驱动视频口型同步链。
-	AudioSink func([]byte)
 	// EventSink mirrors speaking events to non-Wails consumers such as the native teleprompter.
 	EventSink llm.EventEmitter
 	// SessionStore/SessionID append candidate speech to the active interview history.
@@ -96,6 +99,18 @@ type ChainConfig struct {
 	PolishPrompt string
 	// PolishEnabled 为 true 时在讯飞翻译后、TTS 前调用 DeepSeek 润色。
 	PolishEnabled bool
+}
+
+type DigitalHumanDriver interface {
+	// Start 启动数字人输出管道。
+	// audioSink 接收云端返回的数字人音频 PCM（仅 ZEGO 模式使用，Simli 传 nil）。
+	Start(ctx context.Context, audioSink func([]byte)) error
+	SendAudio([]byte) error
+	Close() error
+	// SuppressDirectAudio 为 true 时（如 ZEGO），TTS 音频只发往数字人驱动，
+	// 虚拟麦克风保持 ZeroPCM 等待云端音频回传；
+	// 为 false 时（如 Simli），TTS 音频同时写入虚拟麦克风并发往驱动进行唇形同步。
+	SuppressDirectAudio() bool
 }
 
 // Chain 是说话链的主协调器，持有各组件实例和运行状态。
@@ -197,7 +212,29 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 			return virtualMicErr
 		}
 	}
-	diag.Infof("speaking chain started elapsed=%s virtual_mic=%q", diag.Since(started), cfg.VirtualMicDevice)
+	if cfg.DigitalHumanEnabled {
+		if cfg.DigitalHumanDriver == nil {
+			cancel()
+			_ = mic.Close()
+			virtualMic.Close()
+			c.cancel = nil
+			diag.Errorf("speaking digital human driver missing")
+			return "数字人输出驱动未初始化"
+		}
+		// audioSink 将 ZEGO RTC 拉取到的数字人音频 PCM 直接写入虚拟麦克风。
+		// WriteChunk 会自动将虚拟麦克风从 ZeroPCM 状态切换为 TTS 状态。
+		dhAudioSink := func(chunk []byte) { virtualMic.WriteChunk(chunk) }
+		if err := cfg.DigitalHumanDriver.Start(ctx, dhAudioSink); err != nil {
+			cancel()
+			_ = cfg.DigitalHumanDriver.Close()
+			_ = mic.Close()
+			virtualMic.Close()
+			c.cancel = nil
+			diag.Errorf("speaking digital human start failed err=%v", err)
+			return err.Error()
+		}
+	}
+	diag.Infof("speaking chain started elapsed=%s virtual_mic=%q digital_human=%t", diag.Since(started), cfg.VirtualMicDevice, cfg.DigitalHumanEnabled)
 
 	segmentQueue := make(chan segmentQueueItem, 8)
 	ttsQueue := make(chan ttsQueueItem, 16)
@@ -333,16 +370,12 @@ func (c *Chain) handleSegment(
 			runtime.EventsEmit(wailsCtx, EventSpeakDone)
 			return
 		}
-		if errors.Is(err, asr.ErrNoTranslationReturned) {
-			diag.Warnf("speaking translation missing segment=%d asr_elapsed=%s elapsed=%s err=%v", item.ID, diag.Since(asrStarted), diag.Since(started), err)
-			runtime.EventsEmit(wailsCtx, EventSpeakError, "同传已识别到语音，但没有返回目标语言译文；请检查说话链源语言/目标语言设置和讯飞同传权限")
-			return
-		}
 		diag.Warnf("speaking translate failed segment=%d asr_elapsed=%s elapsed=%s err=%v", item.ID, diag.Since(asrStarted), diag.Since(started), err)
 		runtime.EventsEmit(wailsCtx, EventSpeakError, "语音翻译失败，请检查讯飞 API 配置、网络或输入语言")
 		return
 	}
 	diag.Infof("speaking asr_trans done segment=%d elapsed=%s src_chars=%d dst_chars=%d final=%t", item.ID, diag.Since(asrStarted), len(speechText.SrcText), len(speechText.DstText), speechText.IsFinal)
+	needsTranslationFallback := speechText.SrcText != "" && speechText.DstText == ""
 	translatedText := speechText.DstText
 	if translatedText == "" {
 		translatedText = speechText.SrcText
@@ -361,16 +394,25 @@ func (c *Chain) handleSegment(
 	transStarted := time.Now()
 	processedText, transErr := transExtension.Process(ctx, asr.Result{
 		SrcText: speechText.SrcText,
-		DstText: translatedText,
+		DstText: speechText.DstText,
 		IsFinal: true,
 	})
 	if transErr != nil {
 		diag.Warnf("speaking trans extension skipped segment=%d elapsed=%s err=%v", item.ID, diag.Since(transStarted), transErr)
+		if needsTranslationFallback {
+			runtime.EventsEmit(wailsCtx, EventSpeakError, "同传已识别到语音，但没有返回目标语言译文，文本翻译兜底也失败；请检查说话链源语言/目标语言设置和讯飞机器翻译权限")
+			return
+		}
 	} else {
 		speechText = processedText
 		translatedText = speechText.DstText
 		if translatedText == "" {
 			translatedText = speechText.SrcText
+		}
+		if needsTranslationFallback && speechText.DstText == "" {
+			diag.Warnf("speaking translation missing after trans extension segment=%d elapsed=%s src_chars=%d", item.ID, diag.Since(transStarted), len(speechText.SrcText))
+			runtime.EventsEmit(wailsCtx, EventSpeakError, "同传已识别到语音，但没有返回目标语言译文；请检查说话链源语言/目标语言设置和讯飞机器翻译权限")
+			return
 		}
 		diag.Infof("speaking trans extension done segment=%d elapsed=%s src_chars=%d dst_chars=%d", item.ID, diag.Since(transStarted), len(speechText.SrcText), len(translatedText))
 	}
@@ -448,6 +490,9 @@ func (c *Chain) ttsWorker(
 	cfg ChainConfig,
 ) {
 	defer ttsExtension.Close()
+	if cfg.DigitalHumanDriver != nil {
+		defer cfg.DigitalHumanDriver.Close()
+	}
 	defer virtualMic.Close()
 	defer diag.Infof("speaking tts worker stopped")
 	for {
@@ -499,9 +544,15 @@ func (c *Chain) playTTSItem(
 	chunkCount := 0
 	byteCount := 0
 	var playbackStarted time.Time
+	directAudioDelay := time.Duration(0)
+	if cfg.DigitalHumanEnabled && cfg.DigitalHumanDriver != nil && !cfg.DigitalHumanDriver.SuppressDirectAudio() {
+		directAudioDelay = simliDirectAudioDelay
+	}
+	delayedMic := newDelayedVirtualMicWriter(ctx, virtualMic, directAudioDelay)
 	for chunk := range audioCh {
 		select {
 		case <-ctx.Done():
+			delayedMic.Close()
 			virtualMic.EndTTS()
 			diag.Infof("speaking tts stream canceled segment=%d chunks=%d bytes=%d", item.SegmentID, chunkCount, byteCount)
 			return
@@ -515,18 +566,111 @@ func (c *Chain) playTTSItem(
 		if chunkCount == 1 || chunkCount%20 == 0 {
 			diag.Infof("speaking tts chunk segment=%d sentence=%d/%d chunks=%d bytes=%d last_chunk=%d peak=%d", item.SegmentID, item.Index, item.Total, chunkCount, byteCount, len(chunk), audioPeak(chunk))
 		}
-		virtualMic.WriteChunk(chunk)
-		if cfg.AudioSink != nil {
-			cfg.AudioSink(chunk)
+		if cfg.DigitalHumanEnabled && cfg.DigitalHumanDriver != nil {
+			if err := cfg.DigitalHumanDriver.SendAudio(chunk); err != nil {
+				diag.Warnf("speaking digital human audio send failed segment=%d sentence=%d/%d err=%v", item.SegmentID, item.Index, item.Total, err)
+			}
+			// SuppressDirectAudio=false（如 Simli）：TTS 音频同时写入虚拟麦克风，由驱动仅处理视频
+			// SuppressDirectAudio=true（如 ZEGO）：虚拟麦克风保持 ZeroPCM，等待云端音频回传
+			if !cfg.DigitalHumanDriver.SuppressDirectAudio() {
+				delayedMic.WriteChunk(chunk)
+			}
+		} else if !cfg.DigitalHumanEnabled {
+			delayedMic.WriteChunk(chunk)
 		}
 		if !sleepUntilAudioClock(ctx, playbackStarted, byteCount) {
+			delayedMic.Close()
 			virtualMic.EndTTS()
 			diag.Warnf("speaking tts pacing canceled segment=%d chunks=%d bytes=%d", item.SegmentID, chunkCount, byteCount)
 			return
 		}
 	}
-	virtualMic.EndTTS()
+	suppressDirect := cfg.DigitalHumanEnabled && cfg.DigitalHumanDriver != nil &&
+		cfg.DigitalHumanDriver.SuppressDirectAudio()
+	if suppressDirect {
+		// ZEGO 模式：TTS PCM 已发往云端，本地虚拟麦克风保持 ZeroPCM 状态直到云端音频回传。
+		// 在预估播放完毕后延迟调用 EndTTS，避免提前解除静音保护。
+		estimatedEnd := virtualMicPCMDuration(byteCount) + 2500*time.Millisecond
+		go func() {
+			timer := time.NewTimer(estimatedEnd)
+			defer timer.Stop()
+			select {
+			case <-ctx.Done():
+			case <-timer.C:
+			}
+			virtualMic.EndTTS()
+			diag.Infof("speaking digital human end_tts segment=%d sentence=%d/%d estimated_ms=%d", item.SegmentID, item.Index, item.Total, estimatedEnd.Milliseconds())
+		}()
+	} else {
+		// 正常模式（含 Simli 视频同步模式）：TTS 音频已写入虚拟麦克风，直接结束 TTS 状态。
+		delayedMic.Close()
+		virtualMic.EndTTS()
+	}
 	diag.Infof("speaking tts sentence done segment=%d elapsed=%s sentence=%d/%d chunks=%d bytes=%d", item.SegmentID, diag.Since(started), item.Index, item.Total, chunkCount, byteCount)
+}
+
+type delayedVirtualMicWriter struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+	delay  time.Duration
+	writer audio.VirtualMicWriter
+	ch     chan []byte
+	done   chan struct{}
+}
+
+func newDelayedVirtualMicWriter(ctx context.Context, writer audio.VirtualMicWriter, delay time.Duration) *delayedVirtualMicWriter {
+	childCtx, cancel := context.WithCancel(ctx)
+	w := &delayedVirtualMicWriter{
+		ctx:    childCtx,
+		cancel: cancel,
+		delay:  delay,
+		writer: writer,
+		ch:     make(chan []byte, 128),
+		done:   make(chan struct{}),
+	}
+	go w.run()
+	return w
+}
+
+func (w *delayedVirtualMicWriter) WriteChunk(chunk []byte) {
+	if len(chunk) == 0 {
+		return
+	}
+	copyChunk := append([]byte(nil), chunk...)
+	select {
+	case w.ch <- copyChunk:
+	case <-w.ctx.Done():
+	}
+}
+
+func (w *delayedVirtualMicWriter) Close() {
+	close(w.ch)
+	select {
+	case <-w.done:
+	case <-w.ctx.Done():
+	}
+	w.cancel()
+}
+
+func (w *delayedVirtualMicWriter) run() {
+	defer close(w.done)
+	if w.delay > 0 {
+		timer := time.NewTimer(w.delay)
+		select {
+		case <-timer.C:
+		case <-w.ctx.Done():
+			timer.Stop()
+			return
+		}
+	}
+	for chunk := range w.ch {
+		select {
+		case <-w.ctx.Done():
+			return
+		default:
+			w.writer.WriteChunk(chunk)
+		}
+	}
 }
 
 func audioPeak(frame []byte) int {

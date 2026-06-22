@@ -69,6 +69,10 @@ func TestManager_SaveLocalConfig(t *testing.T) {
 		SpeakingTTSProvider:   config.TTSProviderXunfeiVoiceClone,
 		HearingSourceLang:     "ja",
 		HearingTargetLang:     "zh",
+		DigitalHumanEnabled:   true,
+		ZegoDigitalHumanID:    "dh-1",
+		ZegoRoomID:            "room-1",
+		ZegoStreamID:          "stream-1",
 		GhostFontSize:         20,
 		GhostOpacity:          0.5,
 	}
@@ -97,10 +101,77 @@ func TestManager_SaveLocalConfig(t *testing.T) {
 	if m.Config.SpeakingTTSProvider != config.TTSProviderXunfeiVoiceClone {
 		t.Errorf("SpeakingTTSProvider: want %q, got %q", config.TTSProviderXunfeiVoiceClone, m.Config.SpeakingTTSProvider)
 	}
+	if !m.Config.DigitalHumanEnabled {
+		t.Error("DigitalHumanEnabled should be true")
+	}
+	if m.Config.ZegoDigitalHumanID != "dh-1" || m.Config.ZegoRoomID != "room-1" || m.Config.ZegoStreamID != "stream-1" {
+		t.Errorf("ZEGO local config mismatch: %+v", m.Config)
+	}
 
 	// 验证文件确实写入
 	if _, err := os.Stat(filepath.Join(dir, "config.json")); err != nil {
 		t.Errorf("config.json should exist: %v", err)
+	}
+}
+
+func TestManager_SaveAPIKeyZegoDigitalHuman(t *testing.T) {
+	dir := t.TempDir()
+	m, err := config.NewManager(dir)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	if err := m.SaveAPIKey("zego_digital_human", "app_id", "123456"); err != nil {
+		t.Fatalf("SaveAPIKey app_id: %v", err)
+	}
+	if err := m.SaveAPIKey("zego_digital_human", "server_secret", "secret"); err != nil {
+		t.Fatalf("SaveAPIKey server_secret: %v", err)
+	}
+	if m.Config.ZegoDigitalHumanAppID != "123456" {
+		t.Fatalf("ZegoDigitalHumanAppID = %q", m.Config.ZegoDigitalHumanAppID)
+	}
+	if m.Config.ZegoServerSecret != "secret" {
+		t.Fatalf("ZegoServerSecret = %q", m.Config.ZegoServerSecret)
+	}
+}
+
+func TestAppConfig_ValidateDigitalHumanOutput(t *testing.T) {
+	// 默认 provider 为 Simli，空配置应缺少 API Key + Face ID
+	cfg := &config.AppConfig{}
+	result := cfg.ValidateDigitalHumanOutput()
+	if result.OK() {
+		t.Fatal("empty config should not validate")
+	}
+	if len(result.MissingCredentials) != 1 {
+		t.Fatalf("simli: expected 1 missing credential (API Key), got %v", result.MissingCredentials)
+	}
+
+	// Simli 完整配置应通过校验
+	cfg.SimliAPIKey = "sk-test"
+	cfg.SimaliFaceID = "face-id"
+	cfg.VirtualMicName = "BlackHole"
+	cfg.VirtualCamName = "OBS Virtual Camera"
+	if result := cfg.ValidateDigitalHumanOutput(); !result.OK() {
+		t.Fatalf("complete simli config should validate: %+v", result)
+	}
+
+	// ZEGO provider 校验
+	zegoCfg := &config.AppConfig{
+		DigitalHumanProvider: config.DigitalHumanProviderZego,
+	}
+	zegoResult := zegoCfg.ValidateDigitalHumanOutput()
+	if zegoResult.OK() {
+		t.Fatal("empty zego config should not validate")
+	}
+	if len(zegoResult.MissingCredentials) != 2 {
+		t.Fatalf("zego: expected 2 missing credentials, got %v", zegoResult.MissingCredentials)
+	}
+	zegoCfg.ZegoDigitalHumanAppID = "123"
+	zegoCfg.ZegoServerSecret = "secret"
+	zegoCfg.ZegoDigitalHumanID = "dh"
+	zegoCfg.VirtualMicName = "BlackHole"
+	zegoCfg.VirtualCamName = "OBS Virtual Camera"
+	if result := zegoCfg.ValidateDigitalHumanOutput(); !result.OK() {
+		t.Fatalf("complete zego config should validate: %+v", result)
 	}
 }
 

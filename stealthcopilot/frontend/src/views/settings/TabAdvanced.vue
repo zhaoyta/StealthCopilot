@@ -17,7 +17,6 @@ const config = reactive({
   speakingTtsProvider: 'system',
   llmProvider: 'deepseek',
   llmBaseURL: 'https://api.deepseek.com/v1',
-  lipsyncProvider: 'simli',
   embeddingProvider: 'python_bridge',
   historyMaxTurns: 5,
 })
@@ -45,7 +44,6 @@ onMounted(async () => {
     config.speakingTtsProvider = cfg.speaking_tts_provider || 'system'
     config.llmProvider = cfg.llm_provider || 'deepseek'
     config.llmBaseURL = cfg.llm_base_url || 'https://api.deepseek.com/v1'
-    config.lipsyncProvider = cfg.lipsync_provider || 'simli'
     config.embeddingProvider = cfg.embedding_provider || 'python_bridge'
     config.historyMaxTurns = clampHistoryMaxTurns(cfg.history_max_turns || 5)
     defaults.ragPrompt = defs.rag_prompt
@@ -73,7 +71,6 @@ async function save() {
       speaking_tts_provider: config.speakingTtsProvider,
       llm_provider: config.llmProvider,
       llm_base_url: config.llmBaseURL,
-      lipsync_provider: config.lipsyncProvider,
       embedding_provider: config.embeddingProvider,
       history_max_turns: clampHistoryMaxTurns(config.historyMaxTurns),
     })
@@ -175,22 +172,6 @@ function clampHistoryMaxTurns(value: number): number {
           </select>
         </label>
       </div>
-    </div>
-
-    <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 space-y-4">
-      <h3 class="text-sm font-medium text-gray-200">
-        {{ t('settings.advanced.videoExtensions') }}
-      </h3>
-      <label class="block">
-        <span class="block text-xs text-gray-400 mb-1">{{ t('settings.advanced.lipsyncProvider') }}</span>
-        <select
-          v-model="config.lipsyncProvider"
-          class="form-select"
-        >
-          <option value="simli">{{ t('settings.advanced.providerNames.simli') }}</option>
-          <option value="null">{{ t('settings.advanced.providerNames.null') }}</option>
-        </select>
-      </label>
     </div>
 
     <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 space-y-4">

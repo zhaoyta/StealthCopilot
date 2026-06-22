@@ -28,22 +28,21 @@ const (
 	TTSProviderNull             TTSProviderType = "null"
 )
 
-// LipSyncProviderType 表示口型同步服务提供商类型。
-type LipSyncProviderType string
-
-const (
-	// LipSyncProviderSimli 使用 Simli AI SaaS API。
-	LipSyncProviderSimli LipSyncProviderType = "simli"
-	// LipSyncProviderStealth 使用后续自营 StealthCloud 服务（Phase 3）。
-	LipSyncProviderStealth LipSyncProviderType = "stealth_cloud"
-	LipSyncProviderNull    LipSyncProviderType = "null"
-)
-
 type EmbeddingProviderType string
 
 const (
 	EmbeddingProviderPythonBridge EmbeddingProviderType = "python_bridge"
 	EmbeddingProviderNull         EmbeddingProviderType = "null"
+)
+
+// DigitalHumanProviderType 表示数字人驱动类型。
+type DigitalHumanProviderType string
+
+const (
+	// DigitalHumanProviderSimli Simli AI 数字人（推荐，视频同步，TTS 音频直接输出）。
+	DigitalHumanProviderSimli DigitalHumanProviderType = "simli"
+	// DigitalHumanProviderZego 即构 ZEGO 数字人（企业级，音视频均由云端生成）。
+	DigitalHumanProviderZego DigitalHumanProviderType = "zego"
 )
 
 // ProviderConfig 持有所有 Provider 类型选择配置。
@@ -56,7 +55,6 @@ type ProviderConfig struct {
 	SpeakingTrans TranslationProviderType // 说话链 Trans 服务类型
 	SpeakingTTS   TTSProviderType         // 说话链 TTS 服务类型
 	LLM           LLMProviderType         // LLM / chat completions 服务类型
-	LipSync       LipSyncProviderType     // 口型同步服务类型
 	Embedding     EmbeddingProviderType   // 简历 embedding 服务类型
 }
 
@@ -70,7 +68,6 @@ func DefaultProviderConfig() ProviderConfig {
 		SpeakingTrans: TranslationProviderXunfeiSimult,
 		SpeakingTTS:   TTSProviderSystem,
 		LLM:           LLMProviderDeepSeek,
-		LipSync:       LipSyncProviderSimli,
 		Embedding:     EmbeddingProviderPythonBridge,
 	}
 }

@@ -34,11 +34,19 @@
 - **THEN** 说话链语言不受影响，反之亦然
 
 ### Requirement: 设备绑定 Tab
-系统音视频设备 SHALL 动态枚举，提供"重新枚举"按钮，每类设备（虚拟声卡 / 物理麦克风 / 物理摄像头 / 虚拟摄像头）各一个下拉选择框。
+系统音视频设备 SHALL 动态枚举，提供"重新枚举"按钮。设备页 SHALL 提供虚拟声卡、物理麦克风、监听输出、会议虚拟摄像头和数字人输出配置；数字人视频输出 SHALL 明确展示 OBS 浏览器源地址。
 
 #### Scenario: 重新枚举设备
 - **WHEN** 用户点击"重新枚举"按钮
 - **THEN** 调用 Go 后端重新扫描系统设备，下拉列表刷新
+
+#### Scenario: Simli 数字人配置
+- **WHEN** 用户选择 Simli AI 作为数字人 Provider
+- **THEN** 设备页显示 Face ID 输入框、OBS 浏览器源地址 `http://127.0.0.1:18765/` 和 OBS 配置说明入口
+
+#### Scenario: OBS 虚拟摄像头提示
+- **WHEN** 用户配置会议虚拟摄像头
+- **THEN** 页面 SHALL 推荐 `OBS Virtual Camera`，并说明该设备由 OBS App 提供，StealthCopilot 不注册自研虚拟摄像头驱动
 
 ### Requirement: 高级 Tab Prompt 配置
 高级 Tab SHALL 以折叠面板展示 RAG 回答生成 Prompt 和说话链润色 Prompt，各提供多行文本框和"恢复默认"按钮，默认值由 Go 后端常量提供。

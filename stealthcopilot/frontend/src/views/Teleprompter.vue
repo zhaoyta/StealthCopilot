@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Minus, X } from 'lucide-vue-next'
-import { GetConfig, HideTeleprompter, SaveLocalConfig, TripCircuit } from '../../wailsjs/go/main/App'
+import { GetConfig, HideTeleprompter, SaveLocalConfig } from '../../wailsjs/go/main/App'
 
 defineOptions({ name: 'AppTeleprompter' })
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -16,8 +16,6 @@ const eventAnswerToken = 'answer:token'
 const eventAnswerDone = 'answer:done'
 const eventSpeakingResult = 'speaking:result'
 const eventHide = 'teleprompter:hide'
-const eventCircuitOpen = 'circuit:open'
-const eventCircuitClosed = 'circuit:closed'
 const minFontSize = 13
 const maxFontSize = 28
 const minOpacity = 0.3
@@ -30,7 +28,6 @@ const fontSize = ref(16)
 const opacity = ref(0.85)
 const minimized = ref(false)
 const answering = ref(false)
-const circuitOpen = ref(false)
 const subtitleEl = ref<HTMLElement | null>(null)
 const answerEl = ref<HTMLElement | null>(null)
 const unlisteners: Array<() => void> = []
@@ -70,8 +67,6 @@ function listenRuntimeEvents() {
   unlisteners.push(runtimeApi.EventsOn(eventAnswerDone, finishAnswer))
   unlisteners.push(runtimeApi.EventsOn(eventSpeakingResult, appendSpeakingResult))
   unlisteners.push(runtimeApi.EventsOn(eventHide, () => emit('close')))
-  unlisteners.push(runtimeApi.EventsOn(eventCircuitOpen, () => { circuitOpen.value = true }))
-  unlisteners.push(runtimeApi.EventsOn(eventCircuitClosed, () => { circuitOpen.value = false }))
 }
 
 function appendSubtitle(payload: string | { text?: string }) {
@@ -151,14 +146,6 @@ function toggleMinimized() {
   minimized.value = !minimized.value
 }
 
-async function tripCircuit() {
-  try {
-    await TripCircuit()
-  } catch {
-    // Wails binding 不可用时忽略
-  }
-}
-
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
 }
@@ -220,20 +207,6 @@ function getRuntime(): { EventsOn: (eventName: string, callback: (...data: any[]
           @click="hearingError = ''"
         >
           {{ t('common.close') }}
-        </button>
-      </div>
-
-      <!-- 视频直连提示：circuit:open 来自视频链，表示口型同步退出但摄像头继续输出 -->
-      <div
-        v-if="circuitOpen"
-        class="flex items-center justify-between gap-2 px-3 py-1.5 bg-orange-500/90 text-white text-xs"
-      >
-        <span>{{ t('teleprompter.circuitOpenWarning') }}</span>
-        <button
-          class="shrink-0 px-2 py-0.5 rounded bg-white/20 hover:bg-white/30 font-medium"
-          @click="tripCircuit"
-        >
-          {{ t('teleprompter.emergencyBypass') }}
         </button>
       </div>
 

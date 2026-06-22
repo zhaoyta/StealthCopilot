@@ -1,4 +1,4 @@
-// Package video 实现视频链：物理摄像头捕获 → Simli 口型同步 → 虚拟摄像头输出。
+// Package video implements local camera frame helpers and virtual-camera output primitives.
 // 生产实现依赖 gocv（OpenCV CGO）；未安装时自动降级为 NullCaptureProvider（静态彩色帧）。
 package video
 
@@ -8,8 +8,6 @@ import (
 	"image/color"
 	"sync"
 	"time"
-
-	"github.com/zhaoyta/stealthcopilot/internal/lipsync"
 )
 
 const (
@@ -27,7 +25,7 @@ const (
 // 实现须以 TargetFPS 节拍输出帧；ctx 取消时关闭 channel。
 type CaptureProvider interface {
 	// Start 开始捕获，返回视频帧 channel；deviceName 为摄像头名称或索引。
-	Start(ctx context.Context, deviceName string) (<-chan lipsync.VideoFrame, error)
+	Start(ctx context.Context, deviceName string) (<-chan Frame, error)
 	// ListDevices 返回当前系统可用摄像头设备名称列表。
 	ListDevices() []string
 	// Close 停止捕获并释放设备资源。
@@ -44,7 +42,7 @@ type NullCaptureProvider struct {
 }
 
 // Start 以 FrameDur 间隔输出固定颜色（深蓝）的 BGRA 帧，直到 ctx 取消。
-func (n *NullCaptureProvider) Start(ctx context.Context, _ string) (<-chan lipsync.VideoFrame, error) {
+func (n *NullCaptureProvider) Start(ctx context.Context, _ string) (<-chan Frame, error) {
 	n.mu.Lock()
 	if n.stop != nil {
 		close(n.stop)
@@ -53,7 +51,7 @@ func (n *NullCaptureProvider) Start(ctx context.Context, _ string) (<-chan lipsy
 	stop := n.stop
 	n.mu.Unlock()
 
-	ch := make(chan lipsync.VideoFrame, 4)
+	ch := make(chan Frame, 4)
 	frame := makeBlankFrame(DefaultWidth, DefaultHeight)
 
 	go func() {
@@ -69,7 +67,7 @@ func (n *NullCaptureProvider) Start(ctx context.Context, _ string) (<-chan lipsy
 				return
 			case <-ticker.C:
 				pts += FrameDur.Milliseconds()
-				f := lipsync.VideoFrame{Data: frame, PTS: pts}
+				f := Frame{Data: frame, PTS: pts}
 				select {
 				case ch <- f:
 				default: // 下游消费不及时时丢帧，不阻塞捕获

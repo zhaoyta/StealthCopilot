@@ -19,7 +19,6 @@ import (
 	"github.com/zhaoyta/stealthcopilot/internal/speaking"
 	"github.com/zhaoyta/stealthcopilot/internal/system"
 	"github.com/zhaoyta/stealthcopilot/internal/ui"
-	"github.com/zhaoyta/stealthcopilot/internal/video"
 )
 
 //go:embed scripts/embed.py
@@ -35,9 +34,9 @@ type App struct {
 	SystemSvc           *system.Service
 	HearingChain        *hearing.Chain
 	SpeakingChain       *speaking.Chain
-	VideoChain          *video.Chain
 	TeleprompterWindow  ui.TeleprompterWindow
 	VoiceRecorder       *audio.VoiceTrainingRecorder
+	obsVideoSourceURL   string
 	teleprompterMu      sync.RWMutex
 	teleprompterVisible bool
 	teleprompterWindow  windowSnapshot
@@ -89,7 +88,7 @@ func (a *App) startup(ctx context.Context) {
 	}
 	a.ConfigSvc = cfgSvc
 	cfgSvc.Startup(ctx)
-	diag.Infof("config loaded setup_completed=%t ui_locale=%s hearing_asr_provider=%s hearing_trans_provider=%s hearing_tts_provider=%s speaking_asr_provider=%s speaking_trans_provider=%s speaking_tts_provider=%s lipsync_provider=%s virtual_mic=%q physical_mic=%q monitor_enabled=%t monitor_output=%q physical_cam=%q virtual_cam=%q",
+	diag.Infof("config loaded setup_completed=%t ui_locale=%s hearing_asr_provider=%s hearing_trans_provider=%s hearing_tts_provider=%s speaking_asr_provider=%s speaking_trans_provider=%s speaking_tts_provider=%s digital_human_enabled=%t virtual_mic=%q physical_mic=%q monitor_enabled=%t monitor_output=%q virtual_cam=%q",
 		cfgSvc.InternalManager().Config.SetupCompleted,
 		cfgSvc.InternalManager().Config.UILocale,
 		cfgSvc.InternalManager().Config.HearingASRProvider,
@@ -98,12 +97,11 @@ func (a *App) startup(ctx context.Context) {
 		cfgSvc.InternalManager().Config.SpeakingASRProvider,
 		cfgSvc.InternalManager().Config.SpeakingTransProvider,
 		cfgSvc.InternalManager().Config.SpeakingTTSProvider,
-		cfgSvc.InternalManager().Config.LipSyncProvider,
+		cfgSvc.InternalManager().Config.DigitalHumanEnabled,
 		cfgSvc.InternalManager().Config.VirtualMicName,
 		cfgSvc.InternalManager().Config.PhysicalMicName,
 		cfgSvc.InternalManager().Config.HearingMonitorEnabled,
 		cfgSvc.InternalManager().Config.MonitorOutputName,
-		cfgSvc.InternalManager().Config.PhysicalCamName,
 		cfgSvc.InternalManager().Config.VirtualCamName,
 	)
 
@@ -151,9 +149,6 @@ func (a *App) startup(ctx context.Context) {
 
 	// 6. 说话链协调器（各组件在 StartSpeakingChain binding 中按需实例化）
 	a.SpeakingChain = &speaking.Chain{}
-
-	// 7. 视频链协调器（各组件在 StartVideoChain binding 中按需实例化）
-	a.VideoChain = &video.Chain{}
 
 	// 8. 原生提词窗（平台不可用时内部为 no-op，ShowTeleprompter 会走 Wails fallback）
 	a.TeleprompterWindow = ui.NewTeleprompterWindow()

@@ -21,8 +21,8 @@ This is a **greenfield project** — the `openspec/specs/prd.md` is the current 
 | Speaking chain ASR | **讯飞 RTASR + 机器翻译文本接口/DeepSeek polish** (Chinese speech → text → target-language text) |
 | LLM | **DeepSeek-V3** (text polish / answer generation) |
 | TTS / voice clone | **讯飞声音复刻** streaming (English text → personal voice audio) |
-| Lip sync | **Simli AI** official SaaS API — **not** self-hosted MuseTalk GPU cluster |
-| Virtual camera output | OBS / CoreMediaIO (macOS) / DirectShow (Windows) |
+| Digital human video | **Simli AI** official SaaS API — speaking-chain TTS audio drives digital-human video |
+| Meeting camera output | **OBS Browser Source → OBS Virtual Camera** — OBS must be installed and running; no self-developed virtual camera driver |
 | Resume embeddings | `multilingual-e5-small` + local vector store (never uploaded to cloud) |
 | Frontend i18n | `i18next` — all UI strings via locale files, never hardcoded |
 | CI/CD | GitHub Actions — separate macOS runner + Windows runner for CGO cross-compilation |
@@ -48,13 +48,15 @@ Physical mic (Chinese speech) → 讯飞 RTASR → Chinese text
 ```
 While Xunfei VoiceClone generates audio, Go backend writes **zero-PCM chunks** to the virtual mic to suppress Chinese background audio leaking to the interviewer.
 
-### Pipeline 3 — Video / Lip Sync (≥30fps, A/V delta ≤40ms)
+### Pipeline 3 — Digital Human Video Output (speaking-chain optional output)
 ```
-Physical camera → Go capture (OpenCV) → eye-gaze correction
-  → Simli AI real-time streaming API (lip sync)
-  → Virtual camera (OBS/CoreMediaIO/DirectShow) → Interviewer sees lip-synced video
+Speaking-chain TTS PCM → Simli AI WebRTC
+  → ffmpeg decode VP8/H264 frames
+  → local OBS Browser Source (http://127.0.0.1:18765/)
+  → OBS scene → OBS Virtual Camera → Interviewer sees digital-human video
 ```
-A **ring buffer** in Go aligns audio and video timestamps before sending to Simli AI — cloud processing latency (~1s) means naive ordering would desync A/V.
+
+Simli is video-only in the local meeting path: TTS audio still goes to the virtual microphone. The speaking chain delays local virtual-mic writes by about 700ms when Simli mode is enabled so the meeting audio better lines up with the returned digital-human video.
 
 ---
 
@@ -72,8 +74,8 @@ Wails exposes the native window handle — the CGO/syscall stealth hook attaches
 ## Failsafe / Circuit Breaker
 
 - 50ms UDP heartbeat between client and cloud
-- If 3 consecutive heartbeats lost **or** cloud video stream latency > 300ms → hard bypass in ≤10ms: disconnect cloud pipelines, reconnect real microphone + real camera directly to Zoom/Teams
-- No blackout, no audio drop, no freeze allowed during bypass
+- If digital-human startup or streaming fails, stop the digital-human output and keep the direct speaking-chain virtual-audio path available.
+- Do not attempt to register or fall back to a custom virtual-camera driver. The meeting camera path depends on OBS Virtual Camera.
 
 ---
 
@@ -81,7 +83,7 @@ Wails exposes the native window handle — the CGO/syscall stealth hook attaches
 
 1. **API credentials:** 讯飞 RTASR (AppID/APIKey), 讯飞机器翻译（AppID/APIKey/APISecret）, 讯飞声音复刻（AppID/APIKey/APISecret/Asset ID）, DeepSeek (key + model), Simli AI (key)
 2. **Language config:** Hearing chain source→target language; Speaking chain input→output language (separate dropdowns, 讯飞-supported language pairs)
-3. **Device binding:** Virtual sound card, physical mic, physical camera, virtual camera (dynamically enumerated)
+3. **Device binding:** Virtual sound card, physical mic, monitor device, meeting virtual camera name, digital-human OBS URL/status
 4. **Resume management:** Local PDF/Word upload → local embedding (never leaves device); multiple resumes, switchable
 5. **Ghost window appearance:** Position, font size, opacity
 6. **Advanced (collapsed):** RAG answer-generation prompt, speaking-chain polish prompt — each with a default value + one-click reset
@@ -93,7 +95,7 @@ Wails exposes the native window handle — the CGO/syscall stealth hook attaches
 | Phase | Goal |
 |---|---|
 | **Phase 1** | Wails shell MVP: Chinese → 讯飞 STT → DeepSeek → virtual sound card output. Validate ghost UI + mouse-through hooks. |
-| **Phase 2** | Cloud pipeline: Simli AI lip sync integration, ring buffer A/V sync, virtual camera output. |
+| **Phase 2** | Simli digital-human video output through OBS Browser Source / OBS Virtual Camera, with local audio delay compensation. |
 | **Phase 3** | SaaS billing, "full A/V mode" vs "text-only teleprompter mode" (zero cloud cost), internal beta. |
 
 ---

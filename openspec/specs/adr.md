@@ -42,19 +42,19 @@
 
 ## ADR-005 口型同步：Simli AI SaaS，不自建 GPU 集群
 
-**决策：** 使用 Simli AI 官方 SaaS API（WebSocket 流式），驱动用户真实人脸，不自建 MuseTalk GPU 集群。
+**决策：** 使用 Simli AI 官方 SaaS / WebRTC 能力生成数字人视频，不自建 MuseTalk GPU 集群。
 
-**取舍：** SaaS 有云端延迟（~200-400ms），通过 A/V 环形缓冲区补偿；自建集群成本和运维复杂度远超当前阶段。
+**取舍：** SaaS 与 OBS 输出存在云端和本地链路延迟，当前通过延迟写入本地虚拟麦克风补偿；自建集群成本和运维复杂度远超当前阶段。
 
 **扩展性：** `LipSyncProvider` 接口预留 `StealthCloudProvider` 实现，Phase 3 可切换到自营云服务。
 
 ---
 
-## ADR-006 虚拟摄像头：自捆绑驱动，不依赖 OBS
+## ADR-006 虚拟摄像头：使用 OBS Virtual Camera
 
-**决策：** 基于 AkVirtualCamera 自研捆绑虚拟摄像头驱动：macOS 用 CoreMediaIO DAL 插件，Windows 用 DirectShow Filter。App 首次启动时 Setup 向导一键安装，需一次 admin/UAC 授权。
+**决策：** StealthCopilot 不注册自研虚拟摄像头驱动。数字人视频由 App 提供本机 OBS Browser Source，再通过 OBS Studio 的 OBS Virtual Camera 暴露给会议软件。
 
-**取舍：** 要求用户安装 OBS 体验重、依赖外部软件版本；自捆绑驱动体积增加约 5-10MB，但用户体验更完整。
+**取舍：** 依赖用户安装并启动 OBS，但避免维护 CoreMediaIO / DirectShow 驱动，降低系统扩展、签名、公证和会议软件兼容风险。
 
 ---
 
