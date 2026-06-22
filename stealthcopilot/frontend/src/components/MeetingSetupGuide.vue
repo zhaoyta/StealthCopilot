@@ -1,6 +1,8 @@
 <script lang="ts" setup>
 import { useI18n } from 'vue-i18n'
+import { ref } from 'vue'
 import { Headphones, Mic, Video, X } from 'lucide-vue-next'
+import ObsSetupGuide from './ObsSetupGuide.vue'
 
 defineOptions({ name: 'MeetingSetupGuide' })
 
@@ -13,6 +15,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const showObsGuide = ref(false)
 </script>
 
 <template>
@@ -74,6 +77,14 @@ const { t } = useI18n()
             <p>{{ t('meetingGuide.routes.speaking') }}</p>
             <p>{{ t('meetingGuide.routes.video') }}</p>
           </div>
+          <button
+            class="mt-4 inline-flex items-center gap-2 rounded-lg border border-cyan-500/40 px-3 py-2 text-xs font-medium text-cyan-200 transition-colors hover:border-cyan-300 hover:bg-cyan-500/10"
+            type="button"
+            @click="showObsGuide = true"
+          >
+            <Video :size="14" />
+            {{ t('meetingGuide.obsHelp') }}
+          </button>
         </div>
 
         <div class="rounded-xl border border-yellow-500/20 bg-yellow-500/10 p-4 text-xs leading-relaxed text-yellow-100">
@@ -92,6 +103,11 @@ const { t } = useI18n()
         </div>
       </div>
     </section>
+
+    <ObsSetupGuide
+      :open="showObsGuide"
+      @close="showObsGuide = false"
+    />
   </div>
 </template>
 

@@ -89,7 +89,7 @@
       "defaultVoice": "默认音色（TTS）",
       "xunfeiTts": "讯飞声音复刻 API（TTS）",
       "personalVoice": "个人复刻音色",
-      "simli": "Simli AI（视频口型同步）",
+      "digitalHuman": "ZEGO 数字人（可选）",
       "hint": "未完成的可选项可随时在设置面板补全"
     },
     "resume": {
@@ -129,21 +129,26 @@
         "model": "使用模型"
       },
       "simli": {
-        "key": "Simli API Key",
-        "faceId": "Face ID"
+        "apiKey": "Simli API Key"
+      },
+      "zego": {
+        "appId": "ZEGO 数字人 AppID",
+        "serverSecret": "ZEGO 数字人 ServerSecret"
       },
       "serviceNames": {
         "xunfei": "讯飞实时转写、同声传译与机器翻译",
         "xunfei_simult": "讯飞实时转写、同声传译与机器翻译",
         "xunfei_tts": "讯飞声音复刻",
         "deepseek": "DeepSeek",
-        "simli": "Simli AI"
+        "simli": "Simli AI 数字人",
+        "zego_digital_human": "ZEGO 数字人（企业级）"
       },
       "docs": {
         "xunfeiRtasr": "实时转写文档",
         "xunfeiSimult": "同声传译文档",
         "xunfeiText": "机器翻译文档",
-        "xunfeiVoiceClone": "声音复刻文档"
+        "xunfeiVoiceClone": "声音复刻文档",
+        "zegoDigitalHuman": "ZEGO 数字人文档"
       }
     },
     "language": {
@@ -165,15 +170,47 @@
       "virtualMic": "虚拟声卡（BlackHole / VB-Cable）",
       "virtualMicHint": "会议软件的扬声器和麦克风都选这个设备；App 会从这里采集面试官声音，也会把你的目标语言语音写回会议。",
       "physicalMic": "你的说话麦克风",
-      "physicalCam": "你的真实摄像头",
       "virtualCam": "会议虚拟摄像头",
       "hearingMonitor": "播放面试官译文到耳机",
       "monitorOutput": "译文播放设备",
       "systemDefaultOutput": "系统默认输出",
       "monitorVolume": "播报音量",
       "monitorRate": "播报语速",
+      "digitalHumanOutput": "说话链默认启用数字人视频输出",
+      "digitalHumanProvider": "数字人服务提供商",
+      "digitalHumanProviderSimli": "Simli AI（推荐）",
+      "digitalHumanProviderZego": "即构 ZEGO（企业级）",
+      "simliApiKey": "Simli API Key",
+      "simliApiKeyPlaceholder": "sk-...",
+      "simliFaceId": "Face ID（数字人形象 ID）",
+      "simliFaceIdPlaceholder": "从 Simli 控制台复制",
+      "simliHelp": "查看配置说明",
+      "obsHelp": "OBS 配置",
+      "simliHelpTitle": "Simli AI 数字人配置说明",
+      "simliHelpDesc": "开启后，说话链的翻译结果会同时写入虚拟麦克风（面试官直接听到）并发给 Simli 进行唇形同步，面试官看到的是与语音对齐的数字人视频画面。",
+      "simliHelpStep1": "前往 Simli AI 控制台注册账号并创建数字人形象，获取 API Key 和 Face ID",
+      "simliHelpStep2": "在「设置 → API 密钥 → Simli AI」填写 API Key",
+      "simliHelpStep3": "将 Face ID 填入下方「Face ID」输入框",
+      "simliHelpStep4": "在 OBS 中添加应用提供的浏览器源，并开启 OBS Virtual Camera",
+      "simliHelpNote": "Simli AI 仅提供视频同步，音频仍由讯飞 TTS 直接输出到虚拟麦克风，与 ZEGO（音视频均由云端生成）不同。",
+      "zegoDigitalHumanId": "数字人 ID",
+      "zegoDigitalHumanIdPlaceholder": "从即构控制台形象管理页复制",
+      "zegoRtmpPullUrl": "CDN 转推拉流地址（RTMP，可选）",
+      "zegoRtmpPullUrlPlaceholder": "rtmp://cdn.example.com/live/stream_id",
+      "zegoHelp": "查看配置说明",
+      "zegoHelpTitle": "即构数字人配置说明",
+      "zegoHelpDesc": "开启后，说话链的翻译音频会驱动一个数字人形象实时说话，面试官看到的是数字人画面、听到的是数字人声音。",
+      "zegoHelpStep1": "前往",
+      "zegoHelpConsoleLink": "即构科技控制台",
+      "zegoHelpStep1b": "注册账号，创建应用，联系即构商务申请开通「AIGC 数字人」服务",
+      "zegoHelpStep2": "在应用内「设置 → API 密钥 → 即构数字人」填写 AppID 和 Server Secret（即构控制台应用详情页可找到）",
+      "zegoHelpStep3": "在即构控制台「AIGC → 数字人 → 形象管理」选择或创建形象，复制「数字人 ID」填入下方输入框",
+      "zegoHelpStep4": "（可选）若需将数字人视频输出到虚拟摄像头，在即构控制台开启「混流转推 CDN」后，将 RTMP 拉流地址填入「CDN 转推拉流地址」",
+      "zegoHelpNote": "房间 ID 和流 ID 由应用每次启动时自动生成，无需手动填写。",
       "recommendedVirtualMic": "推荐 · 会议音频虚拟通道（{name}）",
-      "recommendedVirtualCam": "推荐 · StealthCopilot 虚拟摄像头（{name}）",
+      "obsSourceUrl": "OBS 浏览器源地址",
+      "obsInlineHint": "数字人画面不会直接出现在会议摄像头列表里。请把这个地址添加到 OBS 浏览器源，再在 OBS 启动虚拟摄像机，最后在飞书/Zoom/Teams 里选择 OBS Virtual Camera。",
+      "recommendedVirtualCam": "推荐 · OBS 虚拟摄像头（{name}）",
       "recommendedMonitorOutput": "推荐 · 译文播放耳机（{name}）",
       "refresh": "重新枚举设备",
       "select": "请选择…"
@@ -226,7 +263,7 @@
       "polishEnabled": "启用说话润色（默认关闭）",
       "hearingExtensions": "听力链扩展点",
       "speakingExtensions": "说话链扩展点",
-      "videoExtensions": "视频链扩展点",
+      "videoExtensions": "视频扩展点",
       "resumeExtensions": "简历索引扩展点",
       "sharedLlmSettings": "共享 LLM 设置",
       "hearingAsrProvider": "听力 ASR Extension",
@@ -240,7 +277,6 @@
       "llmBaseURL": "LLM Base URL",
       "historyMaxTurns": "历史轮数",
       "ttsProvider": "TTS Provider",
-      "lipsyncProvider": "口型同步 Provider",
       "embeddingProvider": "Embedding Provider",
       "providerNames": {
         "xunfeiRtasr": "讯飞 RTASR 实时转写",
@@ -252,7 +288,7 @@
         "systemMonitorTts": "系统语音播报",
         "hearingMonitorOff": "关闭耳机播报",
         "xunfeiVoiceClone": "讯飞声音复刻",
-        "simli": "Simli",
+        "zegoDigitalHuman": "ZEGO 数字人",
         "pythonBridge": "Python Bridge",
         "sourceOnly": "源文本直通",
         "null": "关闭此扩展点"
@@ -263,11 +299,10 @@
     "systemNormal": "AI 辅助运行中",
     "systemDesc": "会议链路正常 · AI 辅助可用",
     "systemWarning": "部分辅助受限，会议链路仍可继续",
-    "videoDirectNormal": "口型同步",
-    "videoDirectOpen": "视频直连",
-    "videoDirectDesc": "视频链已切到直连：口型同步暂时退出，会议里继续输出你的真实摄像头画面。",
+    "digitalHumanOn": "数字人视频",
+    "digitalHumanOff": "虚拟音频",
     "pipelines": "面试链路",
-    "pipelinesRunning": "{n}/3 条链路运行中",
+    "pipelinesRunning": "{n}/2 条链路运行中",
     "pipelinesIdle": "面试链路待机",
     "startAll": "一键启动全部",
     "stopAll": "停止全部",
@@ -277,10 +312,8 @@
     "submitHearingDraft": "提交当前句",
     "submitHearingDraftHint": "提交当前 ASR 草稿（⌘/Ctrl + Enter）",
     "speakingChain": "说话链",
-    "videoChain": "视频链",
     "hearingDesc": "听懂面试官问题，并给出字幕与回答建议",
     "speakingDesc": "把你的母语回答转换成目标语言语音",
-    "videoDesc": "把摄像头画面同步到会议虚拟摄像头",
     "businessInput": "业务输入",
     "userVisible": "你看到",
     "localOutput": "本地输出",
@@ -321,13 +354,10 @@
       "virtualCameraMissing": "虚拟摄像头未安装，会议无法选择处理后的视频画面。",
       "meetingAudioMissing": "未选择会议音频虚拟通道。",
       "speakingMicMissing": "未选择你的说话麦克风。",
-      "realCameraMissing": "未选择你的真实摄像头。",
       "meetingCameraMissing": "未选择会议虚拟摄像头。",
       "meetingAudioUnavailable": "之前选择的会议音频虚拟通道「{name}」当前不可用，请重新选择。",
       "speakingMicUnavailable": "之前选择的说话麦克风「{name}」当前不可用，请重新选择。",
-      "realCameraUnavailable": "之前选择的真实摄像头「{name}」当前不可用，请重新选择。",
       "meetingCameraUnavailable": "之前选择的会议虚拟摄像头「{name}」当前不可用，请重新选择。",
-      "cameraLoop": "真实摄像头和会议虚拟摄像头都选了「{name}」，会形成视频自环；请把真实摄像头改成真实设备或屏幕采集，把会议虚拟摄像头保留为 OBS Virtual Camera。",
       "monitorOutputUnavailable": "之前选择的译文播放设备「{name}」当前不可用，请重新选择或改用系统默认输出。",
       "hearingAsrMissing": "听力链 ASR Extension 已禁用，请在高级设置选择讯飞 RTASR。",
       "speakingAsrMissing": "说话链 ASR Extension 已禁用，请在高级设置选择讯飞同声传译。",
@@ -336,7 +366,9 @@
       "deepseekMissing": "DeepSeek Key 未配置，回答建议和润色能力会受限。",
       "ttsMissing": "TTS Provider 被禁用，说话链无法输出目标语言语音。",
       "voiceCloneMissing": "已选择讯飞声音复刻，但还没有完成音色训练；可先切换为默认音色。",
-      "simliMissing": "Simli Key 或 Face ID 未配置，视频链会使用直连画面，不进行口型同步。"
+      "simliMissing": "Simli AI API Key 或 Face ID 未配置，无法启动数字人视频输出。",
+      "zegoMissing": "ZEGO 数字人 AppID / ServerSecret 未配置，无法启动数字人视频输出。",
+      "zegoStreamMissing": "数字人 ID、ZEGO 房间 ID 或流 ID 未配置，无法启动数字人视频输出。"
     },
     "version": "v0.1.0",
     "footerBrand": "StealthCopilot · {version}",
@@ -351,9 +383,7 @@
     "close": "关闭",
     "subtitlePlaceholder": "等待面试官字幕…",
     "answerPlaceholder": "回答建议将在这里流式显示。",
-    "noResume": "未检测到激活简历，建议功能已禁用",
-    "circuitOpenWarning": "视频链已切到直连：口型同步暂时退出，会议画面继续输出真实摄像头。",
-    "emergencyBypass": "切到视频直连"
+    "noResume": "未检测到激活简历，建议功能已禁用"
   },
   "meetingGuide": {
     "entry": "会议设置指南",
@@ -369,14 +399,15 @@
     },
     "camera": {
       "title": "会议摄像头",
-      "desc": "选择 StealthCopilot 虚拟摄像头，让视频链输出同步后的画面。"
+      "desc": "选择 OBS Virtual Camera；数字人画面由 OBS 场景中的浏览器源提供。"
     },
     "routingTitle": "推荐路由",
     "routes": {
       "hearing": "会议扬声器 -> 虚拟声卡 -> 听力链",
       "speaking": "说话链 -> 虚拟声卡 -> 会议麦克风",
-      "video": "视频链 -> 虚拟摄像头 -> 会议摄像头"
+      "video": "数字人视频源 -> OBS 场景 -> OBS Virtual Camera -> 会议摄像头"
     },
+    "obsHelp": "查看 OBS 配置与排障",
     "monitorNote": "如果会议扬声器只选虚拟声卡，你本人可能听不到面试官声音。监听输出请选择耳机，或在系统里创建多输出设备，把会议声音同时送到虚拟声卡和耳机。",
     "feishu": {
       "title": "飞书会议",
@@ -385,6 +416,63 @@
     "tencent": {
       "title": "腾讯会议",
       "desc": "进入音频设置或麦克风旁菜单，选择电脑音频，并分别测试麦克风和扬声器。"
+    }
+  },
+  "obsGuide": {
+    "title": "OBS 数字人视频配置",
+    "subtitle": "数字人视频由 App 提供给 OBS，OBS 再通过 OBS Virtual Camera 给飞书、Zoom、Teams 等会议软件。",
+    "cards": {
+      "source": {
+        "title": "浏览器源",
+        "desc": "OBS 场景里添加浏览器源，地址使用下方 URL。"
+      },
+      "camera": {
+        "title": "虚拟摄像机",
+        "desc": "在 OBS 点击启动虚拟摄像机，再回到会议软件选择。"
+      },
+      "refresh": {
+        "title": "刷新设备",
+        "desc": "会议软件看不到 OBS Camera 时，重启 OBS 或会议软件后再选。"
+      }
+    },
+    "sourceUrlLabel": "浏览器源 URL",
+    "copyUrl": "复制地址",
+    "copied": "已复制",
+    "downloadObs": "打开 OBS 下载页",
+    "stepsTitle": "推荐设置步骤",
+    "steps": {
+      "1": "打开 OBS Studio，保留一个普通场景即可。",
+      "2": "在「来源」里点击 +，选择「浏览器」。",
+      "3": "URL 填入上方地址；宽高建议先填 512 x 512。",
+      "4": "确认后在预览区右键该来源，选择「变换 → 适应屏幕」。",
+      "5": "启动 App 的说话链，并确保数字人开关已打开。",
+      "6": "在 OBS 右侧点击「启动虚拟摄像机」。",
+      "7": "回到飞书、Zoom、Teams，把摄像头切换为 OBS Virtual Camera。"
+    },
+    "notesTitle": "注意事项",
+    "notes": {
+      "useRoot": "OBS 浏览器源用根地址即可，不要手动填写 /stream.mjpg。",
+      "keepRunning": "OBS App 必须保持打开；只在会议软件里选择 OBS Virtual Camera 还不够。",
+      "fitToScreen": "如果画面被裁切或比例不对，优先在 OBS 里对浏览器源执行「适应屏幕」。"
+    },
+    "troubleshootingTitle": "常见问题",
+    "troubleshooting": {
+      "unavailable": {
+        "title": "飞书选不到 OBS Virtual Camera：",
+        "desc": "先确认 OBS 里已经点击「启动虚拟摄像机」。macOS 刚安装或更新 OBS Camera Extension 后，可能需要重启系统或重新打开会议软件。"
+      },
+      "black": {
+        "title": "OBS 黑屏：",
+        "desc": "确认说话链已经启动、数字人已开启、浏览器源 URL 是根地址，并等待第一帧数字人视频返回。"
+      },
+      "flicker": {
+        "title": "画面闪烁或花屏：",
+        "desc": "停止说话链后重新启动，刷新 OBS 浏览器源；仍异常时查看日志里的 simli video 或 ffmpeg stderr。"
+      },
+      "sync": {
+        "title": "声音和口型不同步：",
+        "desc": "Simli 模式会默认延迟本地音频以贴近视频。如果仍不同步，先关闭其他高负载应用，再重新启动说话链和 OBS 虚拟摄像机。"
+      }
     }
   },
   "deviceQuickConfig": {
@@ -399,10 +487,6 @@
     "monitorOutput": {
       "title": "配置译文播放",
       "desc": "把面试官译文播放到你的耳机里，不进入会议麦克风。"
-    },
-    "physicalCamera": {
-      "title": "配置你的摄像头",
-      "desc": "App 用它采集原始画面，再交给视频链处理。"
     },
     "virtualCamera": {
       "title": "配置会议虚拟摄像头",
@@ -419,9 +503,8 @@
     "targetLanguageSpeech": "目标语言表达",
     "speechTransformReady": "发言转换就绪",
     "clonedVoice": "克隆语音",
-    "cameraImage": "你的真实摄像头",
-    "lipSync": "口型同步",
-    "videoSyncStatus": "视频同步状态",
+    "digitalHumanAvatar": "数字人形象",
+    "digitalHumanOutput": "数字人音视频",
     "virtualMicBlackhole": "虚拟声卡 BlackHole",
     "xunfeiTranslation": "讯飞同声传译",
     "chineseSubtitle": "中文字幕",
@@ -435,8 +518,6 @@
     "deepseekPolish": "DeepSeek 润色",
     "xunfeiVoiceClone": "讯飞声音复刻",
     "virtualMic": "虚拟声卡",
-    "physicalCam": "物理摄像头",
-    "simliAvatar": "Simli AI 数字人",
     "virtualCam": "会议虚拟摄像头",
     "optional": "可选",
     "plus": "+"

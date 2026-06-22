@@ -45,7 +45,7 @@ const { t } = useI18n()
           class="text-purple-300"
         />
         <h3 class="font-semibold text-purple-300">
-          {{ t('dashboard.videoChain') }}
+          {{ t('dashboard.digitalHumanOn') }}
         </h3>
         <p class="text-xs text-gray-400 text-center">
           {{ t('setup.welcome.videoDesc') }}

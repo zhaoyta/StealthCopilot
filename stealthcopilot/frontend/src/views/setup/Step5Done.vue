@@ -21,7 +21,7 @@ onMounted(async () => {
       { label: t('setup.done.deepseek'), done: cfg.deepseek_key_set },
       { label: t('setup.done.defaultVoice'), done: true },
       { label: t('setup.done.personalVoice'), done: cfg.xunfei_tts_asset_id_set },
-      { label: t('setup.done.simli'), done: cfg.simli_key_set },
+      { label: t('setup.done.digitalHuman'), done: cfg.zego_app_id_set && cfg.zego_server_secret_set },
     ]
   } catch {
     items.value = []

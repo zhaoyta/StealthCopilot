@@ -17,8 +17,8 @@ import (
 	"github.com/zhaoyta/stealthcopilot/internal/circuit"
 	"github.com/zhaoyta/stealthcopilot/internal/config"
 	"github.com/zhaoyta/stealthcopilot/internal/diag"
+	"github.com/zhaoyta/stealthcopilot/internal/digitalhuman"
 	"github.com/zhaoyta/stealthcopilot/internal/hearing"
-	"github.com/zhaoyta/stealthcopilot/internal/lipsync"
 	"github.com/zhaoyta/stealthcopilot/internal/llm"
 	"github.com/zhaoyta/stealthcopilot/internal/rag"
 	"github.com/zhaoyta/stealthcopilot/internal/resume"
@@ -100,16 +100,47 @@ func (a *App) TestAPIConnection(service string) APIConnectionResult {
 		}
 		return APIConnectionResult{OK: true, Message: "讯飞声音复刻凭证可用，Asset ID 已配置"}
 	case "simli":
-		if cfg.SimliKey == "" {
+		if cfg.SimliAPIKey == "" {
 			return APIConnectionResult{Message: "Simli API Key 未配置"}
 		}
-		req, _ := http.NewRequest(http.MethodGet, "https://api.simli.ai", nil)
-		req.Header.Set("Authorization", "Bearer "+cfg.SimliKey)
-		result := probeHTTP(client, req)
-		if result.OK || result.Message == "HTTP 404" {
-			return APIConnectionResult{OK: true, Message: "Simli API Key 已配置"}
+		faceID := strings.TrimSpace(cfg.SimaliFaceID)
+		if faceID == "" {
+			faceID = "test"
 		}
-		return result
+		ctx, cancel := context.WithTimeout(context.Background(), apiConnectionTimeout)
+		defer cancel()
+		driver := digitalhuman.NewSimliDriver(digitalhuman.SimliConfig{
+			APIKey:     cfg.SimliAPIKey,
+			FaceID:     faceID,
+			HTTPClient: client,
+		})
+		token, err := driver.TestFetchToken(ctx)
+		if err != nil {
+			return APIConnectionResult{Message: "Simli API Key 验证失败：" + err.Error()}
+		}
+		if token == "" {
+			return APIConnectionResult{Message: "Simli 未返回有效 token，请检查 API Key 是否正确"}
+		}
+		return APIConnectionResult{OK: true, Message: "Simli AI 连接成功，API Key 有效"}
+	case "zego_digital_human":
+		if cfg.ZegoDigitalHumanAppID == "" || cfg.ZegoServerSecret == "" {
+			return APIConnectionResult{Message: "ZEGO 数字人 AppID / ServerSecret 未完整配置"}
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), apiConnectionTimeout)
+		defer cancel()
+		err := digitalhuman.NewClient(digitalhuman.Config{
+			AppID:        cfg.ZegoDigitalHumanAppID,
+			ServerSecret: cfg.ZegoServerSecret,
+			HTTPClient:   client,
+		}).Probe(ctx)
+		if err != nil {
+			detail := fmt.Sprintf("当前保存：AppID %s；ServerSecret %s",
+				secretLengthHint(cfg.ZegoDigitalHumanAppID),
+				secretLengthHint(cfg.ZegoServerSecret),
+			)
+			return APIConnectionResult{Message: "ZEGO 数字人连接测试失败：" + err.Error() + "。" + detail}
+		}
+		return APIConnectionResult{OK: true, Message: "ZEGO 数字人凭证可用"}
 	case "xunfei_simult":
 		if cfg.XunfeiSimultAppID == "" || cfg.XunfeiSimultAPIKey == "" || cfg.XunfeiSimultAPISecret == "" {
 			return APIConnectionResult{Message: "讯飞同声传译 AppID/API Key/API Secret 未完整配置"}
@@ -151,6 +182,44 @@ func xunfeiVoiceCloneConfigFromApp(cfg *config.AppConfig) tts.XunfeiVoiceCloneCo
 		AssetID:   cfg.XunfeiTTSAssetID,
 		TaskID:    cfg.XunfeiTTSTaskID,
 	}
+}
+
+func simliDigitalHumanConfigFromApp(cfg *config.AppConfig, writer video.VirtualCameraWriter) digitalhuman.SimliConfig {
+	dhCfg := digitalhuman.SimliConfig{
+		APIKey:              cfg.SimliAPIKey,
+		FaceID:              cfg.SimaliFaceID,
+		VirtualCameraWriter: writer,
+	}
+	return dhCfg
+}
+
+func zegoDigitalHumanConfigFromApp(cfg *config.AppConfig, writer video.VirtualCameraWriter) digitalhuman.Config {
+	dhCfg := digitalhuman.Config{
+		AppID:               cfg.ZegoDigitalHumanAppID,
+		ServerSecret:        cfg.ZegoServerSecret,
+		DigitalHumanID:      cfg.ZegoDigitalHumanID,
+		RoomID:              cfg.ZegoRoomID,
+		StreamID:            cfg.ZegoStreamID,
+		RTMPPullURL:         cfg.ZegoRTMPPullURL,
+		VirtualCameraWriter: writer,
+	}
+	return dhCfg
+}
+
+func (a *App) newDigitalHumanVideoWriter() (video.VirtualCameraWriter, string) {
+	writer, err := video.NewOBSBrowserSourceWriter("")
+	if err != nil {
+		return nil, "OBS 数字人视频源启动失败：" + err.Error()
+	}
+	a.obsVideoSourceURL = writer.URL()
+	return writer, ""
+}
+
+func (a *App) GetDigitalHumanOBSURL() string {
+	if strings.TrimSpace(a.obsVideoSourceURL) != "" {
+		return a.obsVideoSourceURL
+	}
+	return video.DefaultOBSBrowserSourceURL()
 }
 
 func hearingASRExtensionFromApp(cfg *config.AppConfig, override asr.StreamingExtension) asr.StreamingExtension {
@@ -432,13 +501,6 @@ func (a *App) PickResumeFile() (string, error) {
 // macOS: 虚拟声卡优先通过 Homebrew 在 Terminal 中安装；其余依赖打开官方下载页。
 // Windows: 在浏览器中打开对应的官方下载页。
 func (a *App) InstallDep(key string) system.DepInstallResult {
-	if key == "virtual_cam" {
-		result := video.EnsureDriver("")
-		return system.DepInstallResult{
-			AutoInstalled: result.Status == video.DriverStatusRegistered,
-			Message:       result.Message,
-		}
-	}
 	return a.SystemSvc.InstallDep(key)
 }
 
@@ -692,8 +754,8 @@ func (a *App) SubmitHearingDraft() string {
 // 返回空字符串表示成功，否则返回错误描述。
 func (a *App) StartSpeakingChain() string {
 	cfg := a.ConfigSvc.InternalManager().Config
-	diag.Infof("speaking start requested physical_mic=%q virtual_mic=%q input_lang=%s output_lang=%s speaking_asr_provider=%s speaking_trans_provider=%s speaking_tts_provider=%s polish_enabled=%t",
-		cfg.PhysicalMicName, cfg.VirtualMicName, cfg.SpeakingInputLang, cfg.SpeakingOutputLang, cfg.SpeakingASRProvider, cfg.SpeakingTransProvider, cfg.SpeakingTTSProvider, cfg.PolishEnabled)
+	diag.Infof("speaking start requested physical_mic=%q virtual_mic=%q virtual_cam=%q input_lang=%s output_lang=%s speaking_asr_provider=%s speaking_trans_provider=%s speaking_tts_provider=%s polish_enabled=%t digital_human=%t",
+		cfg.PhysicalMicName, cfg.VirtualMicName, cfg.VirtualCamName, cfg.SpeakingInputLang, cfg.SpeakingOutputLang, cfg.SpeakingASRProvider, cfg.SpeakingTransProvider, cfg.SpeakingTTSProvider, cfg.PolishEnabled, cfg.DigitalHumanEnabled)
 	var speechExtension asr.SegmentExtension
 	if cfg.SpeakingASRProvider == config.TranslationProviderNull {
 		return "说话链需要 ASR Extension，请在高级设置选择讯飞同声传译"
@@ -724,6 +786,36 @@ func (a *App) StartSpeakingChain() string {
 		ttsExtension = tts.NewSystemExtension()
 	}
 	diag.Infof("speaking tts extension resolved requested=%s resolved=%s voiceclone_asset_set=%t", cfg.SpeakingTTSProvider, resolvedTTSExtension, strings.TrimSpace(cfg.XunfeiTTSAssetID) != "")
+	var digitalHumanDriver speaking.DigitalHumanDriver
+	if cfg.DigitalHumanEnabled {
+		if validation := cfg.ValidateDigitalHumanOutput(); !validation.OK() {
+			parts := make([]string, 0, 3)
+			if len(validation.MissingCredentials) > 0 {
+				parts = append(parts, "凭证缺失："+strings.Join(validation.MissingCredentials, "、"))
+			}
+			if len(validation.MissingStreamIDs) > 0 {
+				parts = append(parts, "流配置缺失："+strings.Join(validation.MissingStreamIDs, "、"))
+			}
+			if len(validation.MissingDevices) > 0 {
+				parts = append(parts, "本机虚拟设备缺失："+strings.Join(validation.MissingDevices, "、"))
+			}
+			msg := "数字人输出配置不完整：" + strings.Join(parts, "；")
+			diag.Errorf("speaking digital human config rejected err=%q", msg)
+			return msg
+		}
+		virtualCameraWriter, writerMsg := a.newDigitalHumanVideoWriter()
+		if writerMsg != "" {
+			msg := "数字人输出配置不完整：本机 OBS 视频源不可用：" + writerMsg
+			diag.Errorf("speaking digital human obs source rejected device=%q err=%q", cfg.VirtualCamName, msg)
+			return msg
+		}
+		switch cfg.DigitalHumanProvider {
+		case config.DigitalHumanProviderZego:
+			digitalHumanDriver = digitalhuman.NewZegoDriver(zegoDigitalHumanConfigFromApp(cfg, virtualCameraWriter))
+		default: // Simli 及默认
+			digitalHumanDriver = digitalhuman.NewSimliDriver(simliDigitalHumanConfigFromApp(cfg, virtualCameraWriter))
+		}
+	}
 	llmCfg := llm.Config{
 		Provider: string(cfg.LLMProvider),
 		APIKey:   cfg.DeepSeekKey,
@@ -739,22 +831,23 @@ func (a *App) StartSpeakingChain() string {
 			SourceLang: cfg.SpeakingInputLang,
 			TargetLang: cfg.SpeakingOutputLang,
 		},
-		XunfeiVoiceClone:   xunfeiVoiceCloneConfigFromApp(cfg),
-		ASRExtension:       speakingASRExtensionFromApp(cfg, speechExtension),
-		TransExtension:     speakingTransExtensionFromApp(cfg),
-		TTSExtension:       ttsExtension,
-		PhysicalMicDevice:  cfg.PhysicalMicName,
-		VirtualMicDevice:   cfg.VirtualMicName,
-		SilenceThresholdMs: 800,
-		AudioSink:          a.VideoChain.SendAudioChunk,
-		EventSink:          a.emitTeleprompterEvent,
-		SessionStore:       sessionStore,
-		SessionID:          sessionID,
-		DeepSeekKey:        cfg.DeepSeekKey,
-		DeepSeekModel:      cfg.DeepSeekModel,
-		LLMConfig:          llmCfg,
-		PolishPrompt:       cfg.SpeakPolishPrompt,
-		PolishEnabled:      cfg.PolishEnabled,
+		XunfeiVoiceClone:    xunfeiVoiceCloneConfigFromApp(cfg),
+		ASRExtension:        speakingASRExtensionFromApp(cfg, speechExtension),
+		TransExtension:      speakingTransExtensionFromApp(cfg),
+		TTSExtension:        ttsExtension,
+		PhysicalMicDevice:   cfg.PhysicalMicName,
+		VirtualMicDevice:    cfg.VirtualMicName,
+		DigitalHumanEnabled: cfg.DigitalHumanEnabled,
+		DigitalHumanDriver:  digitalHumanDriver,
+		SilenceThresholdMs:  800,
+		EventSink:           a.emitTeleprompterEvent,
+		SessionStore:        sessionStore,
+		SessionID:           sessionID,
+		DeepSeekKey:         cfg.DeepSeekKey,
+		DeepSeekModel:       cfg.DeepSeekModel,
+		LLMConfig:           llmCfg,
+		PolishPrompt:        cfg.SpeakPolishPrompt,
+		PolishEnabled:       cfg.PolishEnabled,
 	}
 	if err := a.SpeakingChain.Start(a.ctx, chainCfg); err != "" {
 		diag.Errorf("speaking start failed err=%q", err)
@@ -774,91 +867,6 @@ func (a *App) StopSpeakingChain() {
 // SetVADSilenceThreshold 运行时更新 VAD 静音阈值（毫秒），即时生效，无需重启说话链。
 func (a *App) SetVADSilenceThreshold(ms int) {
 	a.SpeakingChain.SetSilenceThreshold(ms)
-}
-
-// ===== Video Chain 相关绑定 =====
-
-// StartVideoChain 启动视频链管道：摄像头捕获 → Simli 口型同步 → A/V 对齐 → 虚拟摄像头。
-// 配置从当前 ConfigSvc 读取；已在运行时先停止再重新启动。
-// 返回空字符串表示成功，否则返回错误描述。
-func (a *App) StartVideoChain() string {
-	cfg := a.ConfigSvc.InternalManager().Config
-	diag.Infof("video start requested physical_cam=%q virtual_cam=%q lipsync_provider=%s simli_key_set=%t simli_face_set=%t",
-		cfg.PhysicalCamName, cfg.VirtualCamName, cfg.LipSyncProvider, cfg.SimliKey != "", cfg.SimliFaceID != "")
-	if strings.EqualFold(strings.TrimSpace(cfg.PhysicalCamName), strings.TrimSpace(cfg.VirtualCamName)) && strings.TrimSpace(cfg.PhysicalCamName) != "" {
-		err := "真实摄像头和会议虚拟摄像头不能选择同一个设备：" + cfg.PhysicalCamName
-		diag.Errorf("video start rejected err=%q", err)
-		return err
-	}
-	var lipSyncProvider lipsync.Provider
-	lipSyncCloudMode := false
-	if cfg.LipSyncProvider == config.LipSyncProviderNull {
-		lipSyncProvider = lipsync.NewNullLipSyncProvider()
-	} else if cfg.LipSyncProvider == config.LipSyncProviderSimli {
-		lipSyncCloudMode = cfg.SimliKey != "" && cfg.SimliFaceID != ""
-	}
-	simliHeartbeatAddr := ""
-	if lipSyncCloudMode {
-		// Simli 无公开 UDP 端点；改为 HTTP HEAD 探活。
-		// 心跳判断：任何 2xx/3xx/4xx 响应 = 网络连通；5xx 或超时 = 触发直连模式。
-		// 未配置云端口型同步时不启用心跳，避免一启动视频直通就误显示直连模式。
-		simliHeartbeatAddr = "https://api.simli.ai"
-	}
-	chainCfg := video.ChainConfig{
-		SimliAPIKey:        cfg.SimliKey,
-		SilmiFaceID:        cfg.SimliFaceID,
-		SimliHeartbeatAddr: simliHeartbeatAddr,
-		PhysicalCamDevice:  cfg.PhysicalCamName,
-		VirtualCamDevice:   cfg.VirtualCamName,
-		LipSyncProvider:    lipSyncProvider,
-		LipSyncCloudMode:   lipSyncCloudMode,
-	}
-	if err := a.VideoChain.Start(a.ctx, chainCfg); err != "" {
-		diag.Errorf("video start failed err=%q", err)
-		return err
-	}
-	diag.Infof("video start ok cloud_mode=%t heartbeat=%q", lipSyncCloudMode, simliHeartbeatAddr)
-	return ""
-}
-
-// StopVideoChain 停止视频链，等待所有 goroutine 退出后返回。
-func (a *App) StopVideoChain() {
-	diag.Infof("video stop requested")
-	a.VideoChain.Stop()
-	diag.Infof("video stop complete")
-}
-
-// IsCircuitOpen 返回熔断器当前是否处于 Open（直通）状态，供前端显示警告条。
-func (a *App) IsCircuitOpen() bool {
-	return a.VideoChain.IsCircuitOpen()
-}
-
-// EnsureVirtualCameraDriver 检测并尝试安装虚拟摄像头驱动。
-// bundledDriverPath 为 App bundle 内的驱动文件路径（由前端传入）。
-// 返回空字符串表示成功或已安装，否则返回提示信息。
-func (a *App) EnsureVirtualCameraDriver(bundledDriverPath string) string {
-	result := video.EnsureDriver(bundledDriverPath)
-	return result.Message
-}
-
-// TripCircuit 手动触发熔断（用户点击幽灵提词窗"紧急降级"按钮时调用）。
-func (a *App) TripCircuit() {
-	a.VideoChain.TripCircuit()
-}
-
-// CheckVirtualCameraDriver 检测虚拟摄像头驱动注册状态（不执行安装）。
-func (a *App) CheckVirtualCameraDriver() string {
-	status := video.CheckDriverStatus()
-	switch status {
-	case video.DriverStatusRegistered:
-		return "registered"
-	case video.DriverStatusNotRegistered:
-		return "not_registered"
-	case video.DriverStatusUnsupported:
-		return "unsupported"
-	default:
-		return "unknown"
-	}
 }
 
 func deviceNames(devices []system.Device) string {

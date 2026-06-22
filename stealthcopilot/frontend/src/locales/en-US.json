@@ -89,7 +89,7 @@
       "defaultVoice": "Default voice (TTS)",
       "xunfeiTts": "iFlytek VoiceClone API (TTS)",
       "personalVoice": "Personal cloned voice",
-      "simli": "Simli AI (Lip sync)",
+      "digitalHuman": "ZEGO Digital Human (optional)",
       "hint": "Optional items can be completed later in Settings"
     },
     "resume": {
@@ -129,21 +129,26 @@
         "model": "Model"
       },
       "simli": {
-        "key": "Simli API Key",
-        "faceId": "Face ID"
+        "apiKey": "Simli API Key"
+      },
+      "zego": {
+        "appId": "ZEGO Digital Human AppID",
+        "serverSecret": "ZEGO Digital Human ServerSecret"
       },
       "serviceNames": {
         "xunfei": "iFlytek RTASR, Simultaneous Interpretation & Text Translation",
         "xunfei_simult": "iFlytek RTASR, Simultaneous Interpretation & Text Translation",
         "xunfei_tts": "iFlytek VoiceClone",
         "deepseek": "DeepSeek",
-        "simli": "Simli AI"
+        "simli": "Simli AI Digital Human",
+        "zego_digital_human": "ZEGO Digital Human (Enterprise)"
       },
       "docs": {
         "xunfeiRtasr": "RTASR docs",
         "xunfeiSimult": "Simultaneous Interpretation docs",
         "xunfeiText": "Text Translation docs",
-        "xunfeiVoiceClone": "VoiceClone docs"
+        "xunfeiVoiceClone": "VoiceClone docs",
+        "zegoDigitalHuman": "ZEGO digital human docs"
       }
     },
     "language": {
@@ -165,15 +170,47 @@
       "virtualMic": "Virtual Microphone (BlackHole / VB-Cable)",
       "virtualMicHint": "In the meeting app, choose this device for both speaker and microphone; StealthCopilot captures interviewer audio from it and writes your target-language speech back to it.",
       "physicalMic": "Your speaking microphone",
-      "physicalCam": "Your real camera",
       "virtualCam": "Meeting virtual camera",
       "hearingMonitor": "Play interviewer translation to headphones",
       "monitorOutput": "Translation playback device",
       "systemDefaultOutput": "System Default Output",
       "monitorVolume": "Monitor Volume",
       "monitorRate": "Monitor Rate",
+      "digitalHumanOutput": "Enable digital-human video output by default for speaking",
+      "digitalHumanProvider": "Digital human provider",
+      "digitalHumanProviderSimli": "Simli AI (Recommended)",
+      "digitalHumanProviderZego": "ZEGO (Enterprise)",
+      "simliApiKey": "Simli API Key",
+      "simliApiKeyPlaceholder": "sk-...",
+      "simliFaceId": "Face ID",
+      "simliFaceIdPlaceholder": "Copy from Simli console",
+      "simliHelp": "Configuration guide",
+      "obsHelp": "OBS setup",
+      "simliHelpTitle": "Simli AI Digital Human Setup",
+      "simliHelpDesc": "When enabled, translated audio is sent to both the virtual mic (interviewer hears it directly) and Simli AI for lip-sync. The interviewer sees a video avatar whose lips match the speech.",
+      "simliHelpStep1": "Register at Simli AI and create a digital human avatar to obtain an API Key and Face ID",
+      "simliHelpStep2": "In Settings → API Keys → Simli AI, enter your API Key",
+      "simliHelpStep3": "Enter the Face ID in the field below",
+      "simliHelpStep4": "Add the app's browser source URL to OBS and start OBS Virtual Camera",
+      "simliHelpNote": "Simli provides video sync only. Audio still flows directly from TTS to the virtual mic, unlike ZEGO which generates both audio and video in the cloud.",
+      "zegoDigitalHumanId": "Digital Human ID",
+      "zegoDigitalHumanIdPlaceholder": "Copy from ZEGO console → Avatar Management",
+      "zegoRtmpPullUrl": "CDN Relay Pull URL (RTMP, optional)",
+      "zegoRtmpPullUrlPlaceholder": "rtmp://cdn.example.com/live/stream_id",
+      "zegoHelp": "Configuration guide",
+      "zegoHelpTitle": "ZEGO Digital Human Setup",
+      "zegoHelpDesc": "When enabled, translated audio drives a digital-human avatar in real time. The interviewer sees the avatar and hears its synthesized voice.",
+      "zegoHelpStep1": "Visit the",
+      "zegoHelpConsoleLink": "ZEGO Console",
+      "zegoHelpStep1b": "to register, create an app, and apply for AIGC Digital Human service access",
+      "zegoHelpStep2": "In the app, go to Settings → API Keys → ZEGO Digital Human and enter your AppID and Server Secret",
+      "zegoHelpStep3": "In the ZEGO Console under AIGC → Digital Human → Avatar Management, choose an avatar and copy its Digital Human ID into the field below",
+      "zegoHelpStep4": "(Optional) To output the avatar video to a virtual camera, enable CDN relay in the ZEGO Console and paste the RTMP pull URL below",
+      "zegoHelpNote": "Room ID and Stream ID are generated automatically each session — no manual input needed.",
       "recommendedVirtualMic": "Recommended · meeting audio virtual channel ({name})",
-      "recommendedVirtualCam": "Recommended · StealthCopilot virtual camera ({name})",
+      "obsSourceUrl": "OBS browser source URL",
+      "obsInlineHint": "Digital-human video does not appear directly as an app camera. Add this URL as an OBS browser source, start OBS Virtual Camera, then select OBS Virtual Camera in Feishu, Zoom, or Teams.",
+      "recommendedVirtualCam": "Recommended · OBS virtual camera ({name})",
       "recommendedMonitorOutput": "Recommended · translation headphones ({name})",
       "refresh": "Re-enumerate Devices",
       "select": "Select…"
@@ -240,7 +277,6 @@
       "llmBaseURL": "LLM Base URL",
       "historyMaxTurns": "History Turns",
       "ttsProvider": "TTS Provider",
-      "lipsyncProvider": "Lip Sync Provider",
       "embeddingProvider": "Embedding Provider",
       "providerNames": {
         "xunfeiRtasr": "iFlytek RTASR",
@@ -252,7 +288,7 @@
         "systemMonitorTts": "System Speech Monitor",
         "hearingMonitorOff": "Turn Off Headphone Playback",
         "xunfeiVoiceClone": "iFlytek VoiceClone",
-        "simli": "Simli",
+        "zegoDigitalHuman": "ZEGO Digital Human",
         "pythonBridge": "Python Bridge",
         "sourceOnly": "Source Text Passthrough",
         "null": "Turn Off This Extension"
@@ -263,11 +299,10 @@
     "systemNormal": "AI assist running",
     "systemDesc": "Meeting route normal · AI assist available",
     "systemWarning": "Some assistive features are limited. The meeting route can continue.",
-    "videoDirectNormal": "Lip sync",
-    "videoDirectOpen": "Video direct",
-    "videoDirectDesc": "Video chain is in direct mode: lip sync is temporarily off, while your real camera continues into the meeting.",
+    "digitalHumanOn": "Digital human video",
+    "digitalHumanOff": "Virtual audio",
     "pipelines": "Interview Flow",
-    "pipelinesRunning": "{n}/3 flows running",
+    "pipelinesRunning": "{n}/2 flows running",
     "pipelinesIdle": "Interview flow idle",
     "startAll": "Start All",
     "stopAll": "Stop All",
@@ -277,10 +312,8 @@
     "submitHearingDraft": "Submit Sentence",
     "submitHearingDraftHint": "Submit current ASR draft (⌘/Ctrl + Enter)",
     "speakingChain": "Speaking Chain",
-    "videoChain": "Video Chain",
     "hearingDesc": "Understand the interviewer and show subtitles plus answer suggestions",
     "speakingDesc": "Turn your native-language answer into target-language speech",
-    "videoDesc": "Sync camera video into the meeting virtual camera",
     "businessInput": "Input",
     "userVisible": "You see",
     "localOutput": "Local out",
@@ -321,13 +354,10 @@
       "virtualCameraMissing": "The virtual camera is not installed, so the meeting cannot select processed video.",
       "meetingAudioMissing": "Meeting audio virtual channel is not selected.",
       "speakingMicMissing": "Your speaking microphone is not selected.",
-      "realCameraMissing": "Your real camera is not selected.",
       "meetingCameraMissing": "Meeting virtual camera is not selected.",
       "meetingAudioUnavailable": "Previously selected meeting audio virtual channel \"{name}\" is unavailable. Please select it again.",
       "speakingMicUnavailable": "Previously selected speaking microphone \"{name}\" is unavailable. Please select it again.",
-      "realCameraUnavailable": "Previously selected real camera \"{name}\" is unavailable. Please select it again.",
       "meetingCameraUnavailable": "Previously selected meeting virtual camera \"{name}\" is unavailable. Please select it again.",
-      "cameraLoop": "Real camera and meeting virtual camera are both set to \"{name}\", which creates a video loop. Use a real device or screen capture as the real camera, and keep OBS Virtual Camera as the meeting virtual camera.",
       "monitorOutputUnavailable": "Previously selected translation playback device \"{name}\" is unavailable. Please select it again or use system default output.",
       "hearingAsrMissing": "Hearing chain ASR Extension is disabled. Select iFlytek RTASR in Advanced Settings.",
       "speakingAsrMissing": "Speaking chain ASR Extension is disabled. Select iFlytek Simultaneous Interpretation in Advanced Settings.",
@@ -336,7 +366,9 @@
       "deepseekMissing": "DeepSeek Key is not configured, so answer suggestions and polishing will be limited.",
       "ttsMissing": "TTS Provider is disabled, so the speaking chain cannot output target-language speech.",
       "voiceCloneMissing": "iFlytek VoiceClone is selected, but voice training is not complete. You can switch to the default voice first.",
-      "simliMissing": "Simli Key or Face ID is not configured, so the video chain will use direct camera output without lip sync."
+      "simliMissing": "Simli AI API Key or Face ID is not configured, so digital-human video output cannot start.",
+      "zegoMissing": "ZEGO Digital Human AppID / ServerSecret is not configured, so digital-human video output cannot start.",
+      "zegoStreamMissing": "Digital Human ID, ZEGO Room ID, or Stream ID is not configured, so digital-human video output cannot start."
     },
     "version": "v0.1.0",
     "footerBrand": "StealthCopilot · {version}",
@@ -351,9 +383,7 @@
     "close": "Close",
     "subtitlePlaceholder": "Waiting for interviewer subtitles...",
     "answerPlaceholder": "Answer suggestions will stream here.",
-    "noResume": "No active resume detected, suggestion feature disabled",
-    "circuitOpenWarning": "Video chain is in direct mode: lip sync is temporarily off, while your real camera continues into the meeting.",
-    "emergencyBypass": "Switch to Video Direct"
+    "noResume": "No active resume detected, suggestion feature disabled"
   },
   "meetingGuide": {
     "entry": "Meeting setup guide",
@@ -369,14 +399,15 @@
     },
     "camera": {
       "title": "Meeting camera",
-      "desc": "Select the StealthCopilot virtual camera so the video chain outputs the synced video feed."
+      "desc": "Select OBS Virtual Camera; the digital-human video comes from the browser source in your OBS scene."
     },
     "routingTitle": "Recommended routing",
     "routes": {
       "hearing": "Meeting speaker -> virtual audio device -> hearing chain",
       "speaking": "Speaking chain -> virtual audio device -> meeting microphone",
-      "video": "Video chain -> virtual camera -> meeting camera"
+      "video": "Digital-human video source -> OBS scene -> OBS Virtual Camera -> meeting camera"
     },
+    "obsHelp": "View OBS setup and troubleshooting",
     "monitorNote": "If the meeting speaker only points to the virtual audio device, you may not hear the interviewer. Set monitor output to headphones, or create a system multi-output device that sends meeting audio to both the virtual device and your headphones.",
     "feishu": {
       "title": "Feishu Meetings",
@@ -385,6 +416,63 @@
     "tencent": {
       "title": "Tencent Meeting",
       "desc": "Open audio settings or the microphone device menu, use computer audio, then test microphone and speaker separately."
+    }
+  },
+  "obsGuide": {
+    "title": "OBS Digital-Human Video Setup",
+    "subtitle": "The app provides digital-human video to OBS, then OBS exposes it to meeting apps through OBS Virtual Camera.",
+    "cards": {
+      "source": {
+        "title": "Browser source",
+        "desc": "Add a browser source in your OBS scene and use the URL below."
+      },
+      "camera": {
+        "title": "Virtual camera",
+        "desc": "Start OBS Virtual Camera in OBS, then select it in the meeting app."
+      },
+      "refresh": {
+        "title": "Refresh devices",
+        "desc": "If the meeting app cannot see OBS Camera, restart OBS or the meeting app."
+      }
+    },
+    "sourceUrlLabel": "Browser source URL",
+    "copyUrl": "Copy URL",
+    "copied": "Copied",
+    "downloadObs": "Open OBS download page",
+    "stepsTitle": "Recommended setup",
+    "steps": {
+      "1": "Open OBS Studio and keep one normal scene.",
+      "2": "In Sources, click + and choose Browser.",
+      "3": "Paste the URL above; start with 512 x 512 for width and height.",
+      "4": "After confirming, right-click the source in preview and choose Transform -> Fit to Screen.",
+      "5": "Start the app speaking chain and make sure digital-human output is enabled.",
+      "6": "In OBS, click Start Virtual Camera.",
+      "7": "Back in Feishu, Zoom, or Teams, switch camera to OBS Virtual Camera."
+    },
+    "notesTitle": "Notes",
+    "notes": {
+      "useRoot": "Use the root URL for the OBS browser source; do not manually enter /stream.mjpg.",
+      "keepRunning": "OBS must stay open. Selecting OBS Virtual Camera in the meeting app is not enough by itself.",
+      "fitToScreen": "If the video is cropped or scaled oddly, run Fit to Screen on the browser source in OBS."
+    },
+    "troubleshootingTitle": "Troubleshooting",
+    "troubleshooting": {
+      "unavailable": {
+        "title": "OBS Virtual Camera is missing: ",
+        "desc": "Confirm OBS Virtual Camera is started in OBS. On macOS, after installing or updating OBS Camera Extension, you may need to restart the system or reopen the meeting app."
+      },
+      "black": {
+        "title": "OBS is black: ",
+        "desc": "Confirm the speaking chain is running, digital-human output is enabled, the browser source URL is the root URL, and wait for the first avatar frame."
+      },
+      "flicker": {
+        "title": "Video flickers or glitches: ",
+        "desc": "Stop and restart the speaking chain, then refresh the OBS browser source. If it continues, check logs for simli video or ffmpeg stderr."
+      },
+      "sync": {
+        "title": "Audio and lips are out of sync: ",
+        "desc": "Simli mode delays local audio by default to match the video. If it is still off, close other heavy apps, then restart the speaking chain and OBS Virtual Camera."
+      }
     }
   },
   "deviceQuickConfig": {
@@ -399,10 +487,6 @@
     "monitorOutput": {
       "title": "Configure translation playback",
       "desc": "Play interviewer translations to your headphones without sending them into the meeting microphone."
-    },
-    "physicalCamera": {
-      "title": "Configure your camera",
-      "desc": "StealthCopilot uses it as the raw camera feed before video-chain processing."
     },
     "virtualCamera": {
       "title": "Configure meeting virtual camera",
@@ -419,9 +503,8 @@
     "targetLanguageSpeech": "Target-language speech",
     "speechTransformReady": "Speech transform ready",
     "clonedVoice": "Cloned voice",
-    "cameraImage": "Your real camera",
-    "lipSync": "Lip sync",
-    "videoSyncStatus": "Video sync status",
+    "digitalHumanAvatar": "Digital human avatar",
+    "digitalHumanOutput": "Digital human A/V",
     "virtualMicBlackhole": "BlackHole Virtual Mic",
     "xunfeiTranslation": "iFlytek Simultaneous Interpretation",
     "chineseSubtitle": "Chinese Subtitle",
@@ -435,8 +518,6 @@
     "deepseekPolish": "DeepSeek Polish",
     "xunfeiVoiceClone": "iFlytek VoiceClone",
     "virtualMic": "Virtual Mic",
-    "physicalCam": "Physical Camera",
-    "simliAvatar": "Simli AI Avatar",
     "virtualCam": "Meeting virtual camera",
     "optional": "optional",
     "plus": "+"

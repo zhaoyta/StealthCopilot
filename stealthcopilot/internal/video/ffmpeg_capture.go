@@ -8,8 +8,6 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-
-	"github.com/zhaoyta/stealthcopilot/internal/lipsync"
 )
 
 // NewSystemCaptureProvider returns the best available camera capture provider.
@@ -27,7 +25,7 @@ type FFmpegCaptureProvider struct {
 	cmd    *exec.Cmd
 }
 
-func (p *FFmpegCaptureProvider) Start(ctx context.Context, deviceName string) (<-chan lipsync.VideoFrame, error) {
+func (p *FFmpegCaptureProvider) Start(ctx context.Context, deviceName string) (<-chan Frame, error) {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		return nil, fmt.Errorf("ffmpeg 未安装，无法启动真实摄像头采集: %w", err)
 	}
@@ -59,7 +57,7 @@ func (p *FFmpegCaptureProvider) Start(ctx context.Context, deviceName string) (<
 	p.cmd = cmd
 	p.mu.Unlock()
 
-	ch := make(chan lipsync.VideoFrame, 4)
+	ch := make(chan Frame, 4)
 	go func() {
 		defer close(ch)
 		defer func() {
@@ -76,7 +74,7 @@ func (p *FFmpegCaptureProvider) Start(ctx context.Context, deviceName string) (<
 			}
 			pts += FrameDur.Milliseconds()
 			select {
-			case ch <- lipsync.VideoFrame{Data: frame, PTS: pts}:
+			case ch <- Frame{Data: frame, PTS: pts}:
 			case <-runCtx.Done():
 				return
 			default:

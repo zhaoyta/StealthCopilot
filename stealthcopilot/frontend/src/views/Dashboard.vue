@@ -8,8 +8,6 @@ import {
   SubmitHearingDraft,
   StartSpeakingChain,
   StopSpeakingChain,
-  StartVideoChain,
-  StopVideoChain,
   CheckDeps,
   EnumerateDevices,
   GetConfig,
@@ -34,8 +32,8 @@ const emit = defineEmits<{
 }>()
 
 type ChainStatus = 'closed' | 'idle' | 'running' | 'error'
-type ChainTarget = 'hearing' | 'speaking' | 'video'
-type DeviceConfigTarget = 'meetingAudio' | 'physicalMic' | 'monitorOutput' | 'physicalCamera' | 'virtualCamera'
+type ChainTarget = 'hearing' | 'speaking'
+type DeviceConfigTarget = 'meetingAudio' | 'physicalMic' | 'monitorOutput' | 'virtualCamera'
 type StepKey = 'asr' | 'trans' | 'tts'
 const STEP_KEYS: StepKey[] = ['asr', 'trans', 'tts']
 
@@ -63,8 +61,7 @@ interface StepDetail {
 
 const hearingStatus = ref<ChainStatus>('closed')
 const speakingStatus = ref<ChainStatus>('closed')
-const videoStatus = ref<ChainStatus>('closed')
-const circuitOpen = ref(false)
+const speakingStarting = ref(false)
 const errorMsg = ref('')
 const startupIssues = ref<string[]>([])
 const startupWarnings = ref<string[]>([])
@@ -72,6 +69,7 @@ const hearingSourceLang = ref('en')
 const hearingTargetLang = ref('zh')
 const speakingInputLang = ref('zh')
 const speakingOutputLang = ref('en')
+const digitalHumanEnabled = ref(false)
 const latestSpeakingSourceText = ref('')
 const latestSpeakingTargetText = ref('')
 const hearingSteps = ref<Record<StepKey, StepState>>(emptyStepMap())
@@ -85,10 +83,10 @@ const pendingStartTargets = ref<ChainTarget[]>([])
 const stepDetail = ref<StepDetail | null>(null)
 
 const runningCount = computed(() =>
-  [hearingStatus.value, speakingStatus.value, videoStatus.value].filter(s => s === 'running').length
+  [hearingStatus.value, speakingStatus.value].filter(s => s === 'running').length
 )
 const systemOk = computed(() =>
-  !circuitOpen.value && hearingStatus.value !== 'error' && speakingStatus.value !== 'error' && videoStatus.value !== 'error'
+  hearingStatus.value !== 'error' && speakingStatus.value !== 'error'
 )
 const hearingLangPair = computed(() =>
   `${langLabel(hearingSourceLang.value)} → ${langLabel(hearingTargetLang.value)}`
@@ -169,7 +167,9 @@ async function toggleSpeaking(on: boolean, options: ToggleOptions = {}) {
     speakingSteps.value = emptyStepMap()
     latestSpeakingSourceText.value = ''
     latestSpeakingTargetText.value = ''
+    speakingStarting.value = true
     const err = await StartSpeakingChain()
+    speakingStarting.value = false
     if (err) { speakingStatus.value = 'error'; errorMsg.value = err; return }
     speakingStatus.value = 'running'
   } else {
@@ -178,33 +178,8 @@ async function toggleSpeaking(on: boolean, options: ToggleOptions = {}) {
   }
 }
 
-async function toggleVideo(on: boolean, options: ToggleOptions = {}) {
-  if (!options.preserveMessages) {
-    errorMsg.value = ''
-    startupIssues.value = []
-    startupWarnings.value = []
-  }
-  if (on) {
-    if (!options.preserveMessages) {
-      const canStart = await validateStartupTargets(['video'])
-      if (!canStart || startupWarnings.value.length) {
-        pendingStartTargets.value = ['video']
-        showPreflightDialog.value = true
-        return
-      }
-    }
-    const err = await StartVideoChain()
-    if (err) { videoStatus.value = 'error'; errorMsg.value = err; return }
-    videoStatus.value = 'running'
-  } else {
-    await StopVideoChain()
-    videoStatus.value = 'closed'
-    circuitOpen.value = false
-  }
-}
-
 async function startAll() {
-  const targets: ChainTarget[] = ['hearing', 'speaking', 'video']
+  const targets: ChainTarget[] = ['hearing', 'speaking']
   const canStart = await validateStartupTargets(targets)
   if (!canStart || startupWarnings.value.length) {
     pendingStartTargets.value = targets
@@ -219,7 +194,6 @@ async function runStartTargets(targets: ChainTarget[]) {
   const tasks: Promise<void>[] = []
   if (targets.includes('hearing') && !chainSwitchOn(hearingStatus.value)) tasks.push(toggleHearing(true, { preserveMessages: true }))
   if (targets.includes('speaking') && !chainSwitchOn(speakingStatus.value)) tasks.push(toggleSpeaking(true, { preserveMessages: true }))
-  if (targets.includes('video') && !chainSwitchOn(videoStatus.value)) tasks.push(toggleVideo(true, { preserveMessages: true }))
   await Promise.allSettled(tasks)
   startupWarnings.value = warnings
   pendingStartTargets.value = []
@@ -227,7 +201,7 @@ async function runStartTargets(targets: ChainTarget[]) {
 
 async function continueStartAll() {
   showPreflightDialog.value = false
-  const targets = pendingStartTargets.value.length ? [...pendingStartTargets.value] : (['hearing', 'speaking', 'video'] as ChainTarget[])
+  const targets = pendingStartTargets.value.length ? [...pendingStartTargets.value] : (['hearing', 'speaking'] as ChainTarget[])
   await runStartTargets(targets)
 }
 
@@ -244,7 +218,6 @@ function openSettingsFromPreflight() {
 async function stopAll() {
   if (chainSwitchOn(hearingStatus.value)) await toggleHearing(false)
   if (chainSwitchOn(speakingStatus.value)) await toggleSpeaking(false)
-  if (chainSwitchOn(videoStatus.value)) await toggleVideo(false)
 }
 
 async function loadDashboardConfig() {
@@ -254,6 +227,7 @@ async function loadDashboardConfig() {
   hearingTargetLang.value = cfg.hearing_target_lang || 'zh'
   speakingInputLang.value = cfg.speaking_input_lang || 'zh'
   speakingOutputLang.value = cfg.speaking_output_lang || 'en'
+  digitalHumanEnabled.value = Boolean(cfg.digital_human_enabled)
   const hearingAsrProvider = providerLabel(cfg.hearing_asr_provider || 'xunfei_simult', 'hearingAsr')
   const hearingTransProvider = providerLabel(cfg.hearing_trans_provider || 'xunfei_simult', 'hearingTrans')
   const hearingTtsProvider = providerLabel(cfg.hearing_tts_provider || 'system', 'hearingTts')
@@ -261,7 +235,6 @@ async function loadDashboardConfig() {
   const speakingTransProvider = providerLabel(cfg.speaking_trans_provider || 'xunfei_simult', 'speakingTrans')
   const speakingTtsProvider = providerLabel(cfg.speaking_tts_provider || 'system', 'speakingTts')
   const llmProvider = providerLabel(cfg.llm_provider || 'deepseek')
-  const lipsyncProvider = providerLabel(cfg.lipsync_provider || 'simli')
   const embeddingProvider = providerLabel(cfg.embedding_provider || 'python_bridge')
 
   channelNames.value = {
@@ -283,8 +256,8 @@ async function loadDashboardConfig() {
     ttsOutput: speakingTtsProvider,
     xunfeiVoiceClone: speakingTtsProvider,
     virtualMic: deviceLabel(cfg.virtual_mic_name),
-    physicalCamera: deviceLabel(cfg.physical_cam_name),
-    simli: lipsyncProvider,
+    digitalHuman: digitalHumanEnabled.value ? t('dashboard.digitalHumanOn') : t('dashboard.digitalHumanOff'),
+    zegoStream: cfg.zego_stream_id || t('dashboard.channelUnset'),
     virtualCamera: deviceLabel(cfg.virtual_cam_name),
   }
 }
@@ -300,10 +273,9 @@ async function validateStartupTargets(targets: ChainTarget[]): Promise<boolean> 
     const warnings: string[] = []
     const audioInputs = devices.audio_inputs || []
     const audioOutputs = devices.audio_outputs || []
-    const videoInputs = devices.video_inputs || []
     const needsHearing = targets.includes('hearing')
     const needsSpeaking = targets.includes('speaking')
-    const needsVideo = targets.includes('video')
+    const needsDigitalHuman = needsSpeaking && Boolean(cfg.digital_human_enabled)
     const needsVirtualAudio = needsHearing || needsSpeaking
     const hearingUsesXunfei = needsHearing &&
       (cfg.hearing_asr_provider === 'xunfei_simult' || cfg.hearing_trans_provider === 'xunfei_simult')
@@ -313,27 +285,16 @@ async function validateStartupTargets(targets: ChainTarget[]): Promise<boolean> 
 
     if ((needsVirtualAudio || needsSpeaking) && deps.ffmpeg !== 'installed') issues.push(t('dashboard.preflight.ffmpegMissing'))
     if (needsVirtualAudio && deps.virtual_mic !== 'installed') issues.push(t('dashboard.preflight.virtualAudioMissing'))
-    if (needsVideo && deps.virtual_cam !== 'installed') issues.push(t('dashboard.preflight.virtualCameraMissing'))
+    if (needsDigitalHuman && deps.virtual_cam !== 'installed') issues.push(t('dashboard.preflight.virtualCameraMissing'))
 
     if (needsVirtualAudio && !cfg.virtual_mic_name) issues.push(t('dashboard.preflight.meetingAudioMissing'))
     if (needsSpeaking && !cfg.physical_mic_name) issues.push(t('dashboard.preflight.speakingMicMissing'))
-    if (needsVideo && !cfg.physical_cam_name) issues.push(t('dashboard.preflight.realCameraMissing'))
-    if (needsVideo && !cfg.virtual_cam_name) issues.push(t('dashboard.preflight.meetingCameraMissing'))
+    if (needsDigitalHuman && !cfg.virtual_cam_name) issues.push(t('dashboard.preflight.meetingCameraMissing'))
     if (needsVirtualAudio && cfg.virtual_mic_name && !deviceExists(audioInputs, cfg.virtual_mic_name)) {
       issues.push(t('dashboard.preflight.meetingAudioUnavailable', { name: cfg.virtual_mic_name }))
     }
     if (needsSpeaking && cfg.physical_mic_name && !deviceExists(audioInputs, cfg.physical_mic_name)) {
       issues.push(t('dashboard.preflight.speakingMicUnavailable', { name: cfg.physical_mic_name }))
-    }
-    if (needsVideo && cfg.physical_cam_name && !deviceExists(videoInputs, cfg.physical_cam_name)) {
-      issues.push(t('dashboard.preflight.realCameraUnavailable', { name: cfg.physical_cam_name }))
-    }
-    if (needsVideo && cfg.virtual_cam_name && !deviceExists(videoInputs, cfg.virtual_cam_name)) {
-      issues.push(t('dashboard.preflight.meetingCameraUnavailable', { name: cfg.virtual_cam_name }))
-    }
-    if (needsVideo && cfg.physical_cam_name && cfg.virtual_cam_name &&
-      normalizeDeviceName(cfg.physical_cam_name) === normalizeDeviceName(cfg.virtual_cam_name)) {
-      issues.push(t('dashboard.preflight.cameraLoop', { name: cfg.virtual_cam_name }))
     }
     if (needsHearing && cfg.hearing_monitor_enabled && cfg.monitor_output_name && !deviceExists(audioOutputs, cfg.monitor_output_name)) {
       issues.push(t('dashboard.preflight.monitorOutputUnavailable', { name: cfg.monitor_output_name }))
@@ -355,8 +316,20 @@ async function validateStartupTargets(targets: ChainTarget[]): Promise<boolean> 
     if (needsSpeaking && cfg.speaking_tts_provider === 'xunfei_voiceclone' && !cfg.xunfei_tts_asset_id_set) {
       issues.push(t('dashboard.preflight.voiceCloneMissing'))
     }
-    if (needsVideo && cfg.lipsync_provider === 'simli' && (!cfg.simli_key_set || !cfg.simli_face_id_set)) {
-      warnings.push(t('dashboard.preflight.simliMissing'))
+    if (needsDigitalHuman) {
+      const dhProvider = cfg.digital_human_provider || 'simli'
+      if (dhProvider === 'zego') {
+        if (!cfg.zego_app_id_set || !cfg.zego_server_secret_set) {
+          issues.push(t('dashboard.preflight.zegoMissing'))
+        }
+        if (!cfg.zego_digital_human_id || !cfg.zego_room_id || !cfg.zego_stream_id) {
+          issues.push(t('dashboard.preflight.zegoStreamMissing'))
+        }
+      } else {
+        if (!cfg.simli_api_key_set || !cfg.simli_face_id) {
+          issues.push(t('dashboard.preflight.simliMissing'))
+        }
+      }
     }
 
     startupIssues.value = issues
@@ -396,8 +369,6 @@ function normalizeDeviceName(name: string): string {
 
 onMounted(async () => {
   window.addEventListener('keydown', handleGlobalKeydown)
-  EventsOn('circuit:open',   () => { circuitOpen.value = true  })
-  EventsOn('circuit:closed', () => { circuitOpen.value = false })
   // hearing:error：讯飞重连耗尽，链路中断，更新听力链状态并展示错误信息
   EventsOn('hearing:error', (msg: string) => {
     hearingStatus.value = 'error'
@@ -428,8 +399,6 @@ onMounted(async () => {
 })
 onUnmounted(() => {
   window.removeEventListener('keydown', handleGlobalKeydown)
-  EventsOff('circuit:open')
-  EventsOff('circuit:closed')
   EventsOff('hearing:error')
   EventsOff('hearing:step')
   EventsOff('speaking:start')
@@ -525,7 +494,6 @@ function providerLabel(provider: string, stage?: string): string {
     openai_compatible: 'openaiCompatible',
     system: 'systemTts',
     xunfei_voiceclone: 'xunfeiVoiceClone',
-    simli: 'simli',
     python_bridge: 'pythonBridge',
     null: 'null',
   }
@@ -535,6 +503,27 @@ function providerLabel(provider: string, stage?: string): string {
 
 function deviceLabel(name?: string): string {
   return name && name.trim() ? name : t('dashboard.channelUnset')
+}
+
+async function toggleDigitalHumanOutput() {
+  if (chainSwitchOn(speakingStatus.value)) return
+  const next = !digitalHumanEnabled.value
+  digitalHumanEnabled.value = next
+  try {
+    // @ts-expect-error — Wails 运行时注入
+    const cur = await window.go.main.App.GetConfig()
+    // @ts-expect-error — Wails 运行时注入
+    const err = await window.go.main.App.SaveLocalConfig({ ...cur, digital_human_enabled: next })
+    if (err) {
+      digitalHumanEnabled.value = !next
+      errorMsg.value = err
+    } else {
+      await loadDashboardConfig()
+    }
+  } catch (e: unknown) {
+    digitalHumanEnabled.value = !next
+    errorMsg.value = String(e)
+  }
 }
 
 // 切换 UI 语言并持久化（fire-and-forget）
@@ -774,14 +763,36 @@ async function switchLocale(code: 'zh-CN' | 'en-US') {
           <div class="flex items-center gap-3">
             <span class="text-xs text-gray-500 hidden sm:block">{{ speakingLangPair }}</span>
             <button
-              class="relative w-11 h-6 rounded-full transition-colors duration-200 focus:outline-none"
-              :class="chainSwitchOn(speakingStatus) ? 'bg-purple-500' : 'bg-gray-600'"
+              class="inline-flex h-7 items-center gap-2 rounded-md border px-2.5 text-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              :class="digitalHumanEnabled
+                ? 'border-cyan-400/45 bg-cyan-500/15 text-cyan-100'
+                : 'border-white/10 bg-white/5 text-gray-400'"
+              :disabled="chainSwitchOn(speakingStatus)"
+              @click="toggleDigitalHumanOutput"
+            >
+              <Video :size="13" />
+              <span>{{ digitalHumanEnabled ? t('dashboard.digitalHumanOn') : t('dashboard.digitalHumanOff') }}</span>
+            </button>
+            <button
+              class="relative w-11 h-6 rounded-full transition-colors duration-200 focus:outline-none disabled:opacity-60"
+              :class="chainSwitchOn(speakingStatus) ? 'bg-purple-500' : (speakingStarting ? 'bg-purple-400' : 'bg-gray-600')"
+              :disabled="speakingStarting"
               @click="toggleSpeaking(!chainSwitchOn(speakingStatus))"
             >
               <span
+                v-if="!speakingStarting"
                 class="absolute top-0.5 left-0 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200"
                 :class="chainSwitchOn(speakingStatus) ? 'translate-x-[22px]' : 'translate-x-0.5'"
               />
+              <span
+                v-else
+                class="absolute inset-0 flex items-center justify-center"
+              >
+                <svg class="h-3.5 w-3.5 animate-spin text-white" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                </svg>
+              </span>
             </button>
           </div>
         </div>
@@ -847,17 +858,17 @@ async function switchLocale(code: 'zh-CN' | 'en-US') {
           <div class="business-lane">
             <span class="lane-label">{{ t('dashboard.meetingOutput') }}</span>
             <PipelineStep
-              :label="t('pipeline.clonedVoice')"
+              :label="digitalHumanEnabled ? t('pipeline.digitalHumanAvatar') : t('pipeline.clonedVoice')"
               :channel="channelLabel('ttsOutput')"
               :active="speakingStatus === 'running'"
             />
             <ChevronRight :size="12" class="text-gray-600 flex-shrink-0" />
             <PipelineStep
-              :label="t('pipeline.virtualMic')"
-              :channel="channelLabel('virtualMic')"
+              :label="digitalHumanEnabled ? t('pipeline.digitalHumanOutput') : t('pipeline.virtualMic')"
+              :channel="digitalHumanEnabled ? channelLabel('virtualCamera') : channelLabel('virtualMic')"
               :active="speakingStatus === 'running'"
               configurable
-              @configure="openDeviceConfig('meetingAudio')"
+              @configure="openDeviceConfig(digitalHumanEnabled ? 'virtualCamera' : 'meetingAudio')"
             />
           </div>
           <div class="business-lane opacity-75">
@@ -888,110 +899,6 @@ async function switchLocale(code: 'zh-CN' | 'en-US') {
         </div>
       </div>
 
-      <!-- ===== 视频链卡片 ===== -->
-      <div class="pipeline-card bg-[#161b27] border border-white/8 rounded-2xl p-4">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-3">
-            <div class="w-9 h-9 rounded-xl bg-cyan-500/20 flex items-center justify-center flex-shrink-0">
-              <Video :size="18" class="text-cyan-400" />
-            </div>
-            <div>
-              <div class="flex items-center gap-2">
-                <span class="font-semibold text-sm">{{ t('dashboard.videoChain') }}</span>
-                <span
-                  class="px-1.5 py-0.5 text-[10px] font-bold rounded"
-                  :class="statusBadgeClass(videoStatus)"
-                >
-                  {{ t(`dashboard.status.${videoStatus}`) }}
-                </span>
-                <span
-                  class="px-1.5 py-0.5 text-[10px] font-bold rounded border"
-                  :class="circuitOpen
-                    ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40'
-                    : 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30'"
-                >
-                  {{ circuitOpen ? t('dashboard.videoDirectOpen') : t('dashboard.videoDirectNormal') }}
-                </span>
-              </div>
-              <p class="text-xs text-gray-500 mt-0.5">{{ t('dashboard.videoDesc') }}</p>
-            </div>
-          </div>
-          <div class="flex items-center gap-3">
-            <button
-              class="relative w-11 h-6 rounded-full transition-colors duration-200 focus:outline-none"
-              :class="chainSwitchOn(videoStatus) ? 'bg-cyan-500' : 'bg-gray-600'"
-              @click="toggleVideo(!chainSwitchOn(videoStatus))"
-            >
-              <span
-                class="absolute top-0.5 left-0 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200"
-                :class="chainSwitchOn(videoStatus) ? 'translate-x-[22px]' : 'translate-x-0.5'"
-              />
-            </button>
-          </div>
-        </div>
-        <div
-          v-if="circuitOpen"
-          class="mt-3 rounded-xl border border-yellow-500/25 bg-yellow-500/10 px-4 py-2 text-xs leading-relaxed text-yellow-100"
-        >
-          {{ t('dashboard.videoDirectDesc') }}
-        </div>
-        <div class="mt-4 space-y-2">
-          <div class="business-lane">
-            <span class="lane-label">{{ t('dashboard.businessInput') }}</span>
-            <PipelineStep
-              :label="t('pipeline.cameraImage')"
-              :channel="channelLabel('physicalCamera')"
-              :active="videoStatus === 'running'"
-              configurable
-              @configure="openDeviceConfig('physicalCamera')"
-            />
-            <ChevronRight :size="12" class="text-gray-600 flex-shrink-0" />
-            <PipelineStep
-              :label="t('pipeline.lipSync')"
-              :channel="channelLabel('simli')"
-              :active="videoStatus === 'running'"
-            />
-          </div>
-          <div class="business-lane">
-            <span class="lane-label">{{ t('dashboard.userVisible') }}</span>
-            <PipelineStep
-              :label="t('pipeline.videoSyncStatus')"
-              :active="videoStatus === 'running'"
-            />
-          </div>
-          <div class="business-lane">
-            <span class="lane-label">{{ t('dashboard.meetingOutput') }}</span>
-            <PipelineStep
-              :label="t('pipeline.virtualCam')"
-              :channel="channelLabel('virtualCamera')"
-              :active="videoStatus === 'running'"
-              configurable
-              @configure="openDeviceConfig('virtualCamera')"
-            />
-          </div>
-          <div class="business-lane opacity-75">
-            <span class="lane-label">{{ t('dashboard.diagnostics') }}</span>
-            <PipelineStep
-              :label="t('pipeline.physicalCam')"
-              :channel="channelLabel('physicalCamera')"
-              configurable
-              @configure="openDeviceConfig('physicalCamera')"
-            />
-            <ChevronRight :size="12" class="text-gray-600 flex-shrink-0" />
-            <PipelineStep
-              :label="t('pipeline.simliAvatar')"
-              :channel="channelLabel('simli')"
-            />
-            <ChevronRight :size="12" class="text-gray-600 flex-shrink-0" />
-            <PipelineStep
-              :label="t('pipeline.virtualCam')"
-              :channel="channelLabel('virtualCamera')"
-              configurable
-              @configure="openDeviceConfig('virtualCamera')"
-            />
-          </div>
-        </div>
-      </div>
     </div>
 
     <!-- ===== 底部操作栏 ===== -->
@@ -999,10 +906,10 @@ async function switchLocale(code: 'zh-CN' | 'en-US') {
       <div class="flex items-center gap-2">
         <button
           class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-colors"
-          :class="runningCount === 3
+          :class="runningCount === 2
             ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
             : 'bg-blue-600 hover:bg-blue-500 text-white'"
-          :disabled="runningCount === 3"
+          :disabled="runningCount === 2"
           @click="startAll"
         >
           <Play :size="14" />

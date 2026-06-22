@@ -4,8 +4,6 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/zhaoyta/stealthcopilot/internal/lipsync"
 )
 
 func TestRingBuffer_PushAndAlign(t *testing.T) {
@@ -16,7 +14,7 @@ func TestRingBuffer_PushAndAlign(t *testing.T) {
 
 	// 推入匹配的音视频帧（PTS 差值 = 0，满足 ≤40ms 条件）
 	rb.PushAudio(AudioFrame{Data: []byte{1}, PTS: 100})
-	rb.PushVideo(lipsync.VideoFrame{Data: []byte{2}, PTS: 100})
+	rb.PushVideo(Frame{Data: []byte{2}, PTS: 100})
 
 	select {
 	case pair := <-rb.Output():
@@ -36,7 +34,7 @@ func TestRingBuffer_NoAlignWhenDeltaTooLarge(t *testing.T) {
 
 	// PTS 差值 100ms > 40ms，不应产生对齐帧对
 	rb.PushAudio(AudioFrame{Data: []byte{1}, PTS: 0})
-	rb.PushVideo(lipsync.VideoFrame{Data: []byte{2}, PTS: 100})
+	rb.PushVideo(Frame{Data: []byte{2}, PTS: 100})
 
 	select {
 	case <-rb.Output():
@@ -71,7 +69,7 @@ func TestRingBuffer_LagTriggersCallback(t *testing.T) {
 
 	// 音频 PTS = 500，视频 PTS = 0 → lag = 500ms > 300ms → 触发回调
 	rb.PushAudio(AudioFrame{PTS: 500})
-	rb.PushVideo(lipsync.VideoFrame{PTS: 0})
+	rb.PushVideo(Frame{PTS: 0})
 
 	time.Sleep(50 * time.Millisecond)
 	if !triggered.Load() {
@@ -82,7 +80,7 @@ func TestRingBuffer_LagTriggersCallback(t *testing.T) {
 func TestRingBuffer_Drain(t *testing.T) {
 	rb := NewRingBuffer(16, nil)
 	rb.PushAudio(AudioFrame{PTS: 1})
-	rb.PushVideo(lipsync.VideoFrame{PTS: 1})
+	rb.PushVideo(Frame{PTS: 1})
 	rb.Drain()
 
 	rb.mu.Lock()

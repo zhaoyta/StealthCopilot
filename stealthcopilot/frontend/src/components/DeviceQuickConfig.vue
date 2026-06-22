@@ -7,7 +7,7 @@ import type { config as WailsConfig } from '../../wailsjs/go/models'
 
 defineOptions({ name: 'DeviceQuickConfig' })
 
-type Target = 'meetingAudio' | 'physicalMic' | 'monitorOutput' | 'physicalCamera' | 'virtualCamera'
+type Target = 'meetingAudio' | 'physicalMic' | 'monitorOutput' | 'virtualCamera'
 
 interface DeviceOption { id: string; name: string }
 
@@ -36,7 +36,6 @@ const form = reactive({
   physicalMic: '',
   monitorOutput: '',
   hearingMonitorEnabled: false,
-  physicalCam: '',
   virtualCam: '',
 })
 
@@ -50,7 +49,7 @@ function isVirtualAudioDevice(name: string): boolean {
 
 function isVirtualCameraDevice(name: string): boolean {
   const n = name.toLowerCase()
-  return n.includes('stealthvirtualcam') || n.includes('stealth virtual') || n.includes('obs virtual')
+  return n.includes('obs virtual')
 }
 
 function optionLabel(device: DeviceOption, role: Target): string {
@@ -80,7 +79,6 @@ async function load() {
     form.physicalMic = cfg.physical_mic_name || ''
     form.monitorOutput = cfg.monitor_output_name || ''
     form.hearingMonitorEnabled = Boolean(cfg.hearing_monitor_enabled)
-    form.physicalCam = cfg.physical_cam_name || ''
     form.virtualCam = cfg.virtual_cam_name || ''
   } catch (e: unknown) {
     message.value = String(e)
@@ -100,7 +98,6 @@ async function save() {
     patch.monitor_output_name = form.monitorOutput
     patch.hearing_monitor_enabled = form.hearingMonitorEnabled
   }
-  if (props.target === 'physicalCamera') patch.physical_cam_name = form.physicalCam
   if (props.target === 'virtualCamera') patch.virtual_cam_name = form.virtualCam
 
   try {
@@ -181,14 +178,6 @@ watch(() => [props.open, props.target] as const, () => {
               </select>
             </label>
           </div>
-
-          <label v-if="target === 'physicalCamera'" class="block">
-            <span class="mb-1 block text-xs text-gray-400">{{ t('settings.devices.physicalCam') }}</span>
-            <select v-model="form.physicalCam" class="form-select">
-              <option value="">{{ t('settings.devices.select') }}</option>
-              <option v-for="d in videoInputs" :key="d.id" :value="d.name">{{ d.name }}</option>
-            </select>
-          </label>
 
           <label v-if="target === 'virtualCamera'" class="block">
             <span class="mb-1 block text-xs text-gray-400">{{ t('settings.devices.virtualCam') }}</span>

@@ -1,24 +1,24 @@
 ## ADDED Requirements
 
-### Requirement: 自绑定虚拟摄像头驱动
-系统 SHALL 内置基于 AkVirtualCamera 的虚拟摄像头驱动，无需用户安装 OBS，App 首次启动时自动注册驱动，向 Zoom/Teams 等会议软件暴露为可选摄像头设备。
+### Requirement: OBS 浏览器源虚拟摄像头输出
+系统 SHALL 不再注册自研虚拟摄像头驱动；数字人视频输出 SHALL 通过本机 OBS 浏览器源交给 OBS Studio，再由 OBS Virtual Camera 暴露给会议软件。
 
-#### Scenario: 驱动自动注册（macOS）
-- **WHEN** App 首次启动或驱动未检测到
-- **THEN** 自动注册 CoreMediaIO DAL 插件，需要一次性用户授权（系统扩展或 root 权限弹窗），注册完成后无需重复
+#### Scenario: 提供 OBS 浏览器源
+- **WHEN** 说话链启动且数字人视频输出启用
+- **THEN** 后端启动本地 HTTP 服务，提供 `http://127.0.0.1:18765/` 作为 OBS Browser Source 页面
 
-#### Scenario: 驱动自动注册（Windows）
-- **WHEN** App 首次启动或驱动未检测到
-- **THEN** 自动注册 DirectShow Filter（regsvr32），需要 UAC 提权弹窗，注册完成后无需重复
+#### Scenario: 输出实时视频流
+- **WHEN** Simli WebRTC 视频帧被成功解码
+- **THEN** 后端将最新视频帧异步编码为 OBS 页面可播放的 MJPEG 流，不阻塞 Simli RTP/ffmpeg 解码链路
 
-#### Scenario: 视频帧写入虚拟摄像头
-- **WHEN** 虚拟摄像头驱动已注册且处于激活状态
-- **THEN** Go 后端通过共享内存 / named pipe 将 BGRA 视频帧推送到驱动，驱动向系统暴露该帧流
+#### Scenario: OBS 负责系统摄像头
+- **WHEN** 用户需要在飞书、Zoom 或 Teams 中输出数字人画面
+- **THEN** 用户 MUST 在 OBS 中添加浏览器源 `http://127.0.0.1:18765/`，启动 OBS Virtual Camera，并在会议软件中选择 `OBS Virtual Camera`
 
-#### Scenario: 驱动未注册时的降级
-- **WHEN** 驱动注册失败或用户拒绝授权
-- **THEN** 前端提示用户"虚拟摄像头不可用，视频管道将禁用"，说话链和听力链不受影响
+#### Scenario: OBS 不可用
+- **WHEN** OBS App 未运行、OBS Virtual Camera 未启动或 macOS OBS Camera Extension 不可用
+- **THEN** 会议软件可能无法选择 `OBS Virtual Camera` 或只能看到 OBS 占位/黑屏；应用 SHALL 提示用户按 OBS 配置指南处理，而不是尝试注册自研摄像头驱动
 
-#### Scenario: 设备枚举
-- **WHEN** 用户在设置中打开设备绑定
-- **THEN** 系统枚举所有可用摄像头设备（包含已注册的虚拟摄像头），用户可选择作为输出设备
+#### Scenario: 数字人关闭
+- **WHEN** 数字人视频输出关闭
+- **THEN** 说话链 SHALL 只输出虚拟麦克风音频，不要求 OBS 浏览器源或 OBS Virtual Camera 可用

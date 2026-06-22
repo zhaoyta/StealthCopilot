@@ -14,7 +14,7 @@ interface KeyField {
   show: boolean
 }
 
-// 必填：讯飞实时转写/同声传译/机器翻译、DeepSeek；可选：讯飞声音复刻、Simli
+// 必填：讯飞实时转写/同声传译/机器翻译、DeepSeek；可选：讯飞声音复刻、ZEGO 数字人
 const fields = reactive<KeyField[]>([
   { service: 'xunfei_simult', field: 'app_id', label: t('settings.apiKeys.xunfei.simultAppId'), required: true, value: '', show: false },
   { service: 'xunfei_simult', field: 'api_key', label: t('settings.apiKeys.xunfei.simultApiKey'), required: true, value: '', show: false },
@@ -23,7 +23,8 @@ const fields = reactive<KeyField[]>([
   { service: 'xunfei_tts', field: 'api_key', label: t('settings.apiKeys.xunfei.ttsApiKey'), required: false, value: '', show: false },
   { service: 'xunfei_tts', field: 'api_secret', label: t('settings.apiKeys.xunfei.ttsApiSecret'), required: false, value: '', show: false },
   { service: 'deepseek', field: 'key', label: t('settings.apiKeys.deepseek.key'), required: true, value: '', show: false },
-  { service: 'simli', field: 'key', label: t('settings.apiKeys.simli.key'), required: false, value: '', show: false },
+  { service: 'zego_digital_human', field: 'app_id', label: t('settings.apiKeys.zego.appId'), required: false, value: '', show: false },
+  { service: 'zego_digital_human', field: 'server_secret', label: t('settings.apiKeys.zego.serverSecret'), required: false, value: '', show: false },
 ])
 
 const saving = ref(false)

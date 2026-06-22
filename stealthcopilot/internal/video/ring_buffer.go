@@ -9,8 +9,6 @@ package video
 import (
 	"sync"
 	"time"
-
-	"github.com/zhaoyta/stealthcopilot/internal/lipsync"
 )
 
 const (
@@ -33,7 +31,7 @@ type AudioFrame struct {
 // AlignedPair 一对已对齐的音频+视频帧（PTS delta ≤ ptsTolerance）。
 type AlignedPair struct {
 	Audio AudioFrame
-	Video lipsync.VideoFrame
+	Video Frame
 }
 
 // OnLagFunc 视频延迟超出阈值时的熔断回调函数类型。
@@ -43,7 +41,7 @@ type OnLagFunc func(lagMs int64)
 type RingBuffer struct {
 	mu         sync.Mutex
 	audioQueue []AudioFrame
-	videoQueue []lipsync.VideoFrame
+	videoQueue []Frame
 	output     chan AlignedPair
 	onLag      OnLagFunc
 	once       sync.Once
@@ -72,7 +70,7 @@ func (r *RingBuffer) PushAudio(frame AudioFrame) {
 }
 
 // PushVideo 将视频帧入队（溢出时丢弃最旧帧）。
-func (r *RingBuffer) PushVideo(frame lipsync.VideoFrame) {
+func (r *RingBuffer) PushVideo(frame Frame) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.videoQueue = append(r.videoQueue, frame)
@@ -162,7 +160,7 @@ func removeUpTo(q []AudioFrame, idx int) []AudioFrame {
 	return q[idx+1:]
 }
 
-func removeVideoUpTo(q []lipsync.VideoFrame, idx int) []lipsync.VideoFrame {
+func removeVideoUpTo(q []Frame, idx int) []Frame {
 	if idx+1 >= len(q) {
 		return nil
 	}

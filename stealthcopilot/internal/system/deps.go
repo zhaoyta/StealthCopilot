@@ -87,9 +87,7 @@ func checkVirtualMic() DepStatus {
 	}
 }
 
-// checkVirtualCam 检测虚拟摄像头是否可用。
-// macOS: 检测 StealthVirtualCam 或 OBS 虚拟摄像头。
-// Windows: 检测 StealthVirtualCam 或 OBS-VirtualCam DirectShow 过滤器。
+// checkVirtualCam 检测 OBS 虚拟摄像头是否可用。
 func checkVirtualCam() DepStatus {
 	switch runtime.GOOS {
 	case "darwin":
@@ -134,17 +132,12 @@ func checkMacVirtualCam() DepStatus {
 	// OBS v28+ 注册为 "OBS Virtual Camera"（系统扩展方式）
 	camOut, _ := exec.Command("system_profiler", "SPCameraDataType").Output()
 	cameraText := strings.ToLower(string(camOut))
-	if strings.Contains(cameraText, "stealthvirtualcam") || strings.Contains(cameraText, "obs") {
+	if strings.Contains(cameraText, "obs") {
 		return DepStatusInstalled
 	}
 
-	// 方法2：StealthCopilot CoreMediaIO DAL 插件目录
 	dalOut, _ := exec.Command("ls", "/Library/CoreMediaIO/Plug-Ins/DAL/").Output()
 	dalText := strings.ToLower(string(dalOut))
-	if strings.Contains(dalText, "stealthvirtualcam") || strings.Contains(dalText, "stealthcam") {
-		return DepStatusInstalled
-	}
-
 	// 方法2：检测 OBS v28+ 系统扩展（mac-camera-extension）
 	extOut, _ := exec.Command("systemextensionsctl", "list").Output()
 	if strings.Contains(string(extOut), "com.obsproject.obs-studio.mac-camera-extension") {
@@ -167,16 +160,8 @@ func checkMacVirtualCam() DepStatus {
 }
 
 func checkWinVirtualCam() DepStatus {
-	// 检测 StealthVirtualCam / OBS VirtualCam DirectShow 过滤器注册情况
+	// 检测 OBS VirtualCam DirectShow 过滤器注册情况
 	out, err := exec.Command(
-		"reg", "query",
-		`HKLM\SOFTWARE\Classes\CLSID`,
-		"/s", "/f", "StealthVirtualCam",
-	).Output()
-	if err == nil && len(out) > 0 {
-		return DepStatusInstalled
-	}
-	out, err = exec.Command(
 		"reg", "query",
 		`HKLM\SOFTWARE\Classes\CLSID`,
 		"/s", "/f", "OBS Virtual Camera",

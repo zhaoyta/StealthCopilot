@@ -63,6 +63,7 @@ type FFmpegCaptureProvider struct {
 	mu     sync.Mutex
 	cancel context.CancelFunc
 	cmd    *exec.Cmd
+	done   chan struct{}
 }
 
 func (p *FFmpegCaptureProvider) Start(ctx context.Context, deviceName string) (<-chan []byte, error) {
@@ -95,16 +96,19 @@ func (p *FFmpegCaptureProvider) Start(ctx context.Context, deviceName string) (<
 	}
 	diag.Infof("audio capture ffmpeg started pid=%d device=%q", cmd.Process.Pid, deviceName)
 
+	done := make(chan struct{})
 	p.mu.Lock()
 	if p.cancel != nil {
 		p.cancel()
 	}
 	p.cancel = cancel
 	p.cmd = cmd
+	p.done = done
 	p.mu.Unlock()
 
 	ch := make(chan []byte, captureQueueSize)
 	go func() {
+		defer close(done)
 		defer close(ch)
 		defer func() {
 			cancel()
@@ -154,15 +158,23 @@ func (p *FFmpegCaptureProvider) Close() error {
 	p.mu.Lock()
 	cancel := p.cancel
 	cmd := p.cmd
+	done := p.done
 	p.cancel = nil
 	p.cmd = nil
+	p.done = nil
 	p.mu.Unlock()
 	if cancel != nil {
 		cancel()
 	}
 	if cmd != nil && cmd.Process != nil {
 		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
+		if done != nil {
+			select {
+			case <-done:
+			case <-time.After(500 * time.Millisecond):
+				diag.Warnf("audio capture ffmpeg wait timed out")
+			}
+		}
 	}
 	return nil
 }

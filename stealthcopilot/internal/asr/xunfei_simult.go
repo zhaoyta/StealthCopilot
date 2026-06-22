@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -137,6 +138,11 @@ func (p *XunfeiSimultSegmentExtension) Translate(ctx context.Context, pcmData []
 
 	result, err := waitXunfeiSimultFinal(conn, p.cfg)
 	if err != nil {
+		if errors.Is(err, ErrNoTranslationReturned) && result.SrcText != "" {
+			result.IsFinal = true
+			diag.Warnf("xunfei_simult_speak missing translation src_chars=%d", len(result.SrcText))
+			return result, nil
+		}
 		return Result{}, err
 	}
 	if result.SrcText == "" && result.DstText == "" {
@@ -311,7 +317,8 @@ func waitXunfeiSimultFinal(conn *websocket.Conn, cfg XunfeiSimultConfig) (Result
 				return last, nil
 			}
 			if last.SrcText != "" && xunfeiSimultNeedsTranslation(cfg) {
-				return Result{}, ErrNoTranslationReturned
+				last.IsFinal = true
+				return last, ErrNoTranslationReturned
 			}
 			if isTimeoutErr(err) {
 				return Result{}, ErrNoSpeechRecognized

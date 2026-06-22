@@ -11,39 +11,44 @@ const localConfigFileName = "config.json"
 
 // LocalConfig 存储非敏感、可落盘的配置项（API Key 等敏感值不在此）。
 type LocalConfig struct {
-	SetupCompleted        bool                    `json:"setup_completed"`
-	ActiveResumeID        string                  `json:"active_resume_id"`
-	UILocale              string                  `json:"ui_locale"` // "zh-CN" | "en-US"
-	DeepSeekModel         string                  `json:"deepseek_model"`
-	LLMBaseURL            string                  `json:"llm_base_url"`
-	HearingASRProvider    TranslationProviderType `json:"hearing_asr_provider"`
-	HearingTransProvider  TranslationProviderType `json:"hearing_trans_provider"`
-	HearingTTSProvider    TTSProviderType         `json:"hearing_tts_provider"`
-	SpeakingASRProvider   TranslationProviderType `json:"speaking_asr_provider"`
-	SpeakingTransProvider TranslationProviderType `json:"speaking_trans_provider"`
-	SpeakingTTSProvider   TTSProviderType         `json:"speaking_tts_provider"`
-	LLMProvider           LLMProviderType         `json:"llm_provider"`
-	LipSyncProvider       LipSyncProviderType     `json:"lipsync_provider"`
-	EmbeddingProvider     EmbeddingProviderType   `json:"embedding_provider"`
-	HearingSourceLang     string                  `json:"hearing_source_lang"`
-	HearingTargetLang     string                  `json:"hearing_target_lang"`
-	SpeakingInputLang     string                  `json:"speaking_input_lang"`
-	SpeakingOutputLang    string                  `json:"speaking_output_lang"`
-	VirtualMicName        string                  `json:"virtual_mic_name"`
-	PhysicalMicName       string                  `json:"physical_mic_name"`
-	PhysicalCamName       string                  `json:"physical_cam_name"`
-	VirtualCamName        string                  `json:"virtual_cam_name"`
-	MonitorOutputName     string                  `json:"monitor_output_name"`
-	HearingMonitorEnabled bool                    `json:"hearing_monitor_enabled"`
-	HearingMonitorVolume  int                     `json:"hearing_monitor_volume"`
-	HearingMonitorRate    int                     `json:"hearing_monitor_rate"`
-	GhostFontSize         int                     `json:"ghost_font_size"`
-	GhostOpacity          float64                 `json:"ghost_opacity"`
-	GhostPosition         string                  `json:"ghost_position"`
-	RAGPrompt             string                  `json:"rag_prompt"`
-	SpeakPolishPrompt     string                  `json:"speak_polish_prompt"`
-	PolishEnabled         bool                    `json:"polish_enabled"`
-	HistoryMaxTurns       int                     `json:"history_max_turns"`
+	SetupCompleted        bool                     `json:"setup_completed"`
+	ActiveResumeID        string                   `json:"active_resume_id"`
+	UILocale              string                   `json:"ui_locale"` // "zh-CN" | "en-US"
+	DeepSeekModel         string                   `json:"deepseek_model"`
+	LLMBaseURL            string                   `json:"llm_base_url"`
+	HearingASRProvider    TranslationProviderType  `json:"hearing_asr_provider"`
+	HearingTransProvider  TranslationProviderType  `json:"hearing_trans_provider"`
+	HearingTTSProvider    TTSProviderType          `json:"hearing_tts_provider"`
+	SpeakingASRProvider   TranslationProviderType  `json:"speaking_asr_provider"`
+	SpeakingTransProvider TranslationProviderType  `json:"speaking_trans_provider"`
+	SpeakingTTSProvider   TTSProviderType          `json:"speaking_tts_provider"`
+	LLMProvider           LLMProviderType          `json:"llm_provider"`
+	EmbeddingProvider     EmbeddingProviderType    `json:"embedding_provider"`
+	DigitalHumanEnabled   bool                     `json:"digital_human_enabled"`
+	DigitalHumanProvider  DigitalHumanProviderType `json:"digital_human_provider"`
+	SimaliFaceID          string                   `json:"simli_face_id"`
+	ZegoDigitalHumanID    string                   `json:"zego_digital_human_id"`
+	ZegoRoomID            string                   `json:"zego_room_id"`
+	ZegoStreamID          string                   `json:"zego_stream_id"`
+	ZegoRTMPPullURL       string                   `json:"zego_rtmp_pull_url"`
+	HearingSourceLang     string                   `json:"hearing_source_lang"`
+	HearingTargetLang     string                   `json:"hearing_target_lang"`
+	SpeakingInputLang     string                   `json:"speaking_input_lang"`
+	SpeakingOutputLang    string                   `json:"speaking_output_lang"`
+	VirtualMicName        string                   `json:"virtual_mic_name"`
+	PhysicalMicName       string                   `json:"physical_mic_name"`
+	VirtualCamName        string                   `json:"virtual_cam_name"`
+	MonitorOutputName     string                   `json:"monitor_output_name"`
+	HearingMonitorEnabled bool                     `json:"hearing_monitor_enabled"`
+	HearingMonitorVolume  int                      `json:"hearing_monitor_volume"`
+	HearingMonitorRate    int                      `json:"hearing_monitor_rate"`
+	GhostFontSize         int                      `json:"ghost_font_size"`
+	GhostOpacity          float64                  `json:"ghost_opacity"`
+	GhostPosition         string                   `json:"ghost_position"`
+	RAGPrompt             string                   `json:"rag_prompt"`
+	SpeakPolishPrompt     string                   `json:"speak_polish_prompt"`
+	PolishEnabled         bool                     `json:"polish_enabled"`
+	HistoryMaxTurns       int                      `json:"history_max_turns"`
 }
 
 // localStore 管理本地 JSON 配置文件的读写。

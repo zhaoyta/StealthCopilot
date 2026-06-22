@@ -2,7 +2,7 @@
 // 状态机：Closed（正常）→ Open（降级直通）→ HalfOpen（尝试恢复）→ Closed
 // 触发条件：连续 3 次心跳丢失（50ms 间隔）或视频 PTS 落后音频 >300ms。
 // 心跳协议自动路由：
-//   - targetAddr 以 "http" 开头 → HTTP HEAD 健康检查（适用于 Simli 等云端 HTTP API）
+//   - targetAddr 以 "http" 开头 → HTTP HEAD 健康检查（适用于云端 HTTP API）
 //   - targetAddr 为 "host:port" 格式 → UDP ping/pong
 //   - targetAddr 为空 → 视为存活（禁用心跳检测，不触发误熔断）
 //
@@ -68,7 +68,7 @@ type Breaker struct {
 // NewBreaker 创建熔断器。
 //
 // targetAddr 支持两种格式：
-//   - "https://api.simli.ai" 等 HTTP(S) URL → 心跳改走 HTTP HEAD
+//   - HTTP(S) URL → 心跳改走 HTTP HEAD
 //   - "1.2.3.4:9000" 等 UDP 地址 → 沿用 UDP ping/pong
 //   - "" → 禁用心跳，适合纯靠 TripFromLag 触发的场景
 func NewBreaker(targetAddr string, onStateChange OnStateChange) *Breaker {

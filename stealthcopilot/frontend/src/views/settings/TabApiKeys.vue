@@ -70,8 +70,19 @@ const services = reactive<ServiceConfig[]>([
     testStatus: 'untested',
     testMsg: '',
     fields: [
-      { service: 'simli', field: 'key',     label: t('settings.apiKeys.simli.key'),    secret: true,  value: '', show: false },
-      { service: 'simli', field: 'face_id', label: t('settings.apiKeys.simli.faceId'), secret: false, value: '', show: false },
+      { service: 'simli', field: 'api_key', label: t('settings.apiKeys.simli.apiKey'), secret: true, value: '', show: false },
+    ],
+  },
+  {
+    name: 'ZEGO 数字人（企业级）',
+    docs: [
+      { label: t('settings.apiKeys.docs.zegoDigitalHuman'), url: 'https://doc-zh.zego.im/aigc-digital-human-server/streaming-apis/digital-human-streaming/drive-by-ws-stream' },
+    ],
+    testStatus: 'untested',
+    testMsg: '',
+    fields: [
+      { service: 'zego_digital_human', field: 'app_id',        label: t('settings.apiKeys.zego.appId'),        secret: true, value: '', show: false },
+      { service: 'zego_digital_human', field: 'server_secret', label: t('settings.apiKeys.zego.serverSecret'), secret: true, value: '', show: false },
     ],
   },
 ])
@@ -91,8 +102,9 @@ onMounted(async () => {
       xunfei_tts_api_secret: cfg.xunfei_tts_api_secret_set,
       deepseek_key: cfg.deepseek_key_set,
       deepseek_model: !!cfg.deepseek_model,
-      simli_key: cfg.simli_key_set,
-      simli_face_id: cfg.simli_face_id_set,
+      simli_api_key: cfg.simli_api_key_set,
+      zego_digital_human_app_id: cfg.zego_app_id_set,
+      zego_digital_human_server_secret: cfg.zego_server_secret_set,
     }
     for (const svc of services) {
       for (const f of svc.fields) {

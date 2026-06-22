@@ -58,19 +58,20 @@
 - DeepSeek 润色作为可选开关（设置里"高质量模式"），默认关闭以保证延迟
 - 讯飞语音翻译 API 同时完成 ASR + 翻译，无需两次调用
 
-### 管道 3 — 视频链（目标 ≥30fps，音视频差 ≤40ms）
+### 管道 3 — 数字人视频输出（说话链可选输出模式）
 
 ```
-物理摄像头帧（OpenCV 抓帧）
-  → Go 后端 Ring Buffer（时间戳对齐）
-  → Simli AI 实时 API（视频帧 + 英文音频 → 口型同步后视频帧）
-  → 虚拟摄像头写入（macOS CoreMediaIO / Windows DirectShow）→ 面试官看到口型对齐画面
+说话链 TTS PCM
+  → Simli AI WebRTC 视频
+  → 本机 OBS Browser Source: http://127.0.0.1:18765/
+  → OBS Virtual Camera → 面试官看到口型同步数字人画面
 ```
 
 **关键设计：**
 - Simli AI 调用其官方 SaaS API，不自建 GPU 集群
-- Ring Buffer 补偿 Simli API 约 200-400ms 的云端处理延迟，保证 A/V 不 desync
-- LipSync 层设计为可插拔 Provider 接口（SimliProvider / StealthCloudProvider），支持运行时切换
+- Simli 仅生成视频，会议音频仍由本地 TTS 写入虚拟麦克风
+- 本地音频默认延迟约 700ms 写入虚拟麦克风，以补偿 Simli/OBS/会议软件的视频链路延迟
+- OBS App 负责系统虚拟摄像头输出，StealthCopilot 不注册自研摄像头驱动
 
 ---
 
@@ -116,14 +117,14 @@
 | 前端 | Vue 3 + TypeScript + Tailwind CSS |
 | UI 国际化 | vue-i18n v9，locale JSON 按模块分层，禁止硬编码字符串 |
 | 音频路由 | BlackHole（macOS）/ VB-Cable（Windows），引导用户安装 |
-| 虚拟摄像头 | 自研捆绑 CoreMediaIO DAL 插件（Mac）+ DirectShow Filter（Win），基于 AkVirtualCamera，首次启动一键安装，不依赖 OBS |
+| 虚拟摄像头 | OBS Virtual Camera；App 提供本机 OBS Browser Source，不注册自研摄像头驱动 |
 | 听力链 | 讯飞实时语音翻译 API（WebSocket，src_text + dst_text 双输出） |
 | 说话链 STT | 讯飞语音翻译 API（VAD 触发，母语语音 → 目标语言文本） |
 | 说话链 TTS | 默认音色 TTS + 讯飞声音复刻流式 TTS（个人复刻音色为可选增强） |
 | 意图识别 | DeepSeek（轻量分类：question / followup / statement） |
 | 回答生成 | DeepSeek-V3（流式输出，带多轮对话历史） |
 | 简历 Embedding | multilingual-e5-small + 本地向量库 |
-| 口型同步 | Simli AI 官方 API（LipSyncProvider 接口，可切换 StealthCloudProvider） |
+| 数字人视频 | Simli AI WebRTC 视频 + OBS Browser Source + OBS Virtual Camera |
 | API Key 存储 | go-keyring（macOS Keychain / Windows Credential Manager） |
 | CI/CD | GitHub Actions（macOS runner + Windows runner 分别原生编译，CGO 不交叉编译） |
 
@@ -135,7 +136,7 @@
 |---|---|
 | API 凭证 | 讯飞 RTASR、讯飞机器翻译、讯飞声音复刻（AppID/APIKey/APISecret）、DeepSeek（Key/模型）、Simli AI（Key），各有连通性测试按钮；Task ID / Asset ID 由声音复刻流程自动保存，不手填 |
 | 语言配置 | 听力链「源语言→目标语言」、说话链「输入语言→输出语言」，独立下拉，讯飞支持的语言对 |
-| 设备绑定 | 虚拟声卡、物理麦克风、物理摄像头、虚拟摄像头，动态枚举 |
+| 设备绑定 | 虚拟声卡、物理麦克风、监听输出、OBS Virtual Camera、数字人 Provider 和浏览器源地址 |
 | 简历管理 | 上传 PDF/DOCX，本地 embedding，多份可切换，当前激活标记 |
 | 提词窗外观 | 字号、透明度、位置预设（左上/右上/自定义） |
 | 高级（折叠） | RAG 回答生成 Prompt、说话链润色 Prompt，各有默认值 + 一键重置 |
@@ -145,7 +146,7 @@
 ## 第八部分：首次启动 Setup 向导（5步）
 
 1. **欢迎**：产品介绍，约需 3 分钟完成配置
-2. **依赖检测**：检测 BlackHole / 虚拟摄像头驱动是否安装，缺失项一键安装（需一次 admin 授权）
+2. **依赖检测**：检测 BlackHole / FFmpeg / OBS Virtual Camera 支持，缺失时提供安装或官方页面指引
 3. **核心 API Key**：填写讯飞 RTASR、讯飞机器翻译、讯飞声音复刻和 DeepSeek（必填），Simli 可稍后补充
 4. **声音复刻录制**：可跳过并使用默认音色；如需个人复刻音色，则在 app 内按讯飞训练文本录音并提交训练，训练完成后自动保存 Asset ID
 5. **完成**：进入主界面
@@ -184,5 +185,5 @@
 | 阶段 | 目标 |
 |---|---|
 | Phase 1 | Wails 骨架 + 幽灵 UI + 设置面板 + Setup 向导 + 听力链（字幕 + RAG 回答） |
-| Phase 2 | 说话链（VAD + 讯飞翻译 + 讯飞声音复刻 TTS + 虚拟麦克风）+ 视频链（Simli AI + 虚拟摄像头 + 熔断） |
+| Phase 2 | 说话链（VAD + 讯飞翻译 + 讯飞声音复刻 TTS + 虚拟麦克风）+ 数字人视频输出（Simli AI + OBS Virtual Camera） |
 | Phase 3 | SaaS 计费、自营云服务（StealthCloudProvider）、Homebrew/Scoop 分发、开启内测 |
