@@ -14,6 +14,7 @@ type Result struct {
 	SrcText  string // 原文（面试官语言，如英文）
 	DstText  string // 译文（用户语言，如中文）
 	IsFinal  bool   // 是否为句子最终结果
+	Stable   bool   // 是否为确定性转写结果（讯飞 st.type=0 或最终帧）
 	AudioPCM []byte // 可选：同传服务返回的译文音频，16k/16bit/mono PCM
 }
 

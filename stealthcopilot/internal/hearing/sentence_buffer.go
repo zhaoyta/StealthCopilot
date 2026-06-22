@@ -1,167 +1,6 @@
 package hearing
 
-import (
-	"strings"
-	"unicode"
-	"unicode/utf8"
-)
-
-const hearingSentenceMaxRunes = 220
-
-type hearingSentenceBuffer struct {
-	text       string
-	lastOutput string
-}
-
-func (b *hearingSentenceBuffer) Add(text string, force bool) []string {
-	text = normalizeHearingText(text)
-	if text == "" {
-		return nil
-	}
-	b.text = normalizeHearingText(joinHearingText(b.text, text))
-	var out []string
-	for {
-		idx := hearingSentenceBoundary(b.text)
-		if idx <= 0 {
-			break
-		}
-		out = appendHearingSentence(out, strings.TrimSpace(b.text[:idx]), &b.lastOutput)
-		b.text = strings.TrimSpace(b.text[idx:])
-	}
-	if force {
-		if utf8.RuneCountInString(b.text) > hearingSentenceMaxRunes {
-			for _, sentence := range splitLongHearingText(b.text, hearingSentenceMaxRunes) {
-				out = appendHearingSentence(out, sentence, &b.lastOutput)
-			}
-			b.text = ""
-		} else if hearingLooksCompleteEnough(b.text) {
-			out = appendHearingSentence(out, b.text, &b.lastOutput)
-			b.text = ""
-		}
-	}
-	return out
-}
-
-// HasPending 报告 sentence buffer 里是否还有未发出的文本（非空且非纯空白）。
-func (b *hearingSentenceBuffer) HasPending() bool {
-	return strings.TrimSpace(b.text) != ""
-}
-
-func (b *hearingSentenceBuffer) Flush() []string {
-	if strings.TrimSpace(b.text) == "" {
-		return nil
-	}
-	text := b.text
-	b.text = ""
-	var out []string
-	out = appendHearingSentence(out, text, &b.lastOutput)
-	return out
-}
-
-func appendHearingSentence(out []string, sentence string, lastOutput *string) []string {
-	sentence = normalizeHearingText(sentence)
-	if sentence == "" || hearingSentenceDuplicate(sentence, *lastOutput) {
-		return out
-	}
-	// 跳过纯标点片段（讯飞把前一句的结束标点放在下一段 interim 开头，flush 后会产生单独的 "." "?" 等）
-	if hearingIsPunctuationOnly(sentence) {
-		return out
-	}
-	*lastOutput = sentence
-	return append(out, sentence)
-}
-
-// hearingStartsWithBoundary 判断文本是否以句子边界标点开头。
-// 讯飞把前一句的结束标点放在下一段 interim 的开头，这是"前一句已结束"的可靠信号。
-func hearingStartsWithBoundary(s string) bool {
-	if s == "" {
-		return false
-	}
-	for _, r := range s {
-		return strings.ContainsRune(".!?。！？；;", r)
-	}
-	return false
-}
-
-// hearingIsPunctuationOnly 判断字符串是否只由标点和空格组成（无实质词语内容）。
-func hearingIsPunctuationOnly(s string) bool {
-	for _, r := range s {
-		if !strings.ContainsRune(".!?。！？；;,，、：: ", r) {
-			return false
-		}
-	}
-	return true
-}
-
-func hearingSentenceDuplicate(current, previous string) bool {
-	current = strings.ToLower(normalizeHearingText(current))
-	previous = strings.ToLower(normalizeHearingText(previous))
-	if current == "" || previous == "" {
-		return false
-	}
-	return current == previous || strings.Contains(previous, current) || strings.Contains(current, previous)
-}
-
-func hearingSentenceBoundary(text string) int {
-	last := 0
-	for i, r := range text {
-		if strings.ContainsRune(".!?。！？；;", r) {
-			last = i + len(string(r))
-			break
-		}
-	}
-	return last
-}
-
-func hearingLooksCompleteEnough(text string) bool {
-	if text == "" {
-		return false
-	}
-	count := utf8.RuneCountInString(text)
-	if count >= 36 {
-		return true
-	}
-	fields := strings.Fields(text)
-	return len(fields) >= 8
-}
-
-func splitLongHearingText(text string, maxRunes int) []string {
-	var out []string
-	for utf8.RuneCountInString(text) > maxRunes {
-		cut := hearingSoftCut(text, maxRunes)
-		out = append(out, strings.TrimSpace(text[:cut]))
-		text = strings.TrimSpace(text[cut:])
-	}
-	if text != "" {
-		out = append(out, text)
-	}
-	return out
-}
-
-func hearingSoftCut(text string, maxRunes int) int {
-	count := 0
-	lastSpace := -1
-	lastComma := -1
-	for i, r := range text {
-		if unicode.IsSpace(r) {
-			lastSpace = i
-		}
-		if strings.ContainsRune(",，、:", r) {
-			lastComma = i + len(string(r))
-		}
-		count++
-		if count >= maxRunes {
-			if lastComma > 0 {
-				return lastComma
-			}
-			if lastSpace > 0 {
-				return lastSpace
-			}
-			return i + len(string(r))
-		}
-	}
-	return len(text)
-}
+import "strings"
 
 func normalizeHearingText(text string) string {
 	return strings.Join(strings.Fields(strings.TrimSpace(text)), " ")
@@ -180,4 +19,172 @@ func joinHearingText(left, right string) string {
 		return left + right
 	}
 	return left + " " + right
+}
+
+func mergeHearingInterim(left, right string) string {
+	left = normalizeHearingText(left)
+	right = normalizeHearingDraftUpdate(right)
+	if left == "" {
+		return right
+	}
+	if right == "" {
+		return left
+	}
+	lowerLeft := strings.ToLower(left)
+	lowerRight := strings.ToLower(right)
+	if strings.Contains(lowerRight, lowerLeft) {
+		return right
+	}
+	if strings.Contains(lowerLeft, lowerRight) {
+		return left
+	}
+	if merged, ok := mergeHearingOverlap(left, right); ok {
+		return compactHearingDraftText(merged)
+	}
+	return compactHearingDraftText(joinHearingText(left, right))
+}
+
+func mergeHearingOverlap(left, right string) (string, bool) {
+	leftWords := strings.Fields(left)
+	rightWords := strings.Fields(right)
+	max := len(leftWords)
+	if len(rightWords) < max {
+		max = len(rightWords)
+	}
+	for n := max; n >= 2; n-- {
+		if equalHearingWords(leftWords[len(leftWords)-n:], rightWords[:n]) {
+			return normalizeHearingText(joinHearingText(left, strings.Join(rightWords[n:], " "))), true
+		}
+	}
+	return "", false
+}
+
+func equalHearingWords(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if !equalHearingWord(left[i], right[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func equalHearingWord(left, right string) bool {
+	left = normalizeHearingWord(left)
+	right = normalizeHearingWord(right)
+	if left == "" || right == "" {
+		return left == right
+	}
+	if left == right {
+		return true
+	}
+	if len(left) >= 4 && len(right) >= 4 && (strings.HasPrefix(left, right) || strings.HasPrefix(right, left)) {
+		return true
+	}
+	return false
+}
+
+func normalizeHearingWord(word string) string {
+	word = strings.ToLower(strings.Trim(word, ".,!?;:，。！？；：、\"'“”‘’()[]{}"))
+	if strings.HasSuffix(word, "s") && len(word) > 4 {
+		return strings.TrimSuffix(word, "s")
+	}
+	return word
+}
+
+func normalizeHearingDraftUpdate(text string) string {
+	text = normalizeHearingText(text)
+	text = strings.TrimLeftFunc(text, func(r rune) bool {
+		return strings.ContainsRune(".!?。！？；;", r)
+	})
+	return normalizeHearingText(text)
+}
+
+func hearingIsCumulativeUpdate(previous, next string) bool {
+	previous = strings.ToLower(normalizeHearingText(previous))
+	next = strings.ToLower(normalizeHearingDraftUpdate(next))
+	if previous == "" || next == "" {
+		return false
+	}
+	return strings.Contains(next, previous) || strings.Contains(previous, next)
+}
+
+func trimSubmittedHearingPrefix(text, submitted string) string {
+	text = normalizeHearingDraftUpdate(text)
+	submitted = normalizeHearingText(submitted)
+	if text == "" || submitted == "" {
+		return text
+	}
+	lowerText := strings.ToLower(text)
+	lowerSubmitted := strings.ToLower(submitted)
+	if lowerText == lowerSubmitted {
+		return ""
+	}
+	if strings.HasPrefix(lowerText, lowerSubmitted) {
+		return normalizeHearingDraftUpdate(text[len(submitted):])
+	}
+	return text
+}
+
+func hearingDraftDuplicate(current, previous string) bool {
+	current = strings.ToLower(normalizeHearingText(current))
+	previous = strings.ToLower(normalizeHearingText(previous))
+	return current != "" && current == previous
+}
+
+func compactHearingDraftText(text string) string {
+	words := strings.Fields(normalizeHearingText(text))
+	if len(words) < 4 {
+		return strings.Join(words, " ")
+	}
+	for changed := true; changed; {
+		changed = false
+		for i := 0; i+1 < len(words); i++ {
+			if equalHearingWord(words[i], words[i+1]) {
+				words = append(words[:i+1], words[i+2:]...)
+				changed = true
+				i--
+			}
+		}
+		for n := maxHearingRepeatWindow(words); n >= 2; n-- {
+			for i := 0; i+2*n <= len(words); i++ {
+				if equalHearingWords(words[i:i+n], words[i+n:i+2*n]) {
+					kept := preferHearingWords(words[i:i+n], words[i+n:i+2*n])
+					words = append(append(append([]string{}, words[:i]...), kept...), words[i+2*n:]...)
+					changed = true
+					i--
+				}
+			}
+		}
+		for n := maxHearingRepeatWindow(words); n >= 5; n-- {
+			for i := 0; i+n <= len(words); i++ {
+				for j := i + n + 1; j+n <= len(words) && j <= i+n+36; j++ {
+					if equalHearingWords(words[i:i+n], words[j:j+n]) {
+						words = append(words[:i], words[j:]...)
+						changed = true
+						j--
+					}
+				}
+			}
+		}
+	}
+	return strings.Join(words, " ")
+}
+
+func preferHearingWords(left, right []string) []string {
+	leftText := strings.Join(left, " ")
+	rightText := strings.Join(right, " ")
+	if len(rightText) > len(leftText) {
+		return append([]string{}, right...)
+	}
+	return append([]string{}, left...)
+}
+
+func maxHearingRepeatWindow(words []string) int {
+	if len(words)/2 < 12 {
+		return len(words) / 2
+	}
+	return 12
 }

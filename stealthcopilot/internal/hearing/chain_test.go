@@ -11,6 +11,7 @@ import (
 
 	"github.com/zhaoyta/stealthcopilot/internal/asr"
 	"github.com/zhaoyta/stealthcopilot/internal/llm"
+	"github.com/zhaoyta/stealthcopilot/internal/session"
 	"github.com/zhaoyta/stealthcopilot/internal/trans"
 )
 
@@ -104,6 +105,53 @@ func TestChain_StartRequiresSimultConfigWhenNoInjectedTranslator(t *testing.T) {
 	}
 }
 
+func TestChain_StartStopSessionLifecycle(t *testing.T) {
+	var c Chain
+	store := &fakeSessionStore{}
+	result := c.Start(context.Background(), ChainConfig{
+		ASRExtension: blockingStreamingExtension{},
+		MonitorSink:  &fakeMonitorSink{},
+		SessionStore: store,
+		ResumeID:     "resume-1",
+	})
+	if result != "" {
+		t.Fatalf("Start = %q", result)
+	}
+	c.Stop()
+
+	if len(store.begun) != 1 {
+		t.Fatalf("begin count = %d, want 1", len(store.begun))
+	}
+	if store.begun[0].sessionID == "" || store.begun[0].resumeID != "resume-1" {
+		t.Fatalf("begin args mismatch: %+v", store.begun[0])
+	}
+	if len(store.ended) != 1 || store.ended[0] != store.begun[0].sessionID {
+		t.Fatalf("ended = %+v, begun = %+v", store.ended, store.begun)
+	}
+}
+
+type blockingStreamingExtension struct{}
+
+func (blockingStreamingExtension) Translate(ctx context.Context, _ <-chan []byte) (<-chan asr.Result, error) {
+	ch := make(chan asr.Result)
+	go func() {
+		<-ctx.Done()
+		close(ch)
+	}()
+	return ch, nil
+}
+
+func (blockingStreamingExtension) Close() error { return nil }
+
+func TestDisplayQuestionFallback(t *testing.T) {
+	if got := displayQuestion("source", "译文"); got != "译文" {
+		t.Fatalf("displayQuestion with dst = %q", got)
+	}
+	if got := displayQuestion("source", " "); got != "source" {
+		t.Fatalf("displayQuestion fallback = %q", got)
+	}
+}
+
 // TestProcessLoop_NonFinalSubtitle 验证 processLoop 对 IsFinal=false 的结果立即推送
 // EventSubtitle 到 emitFn，不触发意图分类或 RAG（nil classifier/retriever/generator 不会 panic）。
 func TestProcessLoop_NonFinalSubtitle(t *testing.T) {
@@ -124,7 +172,8 @@ func TestProcessLoop_NonFinalSubtitle(t *testing.T) {
 	})
 
 	// classifier/retriever/generator 传 nil —— IsFinal=false 不会触达这些分支
-	go c.processLoop(ctx, resultCh, trans.NoopExtension{}, nil, nil, nil, "test-session", "", emitFn, nil, nil, false)
+	submitCh := make(chan hearingSubmitRequest)
+	go c.processLoop(ctx, resultCh, submitCh, trans.NoopExtension{}, nil, nil, nil, "test-session", "", "zh", emitFn, nil, nil, false)
 
 	resultCh <- asr.Result{DstText: "面试官的问题", IsFinal: false}
 
@@ -157,7 +206,8 @@ func TestProcessLoop_EmptyDstText(t *testing.T) {
 		}
 	})
 
-	go c.processLoop(ctx, resultCh, trans.NoopExtension{}, nil, nil, nil, "test-session", "", emitFn, nil, nil, false)
+	submitCh := make(chan hearingSubmitRequest)
+	go c.processLoop(ctx, resultCh, submitCh, trans.NoopExtension{}, nil, nil, nil, "test-session", "", "zh", emitFn, nil, nil, false)
 
 	resultCh <- asr.Result{DstText: "", IsFinal: false}
 
@@ -180,7 +230,8 @@ func TestProcessLoop_ContextCancel(t *testing.T) {
 	done := make(chan struct{})
 
 	go func() {
-		c.processLoop(ctx, resultCh, trans.NoopExtension{}, nil, nil, nil, "test-session", "", nil, nil, nil, false)
+		submitCh := make(chan hearingSubmitRequest)
+		c.processLoop(ctx, resultCh, submitCh, trans.NoopExtension{}, nil, nil, nil, "test-session", "", "zh", nil, nil, nil, false)
 		close(done)
 	}()
 
@@ -203,7 +254,8 @@ func TestProcessLoop_FinalTranslationSpeaksMonitor(t *testing.T) {
 	monitor := &fakeMonitorSink{}
 	emitFn := llm.EventEmitter(func(string, ...any) {})
 
-	go c.processLoop(ctx, resultCh, trans.NoopExtension{}, nil, nil, nil, "test-session", "", emitFn, monitor, nil, false)
+	submitCh := make(chan hearingSubmitRequest)
+	go c.processLoop(ctx, resultCh, submitCh, trans.NoopExtension{}, nil, nil, nil, "test-session", "", "zh", emitFn, monitor, nil, false)
 
 	resultCh <- asr.Result{DstText: "处理中", IsFinal: false}
 	resultCh <- asr.Result{DstText: "请介绍一下项目经验", IsFinal: true}
@@ -221,6 +273,98 @@ func TestProcessLoop_FinalTranslationSpeaksMonitor(t *testing.T) {
 	}
 }
 
+func TestProcessLoop_InterimDraftRequiresManualSubmit(t *testing.T) {
+	var c Chain
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	resultCh := make(chan asr.Result, 3)
+	received := make(chan SubtitleEvent, 2)
+	emitFn := llm.EventEmitter(func(name string, data ...any) {
+		if name == EventSubtitle && len(data) > 0 {
+			if ev, ok := data[0].(SubtitleEvent); ok {
+				received <- ev
+			}
+		}
+	})
+
+	submitCh := make(chan hearingSubmitRequest)
+	go c.processLoop(ctx, resultCh, submitCh, trans.SourceOnlyExtension{}, nil, nil, nil, "test-session", "", "zh", emitFn, nil, nil, false)
+
+	resultCh <- asr.Result{SrcText: "Tell", IsFinal: false}
+	resultCh <- asr.Result{SrcText: "Tell me about", IsFinal: false}
+	resultCh <- asr.Result{SrcText: "? Tell me about yourself", IsFinal: false}
+
+	select {
+	case ev := <-received:
+		t.Fatalf("unexpected subtitle before submit: %+v", ev)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	reply := make(chan string, 1)
+	submitCh <- hearingSubmitRequest{reply: reply}
+	if submitted := <-reply; submitted != "Tell me about yourself" {
+		t.Fatalf("submitted = %q, want complete draft", submitted)
+	}
+
+	select {
+	case ev := <-received:
+		if ev.Text != "Tell me about yourself" || !ev.IsFinal {
+			t.Fatalf("subtitle = %+v, want final complete draft", ev)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout: expected subtitle after submit")
+	}
+
+	select {
+	case ev := <-received:
+		t.Fatalf("unexpected extra subtitle: %+v", ev)
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+func TestProcessLoop_FinalASRStillRequiresManualSubmit(t *testing.T) {
+	var c Chain
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	resultCh := make(chan asr.Result, 1)
+	received := make(chan SubtitleEvent, 2)
+	emitFn := llm.EventEmitter(func(name string, data ...any) {
+		if name == EventSubtitle && len(data) > 0 {
+			if ev, ok := data[0].(SubtitleEvent); ok {
+				received <- ev
+			}
+		}
+	})
+
+	submitCh := make(chan hearingSubmitRequest)
+	go c.processLoop(ctx, resultCh, submitCh, trans.SourceOnlyExtension{}, nil, nil, nil, "test-session", "", "zh", emitFn, nil, nil, false)
+
+	resultCh <- asr.Result{SrcText: "Tell me about yourself", IsFinal: true}
+
+	select {
+	case ev := <-received:
+		t.Fatalf("unexpected subtitle before submit: %+v", ev)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	reply := make(chan string, 1)
+	submitCh <- hearingSubmitRequest{reply: reply}
+	if submitted := <-reply; submitted != "Tell me about yourself" {
+		t.Fatalf("submitted = %q", submitted)
+	}
+
+	select {
+	case ev := <-received:
+		if ev.Text != "Tell me about yourself" {
+			t.Fatalf("subtitle = %q", ev.Text)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout: expected subtitle after submit")
+	}
+}
+
 func TestProcessLoop_ProviderAudioPlaysMonitorPCM(t *testing.T) {
 	var c Chain
 	ctx, cancel := context.WithCancel(context.Background())
@@ -230,7 +374,8 @@ func TestProcessLoop_ProviderAudioPlaysMonitorPCM(t *testing.T) {
 	monitor := &fakeMonitorSink{}
 	emitFn := llm.EventEmitter(func(string, ...any) {})
 
-	go c.processLoop(ctx, resultCh, trans.NoopExtension{}, nil, nil, nil, "test-session", "", emitFn, monitor, nil, true)
+	submitCh := make(chan hearingSubmitRequest)
+	go c.processLoop(ctx, resultCh, submitCh, trans.NoopExtension{}, nil, nil, nil, "test-session", "", "zh", emitFn, monitor, nil, true)
 
 	resultCh <- asr.Result{AudioPCM: []byte{1, 2, 3, 4}}
 
@@ -280,4 +425,25 @@ func TestMonitorAudioWorkerPlaysInOrder(t *testing.T) {
 		case <-time.After(10 * time.Millisecond):
 		}
 	}
+}
+
+type fakeSessionStore struct {
+	session.Store
+	mu    sync.Mutex
+	begun []struct{ sessionID, resumeID string }
+	ended []string
+}
+
+func (f *fakeSessionStore) Begin(sessionID, resumeID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.begun = append(f.begun, struct{ sessionID, resumeID string }{sessionID: sessionID, resumeID: resumeID})
+	return nil
+}
+
+func (f *fakeSessionStore) End(sessionID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.ended = append(f.ended, sessionID)
+	return nil
 }

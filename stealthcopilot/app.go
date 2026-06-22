@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/zhaoyta/stealthcopilot/internal/diag"
 	"github.com/zhaoyta/stealthcopilot/internal/hearing"
 	"github.com/zhaoyta/stealthcopilot/internal/resume"
+	"github.com/zhaoyta/stealthcopilot/internal/session"
 	"github.com/zhaoyta/stealthcopilot/internal/speaking"
 	"github.com/zhaoyta/stealthcopilot/internal/system"
 	"github.com/zhaoyta/stealthcopilot/internal/ui"
@@ -28,6 +30,8 @@ type App struct {
 	ctx                 context.Context
 	ConfigSvc           *config.Service
 	ResumeSvc           *resume.Service
+	SessionSvc          *session.Service
+	SessionStore        session.Store
 	SystemSvc           *system.Service
 	HearingChain        *hearing.Chain
 	SpeakingChain       *speaking.Chain
@@ -106,12 +110,7 @@ func (a *App) startup(ctx context.Context) {
 	// 2. 简历服务（embedding：Python 桥接，不可用时降级为 NullProvider）
 	var embedder resume.EmbeddingProvider
 	if cfgSvc.InternalManager().Config.EmbeddingProvider == config.EmbeddingProviderPythonBridge {
-		provider := resume.NewPythonBridgeProvider(scriptPath)
-		if provider.Ready() {
-			embedder = provider
-		} else {
-			embedder = &resume.NullProvider{}
-		}
+		embedder = resume.NewPythonBridgeProvider(scriptPath)
 	} else {
 		embedder = &resume.NullProvider{}
 	}
@@ -128,22 +127,38 @@ func (a *App) startup(ctx context.Context) {
 	a.ResumeSvc = resumeSvc
 	resumeSvc.Startup(ctx)
 
-	// 3. 系统服务（设备枚举、依赖检测）
+	// 3. 历史会话服务（本地 SQLite）
+	sessionStore, err := session.NewSQLiteStore(dataDir)
+	if err != nil {
+		_, _ = runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
+			Type:    runtime.ErrorDialog,
+			Title:   "初始化失败",
+			Message: "无法初始化历史会话服务：" + err.Error(),
+		})
+		os.Exit(1)
+	}
+	if err := sessionStore.CloseOrphanSessions(int64(24 * time.Hour / time.Millisecond)); err != nil {
+		diag.Warnf("session close orphan failed err=%v", err)
+	}
+	a.SessionStore = sessionStore
+	a.SessionSvc = session.NewService(sessionStore, resumeSvc.InternalManager().ResumeName)
+
+	// 4. 系统服务（设备枚举、依赖检测）
 	a.SystemSvc = system.NewSystemService()
 
-	// 4. 听力链协调器（各组件在 StartHearingChain binding 中按需实例化）
+	// 5. 听力链协调器（各组件在 StartHearingChain binding 中按需实例化）
 	a.HearingChain = &hearing.Chain{}
 
-	// 5. 说话链协调器（各组件在 StartSpeakingChain binding 中按需实例化）
+	// 6. 说话链协调器（各组件在 StartSpeakingChain binding 中按需实例化）
 	a.SpeakingChain = &speaking.Chain{}
 
-	// 6. 视频链协调器（各组件在 StartVideoChain binding 中按需实例化）
+	// 7. 视频链协调器（各组件在 StartVideoChain binding 中按需实例化）
 	a.VideoChain = &video.Chain{}
 
-	// 7. 原生提词窗（平台不可用时内部为 no-op，ShowTeleprompter 会走 Wails fallback）
+	// 8. 原生提词窗（平台不可用时内部为 no-op，ShowTeleprompter 会走 Wails fallback）
 	a.TeleprompterWindow = ui.NewTeleprompterWindow()
 
-	// 8. 声音复刻训练录音器（通过 Go/ffmpeg 访问麦克风，绕过 WKWebView getUserMedia 限制）
+	// 9. 声音复刻训练录音器（通过 Go/ffmpeg 访问麦克风，绕过 WKWebView getUserMedia 限制）
 	a.VoiceRecorder = &audio.VoiceTrainingRecorder{}
 	diag.Infof("startup complete")
 }
@@ -156,6 +171,9 @@ func (a *App) shutdown(_ context.Context) {
 	}
 	if a.ResumeSvc != nil {
 		_ = a.ResumeSvc.InternalManager().Close()
+	}
+	if a.SessionStore != nil {
+		_ = a.SessionStore.Close()
 	}
 	diag.Infof("shutdown complete")
 }

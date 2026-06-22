@@ -3,6 +3,7 @@
 package rag
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/zhaoyta/stealthcopilot/internal/resume"
@@ -86,6 +87,280 @@ func TestRetriever_ReturnsNilChunksOnSearchError(t *testing.T) {
 
 	if !result.HasActiveResume {
 		t.Error("HasActiveResume must remain true even when search fails")
+	}
+}
+
+func TestRetriever_BroadQuestionUsesFullResumeEvenWhenEmbeddingUnavailable(t *testing.T) {
+	mgr := newTestManager(t)
+	r1, err := mgr.Upload("profile.pdf", []byte(`%PDF-1.4
+BT
+(Senior backend engineer) Tj
+(High performance payment systems and architecture) Tj
+(Led Kafka and Go migration projects) Tj
+ET
+%%EOF`), nil)
+	if err != nil {
+		t.Fatalf("Upload error: %v", err)
+	}
+	if err := mgr.SetActive(r1.ID); err != nil {
+		t.Fatalf("SetActive error: %v", err)
+	}
+
+	ret := NewRetriever(mgr)
+	result := ret.RetrieveWithContext("Tell me about yourself", "介绍一下你自己", nil)
+
+	if !result.HasActiveResume {
+		t.Fatal("HasActiveResume should be true")
+	}
+	if len(result.Chunks) != 1 {
+		t.Fatalf("len(Chunks) = %d, want full resume context chunk: %v", len(result.Chunks), result.Chunks)
+	}
+	if !strings.Contains(result.Chunks[0], "High performance payment systems") {
+		t.Fatalf("full resume context missing expected content: %q", result.Chunks[0])
+	}
+}
+
+func TestRetriever_ProjectSpecificQuestionUsesMatchingProjectSection(t *testing.T) {
+	mgr := newTestManager(t)
+	r1, err := mgr.Upload("projects.pdf", []byte(`%PDF-1.4
+BT
+(Project Experience) Tj
+(Payment Platform) Tj
+(Built high performance payment APIs and transaction architecture) Tj
+(Recommendation System) Tj
+(Designed ranking models and feed personalization) Tj
+ET
+%%EOF`), nil)
+	if err != nil {
+		t.Fatalf("Upload error: %v", err)
+	}
+	if err := mgr.SetActive(r1.ID); err != nil {
+		t.Fatalf("SetActive error: %v", err)
+	}
+
+	ret := NewRetriever(mgr)
+	result := ret.RetrieveWithContext("How did you design the payment project?", "支付项目怎么设计", nil)
+
+	if !result.HasActiveResume {
+		t.Fatal("HasActiveResume should be true")
+	}
+	if len(result.Chunks) != 1 {
+		t.Fatalf("len(Chunks) = %d, want one matching project chunk: %v", len(result.Chunks), result.Chunks)
+	}
+	if !strings.Contains(result.Chunks[0], "Payment Platform") {
+		t.Fatalf("project context missing payment section: %q", result.Chunks[0])
+	}
+	if strings.Contains(result.Chunks[0], "Recommendation System") {
+		t.Fatalf("project context should not include unrelated project section: %q", result.Chunks[0])
+	}
+}
+
+func TestRetriever_ProjectFollowupUsesHistoryToResolveProjectSection(t *testing.T) {
+	mgr := newTestManager(t)
+	r1, err := mgr.Upload("projects.pdf", []byte(`%PDF-1.4
+BT
+(Project Experience) Tj
+(Payment Platform) Tj
+(Built high performance payment APIs and transaction architecture) Tj
+(Recommendation System) Tj
+(Designed ranking models and feed personalization) Tj
+ET
+%%EOF`), nil)
+	if err != nil {
+		t.Fatalf("Upload error: %v", err)
+	}
+	if err := mgr.SetActive(r1.ID); err != nil {
+		t.Fatalf("SetActive error: %v", err)
+	}
+
+	ret := NewRetriever(mgr)
+	result := ret.RetrieveWithContext(
+		"What did you do in this project?",
+		"你在这个项目里做了什么",
+		[]string{"Can you talk about the Payment Platform project?"},
+	)
+
+	if len(result.Chunks) != 1 {
+		t.Fatalf("len(Chunks) = %d, want one matching project chunk: %v", len(result.Chunks), result.Chunks)
+	}
+	if !strings.Contains(result.Chunks[0], "Payment Platform") {
+		t.Fatalf("project follow-up should resolve to payment section: %q", result.Chunks[0])
+	}
+	if strings.Contains(result.Chunks[0], "Recommendation System") {
+		t.Fatalf("project follow-up should not include unrelated project section: %q", result.Chunks[0])
+	}
+}
+
+func TestRetriever_ProjectFollowupUsesPreviousAnswerToResolveProjectSection(t *testing.T) {
+	mgr := newTestManager(t)
+	r1, err := mgr.Upload("projects.pdf", []byte(`%PDF-1.4
+BT
+(Project Experience) Tj
+(Payment Platform) Tj
+(Built high performance payment APIs and transaction architecture) Tj
+(Recommendation System) Tj
+(Designed ranking models and feed personalization) Tj
+ET
+%%EOF`), nil)
+	if err != nil {
+		t.Fatalf("Upload error: %v", err)
+	}
+	if err := mgr.SetActive(r1.ID); err != nil {
+		t.Fatalf("SetActive error: %v", err)
+	}
+
+	ret := NewRetriever(mgr)
+	result := ret.RetrieveWithContext(
+		"What did you do in this project?",
+		"你在这个项目里做了什么",
+		[]string{"I would talk about the Payment Platform because it best demonstrates architecture depth."},
+	)
+
+	if len(result.Chunks) != 1 {
+		t.Fatalf("len(Chunks) = %d, want one matching project chunk: %v", len(result.Chunks), result.Chunks)
+	}
+	if !strings.Contains(result.Chunks[0], "Payment Platform") {
+		t.Fatalf("project follow-up should resolve from previous answer: %q", result.Chunks[0])
+	}
+}
+
+func TestRetriever_GlobalQuestionIgnoresProjectHistoryForScope(t *testing.T) {
+	mgr := newTestManager(t)
+	r1, err := mgr.Upload("projects.pdf", []byte(`%PDF-1.4
+BT
+(Summary) Tj
+(Senior backend engineer) Tj
+(Project Experience) Tj
+(Payment Platform) Tj
+(Built payment APIs) Tj
+(Recommendation System) Tj
+(Designed ranking models) Tj
+ET
+%%EOF`), nil)
+	if err != nil {
+		t.Fatalf("Upload error: %v", err)
+	}
+	if err := mgr.SetActive(r1.ID); err != nil {
+		t.Fatalf("SetActive error: %v", err)
+	}
+
+	ret := NewRetriever(mgr)
+	result := ret.RetrieveWithContext(
+		"Tell me about yourself",
+		"介绍一下你自己",
+		[]string{"Can you talk about the Payment Platform project?"},
+	)
+
+	if len(result.Chunks) != 1 {
+		t.Fatalf("len(Chunks) = %d, want full resume context: %v", len(result.Chunks), result.Chunks)
+	}
+	if !strings.Contains(result.Chunks[0], "Senior backend engineer") || !strings.Contains(result.Chunks[0], "Recommendation System") {
+		t.Fatalf("global question should use full resume despite project history: %q", result.Chunks[0])
+	}
+}
+
+func TestRetriever_ProjectOverviewQuestionUsesFullResume(t *testing.T) {
+	mgr := newTestManager(t)
+	r1, err := mgr.Upload("projects.pdf", []byte(`%PDF-1.4
+BT
+(Project Experience) Tj
+(Payment Platform) Tj
+(Built payment APIs) Tj
+(Recommendation System) Tj
+(Designed ranking models) Tj
+ET
+%%EOF`), nil)
+	if err != nil {
+		t.Fatalf("Upload error: %v", err)
+	}
+	if err := mgr.SetActive(r1.ID); err != nil {
+		t.Fatalf("SetActive error: %v", err)
+	}
+
+	ret := NewRetriever(mgr)
+	result := ret.RetrieveWithContext("Tell me about your project experience", "介绍一下你的项目经验", nil)
+
+	if len(result.Chunks) != 1 {
+		t.Fatalf("len(Chunks) = %d, want full resume context: %v", len(result.Chunks), result.Chunks)
+	}
+	if !strings.Contains(result.Chunks[0], "Payment Platform") || !strings.Contains(result.Chunks[0], "Recommendation System") {
+		t.Fatalf("full resume context should include multiple projects: %q", result.Chunks[0])
+	}
+}
+
+func TestNeedsFullResumeContext(t *testing.T) {
+	tests := []string{
+		"Tell me about yourself",
+		"Walk me through your resume",
+		"您是否拥有高性能系统设计和体系结构",
+		"介绍一下你的项目经验",
+	}
+	for _, text := range tests {
+		if !needsFullResumeContext(text) {
+			t.Fatalf("needsFullResumeContext(%q) = false, want true", text)
+		}
+	}
+}
+
+func TestNeedsProjectContext(t *testing.T) {
+	if !needsProjectContext("What was your role in the payment project?") {
+		t.Fatal("payment project should need project context")
+	}
+	if needsProjectContext("介绍一下你的项目经验") {
+		t.Fatal("project overview should use full resume context, not one project section")
+	}
+}
+
+func TestRetrievalQueries_ByResumeLanguage(t *testing.T) {
+	tests := []struct {
+		name     string
+		language resume.ResumeLanguage
+		src      string
+		dst      string
+		want     []string
+	}{
+		{
+			name:     "english resume prefers source text",
+			language: resume.ResumeLanguageEN,
+			src:      "Tell me about your backend experience",
+			dst:      "介绍一下你的后端经验",
+			want:     []string{"Tell me about your backend experience", "介绍一下你的后端经验"},
+		},
+		{
+			name:     "chinese resume prefers translated text",
+			language: resume.ResumeLanguageZH,
+			src:      "Tell me about your backend experience",
+			dst:      "介绍一下你的后端经验",
+			want:     []string{"介绍一下你的后端经验", "Tell me about your backend experience"},
+		},
+		{
+			name:     "other language uses both available texts",
+			language: resume.ResumeLanguageJA,
+			src:      "Tell me about your backend experience",
+			dst:      "介绍一下你的后端经验",
+			want:     []string{"Tell me about your backend experience", "介绍一下你的后端经验"},
+		},
+		{
+			name:     "deduplicates same source and translation",
+			language: resume.ResumeLanguageMixed,
+			src:      "项目经验",
+			dst:      "项目经验",
+			want:     []string{"项目经验"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := retrievalQueries(tt.language, tt.src, tt.dst)
+			if len(got) != len(tt.want) {
+				t.Fatalf("len(retrievalQueries) = %d, want %d: %v", len(got), len(tt.want), got)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Fatalf("retrievalQueries[%d] = %q, want %q; all=%v", i, got[i], tt.want[i], got)
+				}
+			}
+		})
 	}
 }
 

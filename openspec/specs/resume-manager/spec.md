@@ -9,7 +9,7 @@
 ## Requirements
 
 ### Requirement: 简历上传与本地 Embedding
-用户 SHALL 可上传 PDF 或 DOCX 格式简历，上传后 Go 后端立即在后台线程使用 multilingual-e5-large 模型生成 embedding，存入本地向量库，不上传至任何云端。
+用户 SHALL 可上传 PDF 或 DOCX 格式简历，上传后 Go 后端立即在后台线程使用 multilingual-e5-small 模型生成 embedding，存入本地向量库，不上传至任何云端。
 
 #### Scenario: 上传简历触发 Embedding
 - **WHEN** 用户上传一份简历文件

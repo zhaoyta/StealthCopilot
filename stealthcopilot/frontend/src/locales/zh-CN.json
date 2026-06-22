@@ -12,7 +12,8 @@
     "back": "上一步",
     "finish": "完成",
     "skip": "跳过",
-    "delete": "删除"
+    "delete": "删除",
+    "refresh": "刷新"
   },
   "setup": {
     "title": "初始化设置",
@@ -33,6 +34,7 @@
       "virtualMic": "会议音频虚拟通道",
       "virtualMicHint": "只需选择一次。会议软件的扬声器和麦克风都选这个设备；App 会从这里采集面试官声音，也会把你的目标语言语音写回会议。",
       "virtualCam": "虚拟摄像头（OBS VirtualCam）",
+      "embeddingModel": "本地简历索引模型",
       "install": "一键安装",
       "installGuide": "查看安装指引",
       "installed": "已安装",
@@ -105,6 +107,7 @@
       "devices": "设备",
       "voice": "声音复刻",
       "resume": "简历",
+      "history": "历史会话",
       "ghost": "提词窗",
       "advanced": "高级"
     },
@@ -180,9 +183,27 @@
       "activate": "设为激活",
       "activeLabel": "激活",
       "statusPending": "待处理",
+      "statusDownloading": "下载模型中…",
       "statusProcessing": "生成索引中…",
       "statusReady": "已就绪",
-      "statusError": "处理失败"
+      "statusError": "处理失败",
+      "langModal": {
+        "title": "这份简历的主要语言是？",
+        "confirm": "开始上传"
+      }
+    },
+    "history": {
+      "empty": "暂无历史会话",
+      "active": "进行中",
+      "ended": "已结束",
+      "noResume": "未关联简历",
+      "turnCount": "{count} 轮问答",
+      "sessionMeta": "{resume} · {count} 轮问答",
+      "question": "问题",
+      "answer": "回答建议",
+      "noTurns": "暂无问答记录",
+      "confirmDelete": "确定删除这场历史会话吗？",
+      "activeDeleteDisabled": "进行中的会话不能删除"
     },
     "ghost": {
       "opacity": "透明度",
@@ -217,6 +238,7 @@
       "answerLlmProvider": "回答生成 LLM Provider",
       "llmProvider": "LLM Provider",
       "llmBaseURL": "LLM Base URL",
+      "historyMaxTurns": "历史轮数",
       "ttsProvider": "TTS Provider",
       "lipsyncProvider": "口型同步 Provider",
       "embeddingProvider": "Embedding Provider",
@@ -252,6 +274,8 @@
     "openTeleprompter": "提词窗",
     "openSettings": "设置",
     "hearingChain": "听力链",
+    "submitHearingDraft": "提交当前句",
+    "submitHearingDraftHint": "提交当前 ASR 草稿（⌘/Ctrl + Enter）",
     "speakingChain": "说话链",
     "videoChain": "视频链",
     "hearingDesc": "听懂面试官问题，并给出字幕与回答建议",

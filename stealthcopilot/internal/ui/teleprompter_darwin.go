@@ -19,6 +19,7 @@ package ui
 + (void)finishAnswer;
 + (void)setError:(NSString *)message;
 + (void)setCircuitOpen:(NSNumber *)open;
++ (void)windowDidResize:(NSNotification *)notification;
 + (void)reset;
 @end
 
@@ -26,16 +27,44 @@ static NSWindow *scTeleprompterWindow = nil;
 static NSView *scContentView = nil;
 static NSView *scExpandedView = nil;
 static NSButton *scPillButton = nil;
+static NSTextField *scTitleLabel = nil;
+static NSButton *scMinimizeButton = nil;
+static NSButton *scCloseButton = nil;
 static NSTextField *scErrorLabel = nil;
 static NSTextField *scCircuitLabel = nil;
 static NSTextView *scSubtitleView = nil;
 static NSTextView *scAnswerView = nil;
+static NSScrollView *scSubtitleScroll = nil;
+static NSScrollView *scAnswerScroll = nil;
+static NSView *scDivider = nil;
 static NSMutableString *scSubtitleText = nil;
 static NSMutableString *scAnswerText = nil;
 static BOOL scAnswering = NO;
 static BOOL scMinimized = NO;
 static CGFloat scFontSize = 16.0;
 static CGFloat scOpacity = 0.86;
+
+static void scLayoutExpandedContent(void) {
+	if (scExpandedView == nil) {
+		return;
+	}
+	NSRect bounds = [scExpandedView bounds];
+	CGFloat width = bounds.size.width;
+	CGFloat height = bounds.size.height;
+	CGFloat contentTop = height - 86.0;
+	if (contentTop < 96.0) contentTop = 96.0;
+	CGFloat answerHeight = floor((contentTop - 1.0) / 2.0);
+	CGFloat subtitleHeight = contentTop - answerHeight - 1.0;
+
+	[scTitleLabel setFrame:NSMakeRect(14, height - 33, MAX(width - 92, 80), 22)];
+	[scMinimizeButton setFrame:NSMakeRect(width - 66, height - 34, 28, 24)];
+	[scCloseButton setFrame:NSMakeRect(width - 34, height - 34, 28, 24)];
+	[scErrorLabel setFrame:NSMakeRect(12, height - 58, MAX(width - 24, 80), 20)];
+	[scCircuitLabel setFrame:NSMakeRect(12, height - 80, MAX(width - 24, 80), 20)];
+	[scAnswerScroll setFrame:NSMakeRect(0, 0, width, answerHeight)];
+	[scDivider setFrame:NSMakeRect(0, answerHeight, width, 1)];
+	[scSubtitleScroll setFrame:NSMakeRect(0, answerHeight + 1, width, subtitleHeight)];
+}
 
 static NSTextField *scMakeLabel(NSRect frame, NSString *text, NSColor *color) {
 	NSTextField *label = [[NSTextField alloc] initWithFrame:frame];
@@ -101,7 +130,7 @@ static void scEnsureWindow(void) {
 	NSRect frame = NSMakeRect(0, 0, 420, 320);
 	scTeleprompterWindow = [[NSWindow alloc]
 		initWithContentRect:frame
-		styleMask:NSWindowStyleMaskBorderless
+		styleMask:NSWindowStyleMaskBorderless | NSWindowStyleMaskResizable
 		backing:NSBackingStoreBuffered
 		defer:NO];
 	[scTeleprompterWindow setTitle:@"StealthCopilot"];
@@ -110,43 +139,57 @@ static void scEnsureWindow(void) {
 	[scTeleprompterWindow setBackgroundColor:[NSColor clearColor]];
 	[scTeleprompterWindow setHasShadow:YES];
 	[scTeleprompterWindow setReleasedWhenClosed:NO];
+	[scTeleprompterWindow setMovableByWindowBackground:YES];
+	[scTeleprompterWindow setMinSize:NSMakeSize(320, 220)];
 	[scTeleprompterWindow setCollectionBehavior:NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorFullScreenAuxiliary];
 	[scTeleprompterWindow setSharingType:NSWindowSharingNone];
 
 	scContentView = [[NSView alloc] initWithFrame:frame];
+	[scContentView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
 	[scContentView setWantsLayer:YES];
 	[[scContentView layer] setBackgroundColor:[[NSColor colorWithCalibratedRed:0.07 green:0.09 blue:0.14 alpha:scOpacity] CGColor]];
 	[[scContentView layer] setCornerRadius:10.0];
 	[[scContentView layer] setMasksToBounds:YES];
 
 	scExpandedView = [[NSView alloc] initWithFrame:frame];
-	NSTextField *title = scMakeLabel(NSMakeRect(14, 287, 220, 22), @"StealthCopilot", [NSColor colorWithCalibratedRed:0.78 green:0.92 blue:1.0 alpha:1.0]);
-	[scExpandedView addSubview:title];
-	[scExpandedView addSubview:scMakeButton(NSMakeRect(354, 286, 28, 24), @"–", @selector(toggleMinimized))];
-	[scExpandedView addSubview:scMakeButton(NSMakeRect(386, 286, 28, 24), @"×", @selector(closeWindow))];
+	[scExpandedView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+	scTitleLabel = scMakeLabel(NSMakeRect(14, 287, 220, 22), @"StealthCopilot", [NSColor colorWithCalibratedRed:0.78 green:0.92 blue:1.0 alpha:1.0]);
+	[scExpandedView addSubview:scTitleLabel];
+	scMinimizeButton = scMakeButton(NSMakeRect(354, 286, 28, 24), @"–", @selector(toggleMinimized));
+	[scExpandedView addSubview:scMinimizeButton];
+	scCloseButton = scMakeButton(NSMakeRect(386, 286, 28, 24), @"×", @selector(closeWindow));
+	[scExpandedView addSubview:scCloseButton];
 
 	scErrorLabel = scMakeLabel(NSMakeRect(12, 262, 396, 20), @"", [NSColor colorWithCalibratedRed:1.0 green:0.72 blue:0.72 alpha:1.0]);
 	scCircuitLabel = scMakeLabel(NSMakeRect(12, 240, 396, 20), @"", [NSColor colorWithCalibratedRed:1.0 green:0.77 blue:0.36 alpha:1.0]);
+	[scErrorLabel setAutoresizingMask:NSViewWidthSizable | NSViewMinYMargin];
+	[scCircuitLabel setAutoresizingMask:NSViewWidthSizable | NSViewMinYMargin];
 	[scExpandedView addSubview:scErrorLabel];
 	[scExpandedView addSubview:scCircuitLabel];
 
-	NSScrollView *subtitleScroll = scMakeScrollView(NSMakeRect(0, 136, 420, 102), &scSubtitleView);
-	NSScrollView *answerScroll = scMakeScrollView(NSMakeRect(0, 0, 420, 134), &scAnswerView);
-	[scExpandedView addSubview:subtitleScroll];
-	[scExpandedView addSubview:answerScroll];
+	scSubtitleScroll = scMakeScrollView(NSMakeRect(0, 136, 420, 102), &scSubtitleView);
+	scAnswerScroll = scMakeScrollView(NSMakeRect(0, 0, 420, 134), &scAnswerView);
+	[scSubtitleScroll setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable | NSViewMaxYMargin];
+	[scAnswerScroll setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable | NSViewMinYMargin];
+	[scExpandedView addSubview:scSubtitleScroll];
+	[scExpandedView addSubview:scAnswerScroll];
 
-	NSView *divider = [[NSView alloc] initWithFrame:NSMakeRect(0, 134, 420, 1)];
-	[divider setWantsLayer:YES];
-	[[divider layer] setBackgroundColor:[[NSColor colorWithCalibratedWhite:1.0 alpha:0.16] CGColor]];
-	[scExpandedView addSubview:divider];
+	scDivider = [[NSView alloc] initWithFrame:NSMakeRect(0, 134, 420, 1)];
+	[scDivider setAutoresizingMask:NSViewWidthSizable | NSViewMinYMargin | NSViewMaxYMargin];
+	[scDivider setWantsLayer:YES];
+	[[scDivider layer] setBackgroundColor:[[NSColor colorWithCalibratedWhite:1.0 alpha:0.16] CGColor]];
+	[scExpandedView addSubview:scDivider];
 
 	scPillButton = scMakeButton(NSMakeRect(0, 0, 190, 38), @"StealthCopilot", @selector(toggleMinimized));
+	[scPillButton setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
 	[scPillButton setHidden:YES];
 	[scContentView addSubview:scExpandedView];
 	[scContentView addSubview:scPillButton];
 
 	[scTeleprompterWindow setContentView:scContentView];
 	[scTeleprompterWindow center];
+	[[NSNotificationCenter defaultCenter] addObserver:[SCTeleprompterBridge class] selector:@selector(windowDidResize:) name:NSWindowDidResizeNotification object:scTeleprompterWindow];
+	scLayoutExpandedContent();
 
 	scSubtitleText = [[NSMutableString alloc] init];
 	scAnswerText = [[NSMutableString alloc] init];
@@ -179,6 +222,7 @@ static void scScrollToBottom(NSTextView *view) {
 			[scTeleprompterWindow setFrame:NSMakeRect([scTeleprompterWindow frame].origin.x, [scTeleprompterWindow frame].origin.y, 190, 38) display:YES animate:YES];
 		} else {
 			[scTeleprompterWindow setFrame:NSMakeRect([scTeleprompterWindow frame].origin.x, [scTeleprompterWindow frame].origin.y, 420, 320) display:YES animate:YES];
+			scLayoutExpandedContent();
 		}
 	}
 
@@ -215,6 +259,10 @@ static void scScrollToBottom(NSTextView *view) {
 	if ([text length] == 0) {
 		return;
 	}
+	if (!scAnswering) {
+		[scAnswerText setString:@""];
+		[scAnswerView setString:@""];
+	}
 	scAnswering = YES;
 	[scAnswerText appendString:text];
 	[scAnswerView setString:scAnswerText];
@@ -234,6 +282,12 @@ static void scScrollToBottom(NSTextView *view) {
 		scEnsureWindow();
 		BOOL isOpen = [open boolValue];
 		[scCircuitLabel setStringValue:isOpen ? @"当前为直连模式，会议可继续使用，AI 辅助已暂时退出" : @""];
+	}
+
+	+ (void)windowDidResize:(NSNotification *)notification {
+		if (!scMinimized) {
+			scLayoutExpandedContent();
+		}
 	}
 
 	+ (void)reset {

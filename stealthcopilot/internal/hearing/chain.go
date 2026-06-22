@@ -19,6 +19,7 @@ import (
 	"github.com/zhaoyta/stealthcopilot/internal/llm"
 	"github.com/zhaoyta/stealthcopilot/internal/pipeline"
 	"github.com/zhaoyta/stealthcopilot/internal/rag"
+	"github.com/zhaoyta/stealthcopilot/internal/session"
 	"github.com/zhaoyta/stealthcopilot/internal/trans"
 )
 
@@ -41,11 +42,16 @@ type SubtitleEvent struct {
 const (
 	hearingTransQueueSize = 64
 	hearingTTSQueueSize   = 64
-	hearingASRIdleFlush   = 800 * time.Millisecond
+	hearingSubmitTimeout  = 2 * time.Second
+	hearingRAGTimeout     = 3 * time.Second
 )
 
 type hearingTransItem struct {
 	Result asr.Result
+}
+
+type hearingSubmitRequest struct {
+	reply chan string
 }
 
 type hearingTTSItem struct {
@@ -69,6 +75,8 @@ type ChainConfig struct {
 	DeepSeekModel string
 	// RAGPrompt 用户自定义 RAG 回答 Prompt 模板
 	RAGPrompt string
+	// TargetLang is the language used for user-visible answer suggestions.
+	TargetLang string
 	// VirtualMicDevice 虚拟声卡设备名称（BlackHole/VB-Cable）
 	VirtualMicDevice string
 	// MonitorConfig controls private translated-audio playback for the interviewee.
@@ -79,15 +87,24 @@ type ChainConfig struct {
 	MonitorPrefersExtensionAudio bool
 	// Retriever RAG 检索器（依赖 resume.Manager）
 	Retriever *rag.Retriever
+	// SessionStore persists interview session history.
+	SessionStore session.Store
+	// ResumeSessionID resumes an existing session when provided. The default frontend path leaves it empty.
+	ResumeSessionID string
+	// ResumeID records the active resume associated with a session.
+	ResumeID string
 	// EventSink mirrors hearing/answer events to non-Wails consumers such as the native teleprompter.
 	EventSink llm.EventEmitter
 }
 
 // Chain 是听力链的主协调器，持有各组件实例和运行状态。
 type Chain struct {
-	mu     sync.Mutex
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
+	mu           sync.Mutex
+	cancel       context.CancelFunc
+	wg           sync.WaitGroup
+	sessionStore session.Store
+	sessionID    string
+	submitCh     chan hearingSubmitRequest
 }
 
 // Start 以给定配置启动听力链。已在运行时幂等（先 Stop 再 Start）。
@@ -98,12 +115,21 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 	defer c.mu.Unlock()
 
 	if c.cancel != nil {
-		c.cancel()
+		oldCancel := c.cancel
+		oldStore := c.sessionStore
+		oldSessionID := c.sessionID
+		oldCancel()
 		c.wg.Wait()
+		if oldStore != nil && oldSessionID != "" {
+			_ = oldStore.End(oldSessionID)
+		}
 	}
 
 	ctx, cancel := context.WithCancel(wailsCtx)
 	c.cancel = cancel
+	c.sessionStore = nil
+	c.sessionID = ""
+	c.submitCh = make(chan hearingSubmitRequest)
 
 	// 音频捕获：用户选择设备时使用系统采集；未配置设备时保持静音降级。
 	var captureProvider audio.CaptureProvider = &audio.NullCaptureProvider{}
@@ -113,6 +139,7 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 		if captureErr != "" {
 			cancel()
 			c.cancel = nil
+			c.submitCh = nil
 			diag.Errorf("hearing capture provider failed device=%q err=%q", cfg.VirtualMicDevice, captureErr)
 			return "音频捕获启动失败：" + captureErr
 		}
@@ -121,6 +148,7 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 	if err != nil {
 		cancel()
 		c.cancel = nil
+		c.submitCh = nil
 		diag.Errorf("hearing capture start failed device=%q err=%v", cfg.VirtualMicDevice, err)
 		return "音频捕获启动失败：" + err.Error()
 	}
@@ -131,6 +159,7 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 		if !asr.XunfeiRTASRLLMConfigReady(cfg.ASRConfig) {
 			cancel()
 			c.cancel = nil
+			c.submitCh = nil
 			diag.Errorf("hearing asr config incomplete source_lang=%s", cfg.ASRConfig.SourceLang)
 			return "讯飞实时转写配置不完整：请配置 AppID、API Key、API Secret 和听力链语言"
 		}
@@ -140,6 +169,7 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 	if err != nil {
 		cancel()
 		c.cancel = nil
+		c.submitCh = nil
 		diag.Errorf("hearing asr extension start failed err=%v", err)
 		return "讯飞同声传译启动失败：" + err.Error()
 	}
@@ -174,10 +204,24 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 			cfg.EventSink(eventName, data...)
 		}
 	})
-	generator := llm.NewAnswerGeneratorWithConfig(llmCfg, combinedEmit)
+	generator := llm.NewAnswerGeneratorWithSessionStore(llmCfg, combinedEmit, cfg.SessionStore)
 
-	// session ID：每次 StartHearingChain 创建新 session，避免跨会话混用历史
-	sessionID := uuid.New().String()
+	// session ID：默认每次 StartHearingChain 创建新 session，避免跨会话混用历史
+	sessionID := strings.TrimSpace(cfg.ResumeSessionID)
+	if sessionID == "" {
+		sessionID = uuid.New().String()
+	}
+	if cfg.SessionStore != nil {
+		if err := cfg.SessionStore.Begin(sessionID, cfg.ResumeID); err != nil {
+			cancel()
+			c.cancel = nil
+			c.submitCh = nil
+			diag.Errorf("hearing session begin failed session=%s err=%v", sessionID, err)
+			return "历史会话启动失败：" + err.Error()
+		}
+		c.sessionStore = cfg.SessionStore
+		c.sessionID = sessionID
+	}
 	diag.Infof("hearing session started session=%s monitor_enabled=%t", sessionID, cfg.MonitorConfig.Enabled)
 
 	c.wg.Add(1)
@@ -188,10 +232,37 @@ func (c *Chain) Start(wailsCtx context.Context, cfg ChainConfig) string {
 		if transExtension == nil {
 			transExtension = trans.NoopExtension{}
 		}
-		c.processLoop(ctx, resultCh, transExtension, classifier, cfg.Retriever, generator, sessionID, cfg.RAGPrompt, combinedEmit, monitor, monitorAudioQueue, cfg.MonitorPrefersExtensionAudio)
+		c.processLoop(ctx, resultCh, c.submitCh, transExtension, classifier, cfg.Retriever, generator, sessionID, cfg.RAGPrompt, cfg.TargetLang, combinedEmit, monitor, monitorAudioQueue, cfg.MonitorPrefersExtensionAudio)
 	}()
 
 	return ""
+}
+
+// SubmitDraft commits the latest hearing ASR draft to translation/RAG.
+func (c *Chain) SubmitDraft(ctx context.Context) string {
+	c.mu.Lock()
+	submitCh := c.submitCh
+	c.mu.Unlock()
+	if submitCh == nil {
+		return ""
+	}
+	req := hearingSubmitRequest{reply: make(chan string, 1)}
+	timeout := time.After(hearingSubmitTimeout)
+	select {
+	case submitCh <- req:
+	case <-ctx.Done():
+		return ""
+	case <-timeout:
+		return ""
+	}
+	select {
+	case text := <-req.reply:
+		return text
+	case <-ctx.Done():
+		return ""
+	case <-time.After(hearingSubmitTimeout):
+		return ""
+	}
 }
 
 func (c *Chain) monitorAudioWorker(ctx context.Context, queue <-chan []byte, monitor audio.MonitorSink) {
@@ -215,13 +286,31 @@ func (c *Chain) monitorAudioWorker(ctx context.Context, queue <-chan []byte, mon
 // Stop 停止听力链，等待所有 goroutine 退出后返回。
 func (c *Chain) Stop() {
 	c.mu.Lock()
+	var store session.Store
+	var sessionID string
 	if c.cancel != nil {
 		c.cancel()
 		c.cancel = nil
+		store = c.sessionStore
+		sessionID = c.sessionID
+		c.sessionStore = nil
+		c.sessionID = ""
+		c.submitCh = nil
 	}
 	c.mu.Unlock()
 	c.wg.Wait()
+	if store != nil && sessionID != "" {
+		if err := store.End(sessionID); err != nil {
+			diag.Warnf("hearing session end failed session=%s err=%v", sessionID, err)
+		}
+	}
 	diag.Infof("hearing chain stopped")
+}
+
+func (c *Chain) CurrentSession() (session.Store, string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.sessionStore, c.sessionID
 }
 
 // processLoop 是听力链的核心处理循环，协调字幕推送、意图识别、RAG 检索和回答生成。
@@ -230,12 +319,14 @@ func (c *Chain) Stop() {
 func (c *Chain) processLoop(
 	ctx context.Context,
 	results <-chan asr.Result,
+	submitCh <-chan hearingSubmitRequest,
 	transExtension trans.Extension,
 	classifier *intent.Classifier,
 	retriever *rag.Retriever,
 	generator *llm.AnswerGenerator,
 	sessionID string,
 	ragPromptTpl string,
+	targetLang string,
 	emitFn llm.EventEmitter,
 	monitor audio.MonitorSink,
 	monitorAudioQueue chan<- []byte,
@@ -247,7 +338,7 @@ func (c *Chain) processLoop(
 	c.wg.Add(2)
 	go func() {
 		defer c.wg.Done()
-		c.transWorker(ctx, transQueue, ttsQueue, transExtension, classifier, retriever, generator, sessionID, ragPromptTpl, emitFn, monitor, monitorAudioQueue, monitorPrefersExtensionAudio)
+		c.transWorker(ctx, transQueue, ttsQueue, transExtension, classifier, retriever, generator, sessionID, ragPromptTpl, targetLang, emitFn, monitor, monitorAudioQueue, monitorPrefersExtensionAudio)
 	}()
 	go func() {
 		defer c.wg.Done()
@@ -255,107 +346,55 @@ func (c *Chain) processLoop(
 	}()
 	defer close(transQueue)
 
-	sentenceBuffer := &hearingSentenceBuffer{}
-	var pendingInterim string
-	var idleTimer *time.Timer
-	var idleC <-chan time.Time
-	resetIdleTimer := func() {
-		if idleTimer == nil {
-			idleTimer = time.NewTimer(hearingASRIdleFlush)
-		} else {
-			if !idleTimer.Stop() {
-				select {
-				case <-idleTimer.C:
-				default:
-				}
-			}
-			idleTimer.Reset(hearingASRIdleFlush)
-		}
-		idleC = idleTimer.C
-	}
-	stopIdleTimer := func() {
-		if idleTimer != nil {
-			if !idleTimer.Stop() {
-				select {
-				case <-idleTimer.C:
-				default:
-				}
-			}
-		}
-		idleC = nil
-	}
-	defer stopIdleTimer()
+	var draftText string
+	var lastSubmitted string
 	for {
 		select {
 		case <-ctx.Done():
-			if pendingInterim != "" {
-				c.queueHearingSentences(ctx, transQueue, sentenceBuffer.Add(pendingInterim, true))
-			}
-			c.queueHearingSentences(ctx, transQueue, sentenceBuffer.Flush())
 			return
-		case <-idleC:
-			idleC = nil
-			if pendingInterim != "" {
-				diag.Infof("hearing asr idle flush chars=%d text=%q", len(pendingInterim), trimHearingLog(pendingInterim, 120))
-				sentences := sentenceBuffer.Add(pendingInterim, true)
-				sentences = append(sentences, sentenceBuffer.Flush()...)
-				c.queueHearingSentences(ctx, transQueue, sentences)
-				pendingInterim = ""
+		case req := <-submitCh:
+			submitted := compactHearingDraftText(draftText)
+			if submitted != "" {
+				draftText = ""
+				emitFn(EventStep, pipeline.StepEvent{
+					Chain:   "hearing",
+					Step:    pipeline.StepASR,
+					SrcText: "",
+					IsFinal: false,
+				})
+				if hearingDraftDuplicate(submitted, lastSubmitted) {
+					diag.Infof("hearing draft submit ignored duplicate chars=%d text=%q", len(submitted), trimHearingLog(submitted, 120))
+				} else {
+					lastSubmitted = submitted
+					diag.Infof("hearing draft submitted chars=%d text=%q", len(submitted), trimHearingLog(submitted, 120))
+					c.queueHearingSentence(ctx, transQueue, submitted)
+				}
+			} else {
+				diag.Infof("hearing draft submit ignored empty")
 			}
+			req.reply <- submitted
 		case result, ok := <-results:
 			if !ok {
+				if ctx.Err() != nil {
+					return
+				}
 				// channel 关闭 = 讯飞重连耗尽，通知前端
 				diag.Warnf("hearing result channel closed")
-				if pendingInterim != "" {
-					c.queueHearingSentences(ctx, transQueue, sentenceBuffer.Add(pendingInterim, true))
-				}
-				c.queueHearingSentences(ctx, transQueue, sentenceBuffer.Flush())
 				emitFn(EventError, "讯飞连接中断，请检查网络或重新启动")
 				return
 			}
 			diag.Infof("hearing result final=%t src_len=%d dst_len=%d audio_bytes=%d", result.IsFinal, len(result.SrcText), len(result.DstText), len(result.AudioPCM))
-			if result.SrcText != "" {
+			switch {
+			case result.SrcText != "":
+				updateText := trimSubmittedHearingPrefix(result.SrcText, lastSubmitted)
+				draftText = compactHearingDraftText(mergeHearingInterim(draftText, updateText))
+				diag.Infof("hearing asr draft updated final=%t stable=%t chars=%d text=%q", result.IsFinal, result.Stable, len(draftText), trimHearingLog(draftText, 120))
 				emitFn(EventStep, pipeline.StepEvent{
 					Chain:   "hearing",
 					Step:    pipeline.StepASR,
-					SrcText: result.SrcText,
-					IsFinal: result.IsFinal,
+					SrcText: draftText,
+					IsFinal: false,
 				})
-			}
-			switch {
-			case result.SrcText != "" && result.IsFinal:
-				pendingInterim = ""
-				stopIdleTimer()
-				sentences := sentenceBuffer.Add(result.SrcText, result.IsFinal)
-				// IsFinal 是讯飞明确的句子结束信号，无论 hearingLooksCompleteEnough 结果如何都强制 flush
-				sentences = append(sentences, sentenceBuffer.Flush()...)
-				c.queueHearingSentences(ctx, transQueue, sentences)
-			case result.SrcText != "":
-				normalized := normalizeHearingText(result.SrcText)
-				// 讯飞把前一句的结束标点放在下一段 interim 的开头（如 ". Where are you from"）。
-				// 开头标点 = 前一句已结束的可靠信号 → 立即发出 pendingInterim，以标点后的内容开始新积累。
-				if hearingStartsWithBoundary(normalized) {
-					if pendingInterim != "" {
-						diag.Infof("hearing asr boundary flush prev chars=%d text=%q", len(pendingInterim), trimHearingLog(pendingInterim, 120))
-						sentences := sentenceBuffer.Add(pendingInterim, true)
-						sentences = append(sentences, sentenceBuffer.Flush()...)
-						c.queueHearingSentences(ctx, transQueue, sentences)
-					}
-					rest := strings.TrimSpace(strings.TrimLeftFunc(normalized, func(r rune) bool {
-						return strings.ContainsRune(".!?。！？；;", r)
-					}))
-					pendingInterim = rest
-					if rest != "" {
-						diag.Infof("hearing asr boundary new segment chars=%d text=%q", len(rest), trimHearingLog(rest, 120))
-						resetIdleTimer()
-					} else {
-						stopIdleTimer()
-					}
-				} else {
-					pendingInterim = result.SrcText
-					diag.Infof("hearing asr interim pending chars=%d", len(pendingInterim))
-					resetIdleTimer()
-				}
 			case result.DstText == "" && len(result.AudioPCM) == 0:
 				select {
 				case transQueue <- hearingTransItem{Result: result}:
@@ -375,19 +414,17 @@ func (c *Chain) processLoop(
 	}
 }
 
-func (c *Chain) queueHearingSentences(ctx context.Context, transQueue chan<- hearingTransItem, sentences []string) {
-	for _, sentence := range sentences {
-		sentence = strings.TrimSpace(sentence)
-		if sentence == "" {
-			continue
-		}
-		result := asr.Result{SrcText: sentence, IsFinal: true}
-		select {
-		case transQueue <- hearingTransItem{Result: result}:
-			diag.Infof("hearing sentence queued chars=%d queue_depth=%d text=%q", len(sentence), len(transQueue), trimHearingLog(sentence, 120))
-		case <-ctx.Done():
-			return
-		}
+func (c *Chain) queueHearingSentence(ctx context.Context, transQueue chan<- hearingTransItem, sentence string) {
+	sentence = strings.TrimSpace(sentence)
+	if sentence == "" {
+		return
+	}
+	result := asr.Result{SrcText: sentence, IsFinal: true}
+	select {
+	case transQueue <- hearingTransItem{Result: result}:
+		diag.Infof("hearing sentence queued chars=%d queue_depth=%d text=%q", len(sentence), len(transQueue), trimHearingLog(sentence, 120))
+	case <-ctx.Done():
+		return
 	}
 }
 
@@ -408,6 +445,7 @@ func (c *Chain) transWorker(
 	generator *llm.AnswerGenerator,
 	sessionID string,
 	ragPromptTpl string,
+	targetLang string,
 	emitFn llm.EventEmitter,
 	monitor audio.MonitorSink,
 	monitorAudioQueue chan<- []byte,
@@ -442,7 +480,7 @@ func (c *Chain) transWorker(
 					IsFinal: result.IsFinal,
 				})
 			}
-			if len(result.AudioPCM) > 0 && monitor != nil {
+			if len(result.AudioPCM) > 0 && monitor != nil && (monitorPrefersExtensionAudio || result.DstText == "") {
 				c.queueExtensionAudio(ctx, result, emitFn, monitor, monitorAudioQueue)
 			}
 			if result.SrcText == "" && result.DstText == "" && len(result.AudioPCM) > 0 {
@@ -468,7 +506,7 @@ func (c *Chain) transWorker(
 				}
 			}
 			if result.IsFinal && result.SrcText != "" && classifier != nil && retriever != nil && generator != nil {
-				c.startRAG(ctx, result.SrcText, classifier, retriever, generator, sessionID, ragPromptTpl, emitFn)
+				c.startRAG(ctx, result.SrcText, result.DstText, classifier, retriever, generator, sessionID, ragPromptTpl, targetLang, emitFn)
 			}
 		}
 	}
@@ -532,29 +570,80 @@ func (c *Chain) queueExtensionAudio(
 func (c *Chain) startRAG(
 	ctx context.Context,
 	srcText string,
+	dstText string,
 	classifier *intent.Classifier,
 	retriever *rag.Retriever,
 	generator *llm.AnswerGenerator,
 	sessionID string,
 	ragPromptTpl string,
+	targetLang string,
 	emitFn llm.EventEmitter,
 ) {
 	go func() {
 		intentType := classifier.Classify(ctx, srcText)
 		diag.Infof("hearing intent classified intent=%s question_chars=%d", intentType, len(srcText))
 		if intentType == intent.IntentStatement {
+			diag.Infof("hearing rag skipped intent=%s", intentType)
 			return
 		}
-		ragResult := retriever.Retrieve(srcText)
+		history := generator.RecentHistory(sessionID)
+		historyTexts := historyTextsForRetrieval(history)
+		diag.Infof("hearing rag begin intent=%s question_chars=%d history_turns=%d", intentType, len(srcText), len(history))
+		ragResult := retrieveHearingRAG(ctx, retriever, srcText, dstText, historyTexts)
+		diag.Infof("hearing rag retrieved active_resume=%t chunks=%d intent=%s history_turns=%d", ragResult.HasActiveResume, len(ragResult.Chunks), intentType, len(history))
 		if !ragResult.HasActiveResume {
 			emitFn(EventSubtitle, SubtitleEvent{Text: "（未激活简历，回答仅供参考）", IsFinal: true})
 		}
+		diag.Infof("hearing answer generation queued session=%s chunks=%d with_history=%t", sessionID, len(ragResult.Chunks), intentType == intent.IntentFollowup)
 		generator.Generate(ctx, llm.GenerateConfig{
-			SessionID:    sessionID,
-			Question:     srcText,
-			ResumeChunks: ragResult.Chunks,
-			PromptTpl:    ragPromptTpl,
-			WithHistory:  intentType == intent.IntentFollowup,
+			SessionID:       sessionID,
+			Question:        srcText,
+			DisplayQuestion: displayQuestion(srcText, dstText),
+			TargetLanguage:  targetLang,
+			ResumeChunks:    ragResult.Chunks,
+			PromptTpl:       ragPromptTpl,
+			WithHistory:     intentType == intent.IntentFollowup,
 		})
 	}()
+}
+
+func historyTextsForRetrieval(history []llm.QAPair) []string {
+	texts := make([]string, 0, len(history)*2)
+	for _, turn := range history {
+		if strings.TrimSpace(turn.Question) != "" {
+			texts = append(texts, turn.Question)
+		}
+		if strings.TrimSpace(turn.Answer) != "" {
+			texts = append(texts, turn.Answer)
+		}
+	}
+	return texts
+}
+
+func retrieveHearingRAG(ctx context.Context, retriever *rag.Retriever, srcText, dstText string, historyTexts []string) rag.RetrieveResult {
+	type result struct {
+		value rag.RetrieveResult
+	}
+	done := make(chan result, 1)
+	go func() {
+		done <- result{value: retriever.RetrieveWithContext(srcText, dstText, historyTexts)}
+	}()
+	timer := time.NewTimer(hearingRAGTimeout)
+	defer timer.Stop()
+	select {
+	case got := <-done:
+		return got.value
+	case <-timer.C:
+		diag.Warnf("hearing rag timeout elapsed=%s; continuing without resume chunks", hearingRAGTimeout)
+		return rag.RetrieveResult{HasActiveResume: true, Chunks: nil}
+	case <-ctx.Done():
+		return rag.RetrieveResult{HasActiveResume: true, Chunks: nil}
+	}
+}
+
+func displayQuestion(srcText, dstText string) string {
+	if strings.TrimSpace(dstText) != "" {
+		return dstText
+	}
+	return srcText
 }

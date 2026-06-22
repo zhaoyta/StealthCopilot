@@ -25,8 +25,32 @@ func TestParseXunfeiRTASRLLMResponse(t *testing.T) {
 	if !result.IsFinal {
 		t.Fatal("expected final result")
 	}
+	if !result.Stable {
+		t.Fatal("expected stable result")
+	}
 	if result.DstText != "" {
 		t.Fatalf("DstText = %q, want empty", result.DstText)
+	}
+}
+
+func TestParseXunfeiRTASRLLMStableType(t *testing.T) {
+	raw := []byte(`{
+		"msg_type":"result",
+		"res_type":"asr",
+		"data":{
+			"ls":false,
+			"cn":{"st":{"type":"0","rt":[{"ws":[{"cw":[{"w":"Tell me about yourself","wp":"n"}]}]}]}}
+		}
+	}`)
+	result, ok := parseXunfeiRTASRLLMResponse(raw)
+	if !ok {
+		t.Fatal("expected ASR result")
+	}
+	if result.IsFinal {
+		t.Fatal("did not expect final result")
+	}
+	if !result.Stable {
+		t.Fatal("expected st.type=0 to mark stable")
 	}
 }
 

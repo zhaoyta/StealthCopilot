@@ -1,10 +1,11 @@
 <script lang="ts" setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Headphones, Mic, Video, Settings, Maximize2, Info, Play, ChevronRight, SlidersHorizontal, AlertTriangle } from 'lucide-vue-next'
+import { Headphones, Mic, Video, Settings, Maximize2, Info, Play, Square, ChevronRight, SlidersHorizontal, AlertTriangle, CornerDownLeft, X } from 'lucide-vue-next'
 import {
   StartHearingChain,
   StopHearingChain,
+  SubmitHearingDraft,
   StartSpeakingChain,
   StopSpeakingChain,
   StartVideoChain,
@@ -28,7 +29,7 @@ const UI_LOCALES = [
 ]
 
 const emit = defineEmits<{
-  (e: 'openSettings', tab?: 'apiKeys' | 'language' | 'devices' | 'voice' | 'resume' | 'ghost' | 'advanced'): void
+  (e: 'openSettings', tab?: 'apiKeys' | 'language' | 'devices' | 'voice' | 'resume' | 'history' | 'ghost' | 'advanced'): void
   (e: 'openTeleprompter'): void
 }>()
 
@@ -54,6 +55,12 @@ interface StepEvent {
   audioBytes?: number
 }
 
+interface StepDetail {
+  title: string
+  text: string
+  meta: string
+}
+
 const hearingStatus = ref<ChainStatus>('closed')
 const speakingStatus = ref<ChainStatus>('closed')
 const videoStatus = ref<ChainStatus>('closed')
@@ -61,8 +68,10 @@ const circuitOpen = ref(false)
 const errorMsg = ref('')
 const startupIssues = ref<string[]>([])
 const startupWarnings = ref<string[]>([])
-const hearingLangPair = ref('')
-const speakingLangPair = ref('')
+const hearingSourceLang = ref('en')
+const hearingTargetLang = ref('zh')
+const speakingInputLang = ref('zh')
+const speakingOutputLang = ref('en')
 const latestSpeakingSourceText = ref('')
 const latestSpeakingTargetText = ref('')
 const hearingSteps = ref<Record<StepKey, StepState>>(emptyStepMap())
@@ -73,12 +82,19 @@ const showMeetingGuide = ref(false)
 const deviceConfigTarget = ref<DeviceConfigTarget | null>(null)
 const showPreflightDialog = ref(false)
 const pendingStartTargets = ref<ChainTarget[]>([])
+const stepDetail = ref<StepDetail | null>(null)
 
 const runningCount = computed(() =>
   [hearingStatus.value, speakingStatus.value, videoStatus.value].filter(s => s === 'running').length
 )
 const systemOk = computed(() =>
   !circuitOpen.value && hearingStatus.value !== 'error' && speakingStatus.value !== 'error' && videoStatus.value !== 'error'
+)
+const hearingLangPair = computed(() =>
+  `${langLabel(hearingSourceLang.value)} → ${langLabel(hearingTargetLang.value)}`
+)
+const speakingLangPair = computed(() =>
+  `${langLabel(speakingInputLang.value)} → ${langLabel(speakingOutputLang.value)}`
 )
 
 // 将讯飞语言代码转为 locale 显示名（读 i18n langs map）
@@ -117,6 +133,22 @@ async function toggleHearing(on: boolean, options: ToggleOptions = {}) {
     hearingStatus.value = 'closed'
     await HideTeleprompter()
   }
+}
+
+async function submitHearingDraft() {
+  if (hearingStatus.value !== 'running') return
+  const err = await SubmitHearingDraft()
+  if (err) {
+    errorMsg.value = err
+  } else {
+    errorMsg.value = ''
+  }
+}
+
+function handleGlobalKeydown(event: KeyboardEvent) {
+  if (!(event.metaKey || event.ctrlKey) || event.key !== 'Enter') return
+  event.preventDefault()
+  void submitHearingDraft()
 }
 
 async function toggleSpeaking(on: boolean, options: ToggleOptions = {}) {
@@ -218,8 +250,10 @@ async function stopAll() {
 async function loadDashboardConfig() {
   const cfg = await GetConfig()
   uiLocale.value         = (cfg.ui_locale || 'zh-CN') as 'zh-CN' | 'en-US'
-  hearingLangPair.value  = `${langLabel(cfg.hearing_source_lang || 'en')} → ${langLabel(cfg.hearing_target_lang || 'zh')}`
-  speakingLangPair.value = `${langLabel(cfg.speaking_input_lang || 'zh')} → ${langLabel(cfg.speaking_output_lang || 'en')}`
+  hearingSourceLang.value = cfg.hearing_source_lang || 'en'
+  hearingTargetLang.value = cfg.hearing_target_lang || 'zh'
+  speakingInputLang.value = cfg.speaking_input_lang || 'zh'
+  speakingOutputLang.value = cfg.speaking_output_lang || 'en'
   const hearingAsrProvider = providerLabel(cfg.hearing_asr_provider || 'xunfei_simult', 'hearingAsr')
   const hearingTransProvider = providerLabel(cfg.hearing_trans_provider || 'xunfei_simult', 'hearingTrans')
   const hearingTtsProvider = providerLabel(cfg.hearing_tts_provider || 'system', 'hearingTts')
@@ -361,6 +395,7 @@ function normalizeDeviceName(name: string): string {
 // ===== 初始化 =====
 
 onMounted(async () => {
+  window.addEventListener('keydown', handleGlobalKeydown)
   EventsOn('circuit:open',   () => { circuitOpen.value = true  })
   EventsOn('circuit:closed', () => { circuitOpen.value = false })
   // hearing:error：讯飞重连耗尽，链路中断，更新听力链状态并展示错误信息
@@ -392,6 +427,7 @@ onMounted(async () => {
   try { await loadDashboardConfig() } catch { /* 静默 */ }
 })
 onUnmounted(() => {
+  window.removeEventListener('keydown', handleGlobalKeydown)
   EventsOff('circuit:open')
   EventsOff('circuit:closed')
   EventsOff('hearing:error')
@@ -432,9 +468,9 @@ function emptyStepMap(): Record<StepKey, StepState> {
 function applyStepEvent(target: Record<StepKey, StepState>, event: StepEvent) {
   if (!event?.step || !target[event.step]) return
   target[event.step] = {
-    srcText: event.srcText || target[event.step].srcText,
-    dstText: event.dstText || target[event.step].dstText,
-    audioBytes: event.audioBytes || target[event.step].audioBytes,
+    srcText: event.srcText ?? target[event.step].srcText,
+    dstText: event.dstText ?? target[event.step].dstText,
+    audioBytes: event.audioBytes ?? target[event.step].audioBytes,
     isFinal: !!event.isFinal,
   }
 }
@@ -449,6 +485,20 @@ function stepMetaText(key: StepKey, step: StepState): string {
   if (key === 'tts' && step.audioBytes) return t('dashboard.stepAudioBytes', { bytes: step.audioBytes })
   if (step.audioBytes) return t('dashboard.stepAudioBytes', { bytes: step.audioBytes })
   return ''
+}
+
+function openStepDetail(chainLabel: string, key: StepKey, step: StepState) {
+  const text = stepMainText(key, step)
+  if (!text) return
+  stepDetail.value = {
+    title: `${chainLabel} · ${t(`dashboard.steps.${key}`)}`,
+    text,
+    meta: stepMetaText(key, step),
+  }
+}
+
+function closeStepDetail() {
+  stepDetail.value = null
 }
 
 function channelLabel(key: string): string {
@@ -588,6 +638,15 @@ async function switchLocale(code: 'zh-CN' | 'en-US') {
           </div>
           <div class="flex items-center gap-3">
             <span class="text-xs text-gray-400 hidden sm:block">{{ hearingLangPair }}</span>
+            <button
+              class="inline-flex items-center gap-1.5 px-2.5 h-7 rounded-md border border-blue-400/40 bg-blue-500/12 text-xs text-blue-100 disabled:opacity-40 disabled:cursor-not-allowed"
+              :disabled="hearingStatus !== 'running'"
+              :title="t('dashboard.submitHearingDraftHint')"
+              @click="submitHearingDraft"
+            >
+              <CornerDownLeft :size="14" />
+              <span>{{ t('dashboard.submitHearingDraft') }}</span>
+            </button>
             <!-- 切换开关 -->
             <button
               class="relative w-11 h-6 rounded-full transition-colors duration-200 focus:outline-none"
@@ -605,7 +664,15 @@ async function switchLocale(code: 'zh-CN' | 'en-US') {
         <!-- 面试业务流：先表达用户结果，再保留诊断链路 -->
         <div class="mt-4 space-y-2">
           <div class="step-board">
-            <div v-for="key in STEP_KEYS" :key="'hearing-' + key" class="step-cell">
+            <button
+              v-for="key in STEP_KEYS"
+              :key="'hearing-' + key"
+              type="button"
+              class="step-cell"
+              :class="stepMainText(key, hearingSteps[key]) ? 'step-cell-clickable' : 'step-cell-empty'"
+              :disabled="!stepMainText(key, hearingSteps[key])"
+              @click="openStepDetail(t('dashboard.hearingChain'), key, hearingSteps[key])"
+            >
               <div class="step-cell-head">
                 <span>{{ t(`dashboard.steps.${key}`) }}</span>
                 <span v-if="hearingSteps[key].isFinal" class="step-final">{{ t('dashboard.stepFinal') }}</span>
@@ -616,7 +683,7 @@ async function switchLocale(code: 'zh-CN' | 'en-US') {
               <p v-if="stepMetaText(key, hearingSteps[key])" class="step-meta">
                 {{ stepMetaText(key, hearingSteps[key]) }}
               </p>
-            </div>
+            </button>
           </div>
           <div class="business-lane">
             <span class="lane-label">{{ t('dashboard.businessInput') }}</span>
@@ -720,7 +787,15 @@ async function switchLocale(code: 'zh-CN' | 'en-US') {
         </div>
         <div class="mt-4 space-y-2">
           <div class="step-board">
-            <div v-for="key in STEP_KEYS" :key="'speaking-' + key" class="step-cell">
+            <button
+              v-for="key in STEP_KEYS"
+              :key="'speaking-' + key"
+              type="button"
+              class="step-cell"
+              :class="stepMainText(key, speakingSteps[key]) ? 'step-cell-clickable' : 'step-cell-empty'"
+              :disabled="!stepMainText(key, speakingSteps[key])"
+              @click="openStepDetail(t('dashboard.speakingChain'), key, speakingSteps[key])"
+            >
               <div class="step-cell-head">
                 <span>{{ t(`dashboard.steps.${key}`) }}</span>
                 <span v-if="speakingSteps[key].isFinal" class="step-final">{{ t('dashboard.stepFinal') }}</span>
@@ -731,7 +806,7 @@ async function switchLocale(code: 'zh-CN' | 'en-US') {
               <p v-if="stepMetaText(key, speakingSteps[key])" class="step-meta">
                 {{ stepMetaText(key, speakingSteps[key]) }}
               </p>
-            </div>
+            </button>
           </div>
           <div class="business-lane">
             <span class="lane-label">{{ t('dashboard.businessInput') }}</span>
@@ -962,6 +1037,33 @@ async function switchLocale(code: 'zh-CN' | 'en-US') {
   />
 
   <div
+    v-if="stepDetail"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/65 px-4 backdrop-blur-sm"
+    @click.self="closeStepDetail"
+  >
+    <div class="w-full max-w-3xl rounded-xl border border-white/10 bg-[#111827] shadow-2xl">
+      <div class="flex items-center justify-between border-b border-white/10 px-5 py-4">
+        <div>
+          <h3 class="text-sm font-semibold text-white">{{ stepDetail.title }}</h3>
+          <p v-if="stepDetail.meta" class="mt-1 text-xs text-gray-500">{{ stepDetail.meta }}</p>
+        </div>
+        <button
+          class="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-white/10 hover:text-white"
+          type="button"
+          @click="closeStepDetail"
+        >
+          <X :size="16" />
+        </button>
+      </div>
+      <div class="max-h-[65vh] overflow-auto px-5 py-4">
+        <p class="whitespace-pre-wrap break-words text-sm leading-6 text-gray-100 select-text">
+          {{ stepDetail.text }}
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div
     v-if="showPreflightDialog"
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/65 px-4 backdrop-blur-sm"
     @click.self="closePreflightDialog"
@@ -1106,6 +1208,26 @@ export { PipelineStep }
   border-radius: 0.5rem;
   background: rgb(255 255 255 / 0.035);
   padding: 0.625rem;
+  text-align: left;
+  transition: border-color 0.16s ease, background-color 0.16s ease;
+}
+
+.step-cell-clickable {
+  cursor: pointer;
+}
+
+.step-cell-clickable:hover {
+  border-color: rgb(96 165 250 / 0.42);
+  background: rgb(59 130 246 / 0.08);
+}
+
+.step-cell-clickable:focus-visible {
+  outline: 1px solid rgb(96 165 250 / 0.75);
+  outline-offset: 2px;
+}
+
+.step-cell-empty {
+  cursor: default;
 }
 
 .step-cell-head {

@@ -3,6 +3,7 @@ package resume
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"fmt"
 	"html"
 	"io"
@@ -20,11 +21,37 @@ const chunkMaxChars = 500
 
 // Manager 协调简历文件存储、embedding 生成和向量检索。
 type Manager struct {
-	store    *fileStore
-	vectors  *vectorStore
-	embedder EmbeddingProvider
-	mu       sync.RWMutex   // 保护 store 和 vectors 的并发访问
-	wg       sync.WaitGroup // 追踪后台 embedding goroutine，Close() 时等待所有完成
+	store              *fileStore
+	vectors            *vectorStore
+	embedder           EmbeddingProvider
+	mu                 sync.RWMutex                                   // 保护 store 和 vectors 的并发访问
+	wg                 sync.WaitGroup                                 // 追踪后台 embedding goroutine，Close() 时等待所有完成
+	onDownloadProgress func(resumeID string, downloaded, total int64) // 可选，由 Service 注册
+	onEmbedProgress    func(resumeID string, current, total int)      // 可选，每完成一个 chunk 触发
+	// embedProgressMap 记录正在处理的简历的 chunk 进度（纯内存，不持久化）。
+	// 前端重新挂载时可通过 EmbedProgress 接口查询当前进度，避免等待下一个事件。
+	embedProgressMap map[string][2]int // resumeID → [current, total]
+}
+
+// SetDownloadProgressHandler 注册模型下载进度回调（在 Service.Startup 时调用一次）。
+func (m *Manager) SetDownloadProgressHandler(fn func(resumeID string, downloaded, total int64)) {
+	m.onDownloadProgress = fn
+}
+
+// SetEmbedProgressHandler 注册 embedding chunk 进度回调（在 Service.Startup 时调用一次）。
+func (m *Manager) SetEmbedProgressHandler(fn func(resumeID string, current, total int)) {
+	m.onEmbedProgress = fn
+}
+
+// EmbedProgress 返回指定简历当前的 chunk 进度（current, total）。
+// 若该简历未处于处理中状态，返回 (0, 0)。
+func (m *Manager) EmbedProgress(resumeID string) (current, total int) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if p, ok := m.embedProgressMap[resumeID]; ok {
+		return p[0], p[1]
+	}
+	return 0, 0
 }
 
 // NewManager 创建简历 Manager。
@@ -48,8 +75,12 @@ func NewManager(dataDir string, embedder EmbeddingProvider) (*Manager, error) {
 // Upload 保存简历文件，并在后台异步生成 embedding。
 // onStatusChange 回调在状态变化时被调用（可为 nil），用于通知前端刷新。
 func (m *Manager) Upload(name string, data []byte, onStatusChange func(r *Resume)) (*Resume, error) {
+	return m.UploadWithLanguage(name, data, ResumeLanguageMixed, onStatusChange)
+}
+
+func (m *Manager) UploadWithLanguage(name string, data []byte, language ResumeLanguage, onStatusChange func(r *Resume)) (*Resume, error) {
 	m.mu.Lock()
-	r, err := m.store.Save(name, data)
+	r, err := m.store.SaveWithLanguage(name, data, language)
 	m.mu.Unlock()
 	if err != nil {
 		return nil, err
@@ -67,8 +98,12 @@ func (m *Manager) Upload(name string, data []byte, onStatusChange func(r *Resume
 
 // UploadFromPath 从本地路径导入简历（Wails 文件对话框返回的路径）。
 func (m *Manager) UploadFromPath(path string, onStatusChange func(r *Resume)) (*Resume, error) {
+	return m.UploadFromPathWithLanguage(path, ResumeLanguageMixed, onStatusChange)
+}
+
+func (m *Manager) UploadFromPathWithLanguage(path string, language ResumeLanguage, onStatusChange func(r *Resume)) (*Resume, error) {
 	m.mu.Lock()
-	r, err := m.store.SaveFromPath(path)
+	r, err := m.store.SaveFromPathWithLanguage(path, language)
 	m.mu.Unlock()
 	if err != nil {
 		return nil, err
@@ -82,6 +117,7 @@ func (m *Manager) UploadFromPath(path string, onStatusChange func(r *Resume)) (*
 }
 
 // generateEmbedding 在后台线程提取文本、分块、生成 embedding 并写入向量库。
+// 若模型尚未缓存，会先下载模型并通过 onDownloadProgress 推送进度，再进行 embedding。
 func (m *Manager) generateEmbedding(resumeID string, onStatusChange func(r *Resume)) {
 	setStatus := func(status EmbeddingStatus, errMsg string) {
 		m.mu.Lock()
@@ -96,6 +132,22 @@ func (m *Manager) generateEmbedding(resumeID string, onStatusChange func(r *Resu
 		m.mu.Unlock()
 		if onStatusChange != nil {
 			onStatusChange(r)
+		}
+	}
+
+	// 若 embedder 支持缓存检测且模型未缓存，先执行带进度的下载
+	if checker, ok := m.embedder.(ModelCacheChecker); ok && !checker.IsModelCached() {
+		if downloader, ok := m.embedder.(ModelDownloader); ok {
+			setStatus(EmbeddingStatusDownloading, "")
+			err := downloader.DownloadModel(context.Background(), func(downloaded, total int64) {
+				if m.onDownloadProgress != nil {
+					m.onDownloadProgress(resumeID, downloaded, total)
+				}
+			})
+			if err != nil {
+				setStatus(EmbeddingStatusError, "模型下载失败: "+err.Error())
+				return
+			}
 		}
 	}
 
@@ -127,14 +179,30 @@ func (m *Manager) generateEmbedding(resumeID string, onStatusChange func(r *Resu
 	chunks := splitChunks(text, chunkMaxChars)
 	embeddings := make([][]float32, 0, len(chunks))
 
-	for _, chunk := range chunks {
+	for i, chunk := range chunks {
 		vec, err := embedPassage(m.embedder, chunk)
 		if err != nil {
+			m.mu.Lock()
+			delete(m.embedProgressMap, resumeID)
+			m.mu.Unlock()
 			setStatus(EmbeddingStatusError, err.Error())
 			return
 		}
 		embeddings = append(embeddings, vec)
+		current, total := i+1, len(chunks)
+		m.mu.Lock()
+		if m.embedProgressMap == nil {
+			m.embedProgressMap = make(map[string][2]int)
+		}
+		m.embedProgressMap[resumeID] = [2]int{current, total}
+		m.mu.Unlock()
+		if m.onEmbedProgress != nil {
+			m.onEmbedProgress(resumeID, current, total)
+		}
 	}
+	m.mu.Lock()
+	delete(m.embedProgressMap, resumeID)
+	m.mu.Unlock()
 
 	m.mu.Lock()
 	err = m.vectors.UpsertChunks(resumeID, chunks, embeddings)
@@ -145,6 +213,28 @@ func (m *Manager) generateEmbedding(resumeID string, onStatusChange func(r *Resu
 	}
 
 	setStatus(EmbeddingStatusReady, "")
+}
+
+// RestartPendingEmbeddings 在应用启动时调用，为所有 pending 状态的简历重新触发 embedding。
+// 上次运行中途被中断（processing/downloading）的简历已由 store 重置为 pending。
+func (m *Manager) RestartPendingEmbeddings(onStatusChange func(r *Resume)) {
+	m.mu.RLock()
+	var pendingIDs []string
+	for _, r := range m.store.List() {
+		if r.EmbeddingStatus == EmbeddingStatusPending {
+			pendingIDs = append(pendingIDs, r.ID)
+		}
+	}
+	m.mu.RUnlock()
+
+	for _, id := range pendingIDs {
+		id := id
+		m.wg.Add(1)
+		go func() {
+			defer m.wg.Done()
+			m.generateEmbedding(id, onStatusChange)
+		}()
+	}
 }
 
 // List 返回所有简历，按创建时间降序排列。
@@ -207,11 +297,66 @@ func (m *Manager) Search(query string, topK int) ([]SearchResult, error) {
 	return m.vectors.Search(vec, activeID, topK)
 }
 
+// ActiveResumeLanguage 返回当前激活简历的用户标记语言。
+func (m *Manager) ActiveResumeLanguage() ResumeLanguage {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	id := m.activeResumeID()
+	if id == "" {
+		return ResumeLanguageMixed
+	}
+	r, err := m.store.Get(id)
+	if err != nil {
+		return ResumeLanguageMixed
+	}
+	return NormalizeResumeLanguage(string(r.ResumeLanguage))
+}
+
 // HasActiveResume 检查当前是否有激活的简历（供 RAG 检索降级判断使用）。
 func (m *Manager) HasActiveResume() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.activeResumeID() != ""
+}
+
+// ActiveResumeID returns the currently active resume ID.
+func (m *Manager) ActiveResumeID() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.activeResumeID()
+}
+
+// ActiveResumeText extracts the full text of the currently active resume.
+func (m *Manager) ActiveResumeText() (string, bool, error) {
+	m.mu.RLock()
+	id := m.activeResumeID()
+	if id == "" {
+		m.mu.RUnlock()
+		return "", false, nil
+	}
+	r, err := m.store.Get(id)
+	if err != nil {
+		m.mu.RUnlock()
+		return "", true, err
+	}
+	name := r.Name
+	raw, err := m.store.ReadText(id)
+	m.mu.RUnlock()
+	if err != nil {
+		return "", true, err
+	}
+	return extractText(name, raw), true, nil
+}
+
+// ResumeName returns the display name for a resume ID.
+func (m *Manager) ResumeName(id string) string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	r, err := m.store.Get(id)
+	if err != nil {
+		return ""
+	}
+	return r.Name
 }
 
 // activeResumeID 返回当前激活简历的 ID；若无激活简历返回空字符串。

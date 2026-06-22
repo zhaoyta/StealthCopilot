@@ -17,6 +17,7 @@ const deps = ref<DepItem[]>([
   { key: 'ffmpeg',      label: t('setup.deps.ffmpeg'),      status: 'checking', installMsg: '' },
   { key: 'virtual_mic', label: t('setup.deps.virtualMic'), status: 'checking', installMsg: '' },
   { key: 'virtual_cam', label: t('setup.deps.virtualCam'), status: 'checking', installMsg: '' },
+  { key: 'embedding_model', label: t('setup.deps.embeddingModel'), status: 'checking', installMsg: '' },
 ])
 
 async function checkDeps() {
@@ -27,6 +28,7 @@ async function checkDeps() {
     deps.value[0].status = report.ffmpeg      as DepStatus
     deps.value[1].status = report.virtual_mic as DepStatus
     deps.value[2].status = report.virtual_cam as DepStatus
+    deps.value[3].status = report.embedding_model as DepStatus
   } catch {
     deps.value.forEach(d => { d.status = 'unknown' })
   }

@@ -152,7 +152,7 @@ func receiveXunfeiRTASRLLMLoop(conn *websocket.Conn, out chan<- Result) {
 			}
 			continue
 		}
-		diag.Infof("xunfei_rtasr_llm text final=%t src_chars=%d", result.IsFinal, len(result.SrcText))
+		diag.Infof("xunfei_rtasr_llm text final=%t stable=%t src_chars=%d", result.IsFinal, result.Stable, len(result.SrcText))
 		out <- result
 	}
 }
@@ -204,7 +204,8 @@ func parseXunfeiRTASRLLMResponse(data []byte) (Result, bool) {
 	if text == "" {
 		return Result{}, false
 	}
-	return Result{SrcText: text, IsFinal: resp.Data.LS}, true
+	stable := resp.Data.LS || resp.Data.CN.ST.Type == "0"
+	return Result{SrcText: text, IsFinal: resp.Data.LS, Stable: stable}, true
 }
 
 func parseXunfeiRTASRLLMError(data []byte) error {

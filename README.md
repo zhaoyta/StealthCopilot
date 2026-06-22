@@ -130,7 +130,8 @@ flowchart LR
 - 目标语言译文分成两路：视觉字幕进入提词窗，最终译文的系统语音播报进入面试者本地监听输出；这一路和会议虚拟麦克风隔离，避免被面试官听到。
 - 如果同传 Provider 返回译文音频 PCM，监听链路可直接播放 Provider 音频；否则对最终译文走本地系统语音播报。
 - RAG 使用面试官原文 `src_text` 检索，减少二次翻译造成的语义损耗。
-- DeepSeek 采用流式输出，提词窗逐 token 渲染，并在 followup 场景携带同一 session 的最近问答历史。
+- DeepSeek 采用流式输出，提词窗逐 token 渲染；同一面试 session 的问答历史会保存到本地 `sessions.db`，后续 question / followup 会携带最近 N 轮历史上下文（默认 5 轮，可在高级设置调整）。
+- 设置面板提供「历史会话」Tab，可查看每场面试的问答详情并删除已结束会话；历史数据只保存在本机。
 
 ### 2. 说话链
 
@@ -339,7 +340,7 @@ make test
 | LLM | OpenAI-compatible Provider，默认 DeepSeek |
 | TTS | Provider 化，默认系统音色；个人复刻音色可切换到讯飞声音复刻流式 TTS |
 | 口型同步 | Provider 化，默认 Simli AI，可降级直通 |
-| 简历向量 | Provider 化，默认 multilingual-e5-large + sentence-transformers |
+| 简历向量 | Provider 化，默认 multilingual-e5-small + sentence-transformers |
 | 工程化 | Makefile + golangci-lint + ESLint + Husky + Commitlint |
 
 ---

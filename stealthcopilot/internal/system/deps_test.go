@@ -25,6 +25,9 @@ func TestCheckDeps_ReturnsSupportedStatuses(t *testing.T) {
 	if !validStatuses[report.VirtualCam] {
 		t.Errorf("VirtualCam 返回了未知状态: %q", report.VirtualCam)
 	}
+	if !validStatuses[report.EmbeddingModel] {
+		t.Errorf("EmbeddingModel 返回了未知状态: %q", report.EmbeddingModel)
+	}
 }
 
 // TestInstallDep_UnknownKey 验证未知依赖 key 返回错误提示，不触发外部命令。
@@ -53,7 +56,7 @@ func TestInstallDep_KnownKey_HasMessage(t *testing.T) {
 		t.Skip("当前系统不支持依赖安装引导，跳过测试")
 	}
 
-	keys := []string{"ffmpeg", "virtual_mic", "virtual_cam"}
+	keys := []string{"ffmpeg", "virtual_mic", "virtual_cam", "embedding_model"}
 	for _, key := range keys {
 		t.Run(key, func(t *testing.T) {
 			result := InstallDep(key)
@@ -72,6 +75,14 @@ func TestCheckFFmpeg_ReturnsValidStatus(t *testing.T) {
 	status := checkFFmpeg()
 	if status != DepStatusInstalled && status != DepStatusMissing {
 		t.Errorf("checkFFmpeg 返回了意外状态: %q", status)
+	}
+}
+
+// TestCheckEmbeddingModel_ReturnsValidStatus 验证 checkEmbeddingModel 只返回 installed 或 missing。
+func TestCheckEmbeddingModel_ReturnsValidStatus(t *testing.T) {
+	status := checkEmbeddingModel()
+	if status != DepStatusInstalled && status != DepStatusMissing {
+		t.Errorf("checkEmbeddingModel 返回了意外状态: %q", status)
 	}
 }
 

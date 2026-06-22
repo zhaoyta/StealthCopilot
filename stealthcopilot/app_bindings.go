@@ -22,6 +22,7 @@ import (
 	"github.com/zhaoyta/stealthcopilot/internal/llm"
 	"github.com/zhaoyta/stealthcopilot/internal/rag"
 	"github.com/zhaoyta/stealthcopilot/internal/resume"
+	"github.com/zhaoyta/stealthcopilot/internal/session"
 	"github.com/zhaoyta/stealthcopilot/internal/speaking"
 	"github.com/zhaoyta/stealthcopilot/internal/system"
 	"github.com/zhaoyta/stealthcopilot/internal/trans"
@@ -347,6 +348,21 @@ func (a *App) UploadResume(path string) string {
 	return a.ResumeSvc.UploadResume(path)
 }
 
+// UploadResumeWithLanguage 从文件路径上传简历，并保存用户指定的简历语言。
+func (a *App) UploadResumeWithLanguage(path string, language string) string {
+	return a.ResumeSvc.UploadResumeWithLanguage(path, language)
+}
+
+// GetEmbeddingModelInfo 返回 multilingual-e5-small 模型的本地缓存状态和路径。
+func (a *App) GetEmbeddingModelInfo() resume.EmbeddingModelInfo {
+	return a.ResumeSvc.GetEmbeddingModelInfo()
+}
+
+// GetResumeEmbedProgress 返回指定简历当前的 chunk 处理进度（前端重新挂载时用于还原进度条）。
+func (a *App) GetResumeEmbedProgress(id string) resume.EmbedProgressInfo {
+	return a.ResumeSvc.GetResumeEmbedProgress(id)
+}
+
 // DeleteResume 删除指定简历。
 func (a *App) DeleteResume(id string) string {
 	return a.ResumeSvc.DeleteResume(id)
@@ -362,12 +378,26 @@ func (a *App) IsEmbeddingReady() bool {
 	return a.ResumeSvc.IsEmbeddingReady()
 }
 
+// ===== Session 相关绑定 =====
+
+func (a *App) ListSessions(limit int) []session.SessionSummary {
+	return a.SessionSvc.ListSessions(limit)
+}
+
+func (a *App) GetSessionTurns(sessionID string) []session.Turn {
+	return a.SessionSvc.GetSessionTurns(sessionID)
+}
+
+func (a *App) DeleteSession(sessionID string) string {
+	return a.SessionSvc.DeleteSession(sessionID)
+}
+
 // ===== System 相关绑定 =====
 
 // CheckDeps 检测系统依赖（虚拟声卡、虚拟摄像头）。
 func (a *App) CheckDeps() system.DepsReport {
 	report := a.SystemSvc.CheckDeps()
-	diag.Infof("deps ffmpeg=%s virtual_mic=%s virtual_cam=%s", report.FFmpeg, report.VirtualMic, report.VirtualCam)
+	diag.Infof("deps ffmpeg=%s virtual_mic=%s virtual_cam=%s embedding_model=%s", report.FFmpeg, report.VirtualMic, report.VirtualCam, report.EmbeddingModel)
 	return report
 }
 
@@ -533,6 +563,11 @@ func (a *App) StartHearingChain() string {
 	if cfg.HearingTTSProvider != config.TTSProviderSystem && cfg.HearingTTSProvider != config.TTSProviderNull {
 		return "听力链 TTS 当前支持系统语音播报或禁用"
 	}
+	var transExtension trans.Extension = hearingTransExtensionFromApp(cfg)
+	if cfg.HearingASRProvider == config.TranslationProviderXunfeiSimult &&
+		cfg.HearingTransProvider == config.TranslationProviderXunfeiSimult {
+		diag.Infof("hearing using rtasr plus text translation path source_lang=%s target_lang=%s", cfg.HearingSourceLang, cfg.HearingTargetLang)
+	}
 	asrCfg := asr.XunfeiRTASRLLMConfig{
 		AppID:      cfg.XunfeiSimultAppID,
 		APIKey:     cfg.XunfeiSimultAPIKey,
@@ -540,19 +575,21 @@ func (a *App) StartHearingChain() string {
 		SourceLang: cfg.HearingSourceLang,
 	}
 	llmCfg := llm.Config{
-		Provider: string(cfg.LLMProvider),
-		APIKey:   cfg.DeepSeekKey,
-		Model:    cfg.DeepSeekModel,
-		BaseURL:  cfg.LLMBaseURL,
+		Provider:        string(cfg.LLMProvider),
+		APIKey:          cfg.DeepSeekKey,
+		Model:           cfg.DeepSeekModel,
+		BaseURL:         cfg.LLMBaseURL,
+		HistoryMaxTurns: cfg.HistoryMaxTurns,
 	}
 	chainCfg := hearing.ChainConfig{
 		ASRConfig:        asrCfg,
 		ASRExtension:     hearingASRExtensionFromApp(cfg, speechExtension),
-		TransExtension:   hearingTransExtensionFromApp(cfg),
+		TransExtension:   transExtension,
 		LLMConfig:        llmCfg,
 		DeepSeekKey:      cfg.DeepSeekKey,
 		DeepSeekModel:    cfg.DeepSeekModel,
 		RAGPrompt:        cfg.RAGPrompt,
+		TargetLang:       cfg.HearingTargetLang,
 		VirtualMicDevice: cfg.VirtualMicName,
 		MonitorConfig: audio.MonitorConfig{
 			Enabled:      cfg.HearingMonitorEnabled && cfg.HearingTTSProvider != config.TTSProviderNull,
@@ -562,6 +599,8 @@ func (a *App) StartHearingChain() string {
 		},
 		MonitorPrefersExtensionAudio: false,
 		Retriever:                    retriever,
+		SessionStore:                 a.SessionStore,
+		ResumeID:                     a.ResumeSvc.InternalManager().ActiveResumeID(),
 		EventSink:                    a.emitTeleprompterEvent,
 	}
 	if err := a.HearingChain.Start(a.ctx, chainCfg); err != "" {
@@ -594,6 +633,13 @@ func (a *App) emitTeleprompterEvent(eventName string, data ...any) {
 		if msg, ok := data[0].(string); ok {
 			a.TeleprompterWindow.SetError(msg)
 		}
+	case speaking.EventSpeakResult:
+		if len(data) == 0 {
+			return
+		}
+		if result, ok := data[0].(speaking.ResultEvent); ok && result.IsFinal {
+			a.TeleprompterWindow.AppendSubtitle(formatCandidateSpeech(result.SrcText, result.DstText))
+		}
 	case llm.EventAnswerToken:
 		if len(data) == 0 {
 			return
@@ -610,11 +656,33 @@ func (a *App) emitTeleprompterEvent(eventName string, data ...any) {
 	}
 }
 
+func formatCandidateSpeech(srcText, dstText string) string {
+	srcText = strings.TrimSpace(srcText)
+	dstText = strings.TrimSpace(dstText)
+	switch {
+	case srcText != "" && dstText != "" && srcText != dstText:
+		return "我：" + srcText + "\n译文：" + dstText
+	case dstText != "":
+		return "我：" + dstText
+	default:
+		return "我：" + srcText
+	}
+}
+
 // StopHearingChain 停止听力链，等待所有 goroutine 退出后返回。
 func (a *App) StopHearingChain() {
 	diag.Infof("hearing stop requested")
 	a.HearingChain.Stop()
 	diag.Infof("hearing stop complete")
+}
+
+// SubmitHearingDraft 手动提交当前听力链 ASR 草稿，触发翻译、播报、意图识别和 RAG。
+func (a *App) SubmitHearingDraft() string {
+	text := a.HearingChain.SubmitDraft(a.ctx)
+	if text == "" {
+		return "当前没有可提交的听力草稿"
+	}
+	return ""
 }
 
 // ===== Speaking Chain 相关绑定 =====
@@ -662,6 +730,7 @@ func (a *App) StartSpeakingChain() string {
 		Model:    cfg.DeepSeekModel,
 		BaseURL:  cfg.LLMBaseURL,
 	}
+	sessionStore, sessionID := a.HearingChain.CurrentSession()
 	chainCfg := speaking.ChainConfig{
 		Simult: asr.XunfeiSimultConfig{
 			AppID:      cfg.XunfeiSimultAppID,
@@ -678,6 +747,9 @@ func (a *App) StartSpeakingChain() string {
 		VirtualMicDevice:   cfg.VirtualMicName,
 		SilenceThresholdMs: 800,
 		AudioSink:          a.VideoChain.SendAudioChunk,
+		EventSink:          a.emitTeleprompterEvent,
+		SessionStore:       sessionStore,
+		SessionID:          sessionID,
 		DeepSeekKey:        cfg.DeepSeekKey,
 		DeepSeekModel:      cfg.DeepSeekModel,
 		LLMConfig:          llmCfg,
