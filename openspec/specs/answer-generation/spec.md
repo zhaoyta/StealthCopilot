@@ -17,14 +17,14 @@
 
 #### Scenario: 回答生成完成
 - **WHEN** DeepSeek 流式输出结束
-- **THEN** 提词窗光标消失，回答内容保持显示直到下一个问题到来；本轮 Q&A 写入 sessions.db turns 表
+- **THEN** 提词窗光标消失，回答内容保持显示直到下一个问题到来；本轮 Q&A 异步写入 sessions.db turns 表
 
 ### Requirement: 历史轮数上限可配置
 系统 SHALL 通过 llm.Config.HistoryMaxTurns 字段控制注入 DeepSeek 的最大历史轮数，前端可在设置面板「高级」区域调整；旧配置中该字段为 0 时使用默认值 5。
 
 #### Scenario: 使用自定义历史轮数
 - **WHEN** 用户在高级设置中将历史轮数设为 8
-- **THEN** DeepSeek 最多携带 8 轮历史问答
+- **THEN** followup 场景下 DeepSeek 最多携带 8 轮历史问答
 
 #### Scenario: 历史轮数为 0 或未配置
 - **WHEN** llm.Config.HistoryMaxTurns 为 0

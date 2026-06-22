@@ -19,7 +19,7 @@
 系统 SHALL 在每轮 RAG 回答生成完成后，将该轮问题和回答追加到 turns 表，关联当前 session_id。
 
 #### Scenario: 保存一轮问答
-- **WHEN** DeepSeek 流式回答完成
+- **WHEN** DeepSeek 流式回答完成（EventAnswerDone）
 - **THEN** turns 表新增一条记录，字段包含 session_id、question（原始问题）、display_question（历史展示文本）、answer（英文回答建议）、created_at
 
 #### Scenario: 回答为空时不保存
