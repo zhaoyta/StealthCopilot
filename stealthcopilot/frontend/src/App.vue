@@ -11,7 +11,7 @@ import { GetConfig, MarkSetupComplete, ShowTeleprompter } from '../wailsjs/go/ma
 
 const { t } = useI18n()
 type View = 'loading' | 'setup' | 'dashboard' | 'settings' | 'teleprompter'
-type SettingsTabId = 'apiKeys' | 'language' | 'devices' | 'voice' | 'resume' | 'ghost' | 'advanced'
+type SettingsTabId = 'apiKeys' | 'language' | 'devices' | 'voice' | 'resume' | 'history' | 'ghost' | 'advanced'
 
 const currentView = ref<View>('loading')
 const settingsInitialTab = ref<SettingsTabId>('apiKeys')

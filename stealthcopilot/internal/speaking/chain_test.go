@@ -2,6 +2,7 @@ package speaking
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -96,6 +97,29 @@ func TestChain_StartWithVirtualMicRequiresXunfeiVoiceCloneConfig(t *testing.T) {
 	if result == "" {
 		c.Stop()
 		t.Fatal("expected startup error for missing Xunfei VoiceClone config")
+	}
+}
+
+func TestIsContextCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if !isContextCanceled(ctx, errors.New("xunfei_simult: dial: operation was canceled")) {
+		t.Fatal("canceled context should suppress speaking error events")
+	}
+	if !isContextCanceled(context.Background(), context.Canceled) {
+		t.Fatal("context.Canceled error should be treated as cancellation")
+	}
+	if isContextCanceled(context.Background(), errors.New("network failed")) {
+		t.Fatal("ordinary errors should still be reported")
+	}
+}
+
+func TestSrcTextOrTargetPrefersCandidateSourceLanguage(t *testing.T) {
+	if got := srcTextOrTarget("我负责支付系统架构", "I owned the payment architecture."); got != "我负责支付系统架构" {
+		t.Fatalf("srcTextOrTarget should prefer source text, got %q", got)
+	}
+	if got := srcTextOrTarget("", "I owned the payment architecture."); got != "I owned the payment architecture." {
+		t.Fatalf("srcTextOrTarget should fall back to target text, got %q", got)
 	}
 }
 

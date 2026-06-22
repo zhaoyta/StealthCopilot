@@ -23,7 +23,7 @@ This is a **greenfield project** — the `openspec/specs/prd.md` is the current 
 | TTS / voice clone | **讯飞声音复刻** streaming (English text → personal voice audio) |
 | Lip sync | **Simli AI** official SaaS API — **not** self-hosted MuseTalk GPU cluster |
 | Virtual camera output | OBS / CoreMediaIO (macOS) / DirectShow (Windows) |
-| Resume embeddings | `multilingual-e5-large` + local vector store (never uploaded to cloud) |
+| Resume embeddings | `multilingual-e5-small` + local vector store (never uploaded to cloud) |
 | Frontend i18n | `i18next` — all UI strings via locale files, never hardcoded |
 | CI/CD | GitHub Actions — separate macOS runner + Windows runner for CGO cross-compilation |
 

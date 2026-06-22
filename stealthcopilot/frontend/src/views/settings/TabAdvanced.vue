@@ -19,6 +19,7 @@ const config = reactive({
   llmBaseURL: 'https://api.deepseek.com/v1',
   lipsyncProvider: 'simli',
   embeddingProvider: 'python_bridge',
+  historyMaxTurns: 5,
 })
 const defaults = reactive({ ragPrompt: '', speakPolishPrompt: '' })
 const expanded = reactive({ rag: false, speak: false })
@@ -46,6 +47,7 @@ onMounted(async () => {
     config.llmBaseURL = cfg.llm_base_url || 'https://api.deepseek.com/v1'
     config.lipsyncProvider = cfg.lipsync_provider || 'simli'
     config.embeddingProvider = cfg.embedding_provider || 'python_bridge'
+    config.historyMaxTurns = clampHistoryMaxTurns(cfg.history_max_turns || 5)
     defaults.ragPrompt = defs.rag_prompt
     defaults.speakPolishPrompt = defs.speak_polish_prompt
   } catch { /* 静默处理 */ }
@@ -73,10 +75,15 @@ async function save() {
       llm_base_url: config.llmBaseURL,
       lipsync_provider: config.lipsyncProvider,
       embedding_provider: config.embeddingProvider,
+      history_max_turns: clampHistoryMaxTurns(config.historyMaxTurns),
     })
     msg.value = err || t('common.success')
   } catch (e: unknown) { msg.value = String(e) }
   saving.value = false
+}
+
+function clampHistoryMaxTurns(value: number): number {
+  return Math.min(20, Math.max(1, Math.round(Number(value) || 5)))
 }
 </script>
 
@@ -167,19 +174,6 @@ async function save() {
             <option value="xunfei_voiceclone">{{ t('settings.advanced.providerNames.xunfeiVoiceClone') }}</option>
           </select>
         </label>
-        <div class="flex items-center justify-between bg-gray-900/40 rounded-lg px-4 py-3 border border-gray-700 md:col-span-2">
-          <label class="text-sm text-gray-200">{{ t('settings.advanced.polishEnabled') }}</label>
-          <button
-            class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
-            :class="config.polishEnabled ? 'bg-blue-500' : 'bg-gray-600'"
-            @click="config.polishEnabled = !config.polishEnabled"
-          >
-            <span
-              class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
-              :class="config.polishEnabled ? 'translate-x-6' : 'translate-x-1'"
-            />
-          </button>
-        </div>
       </div>
     </div>
 
@@ -225,7 +219,19 @@ async function save() {
           v-model="config.llmBaseURL"
           type="text"
           class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white
+          focus:outline-none focus:border-blue-400"
+        >
+      </label>
+      <label class="block max-w-xs">
+        <span class="block text-xs text-gray-400 mb-1">{{ t('settings.advanced.historyMaxTurns') }}</span>
+        <input
+          v-model.number="config.historyMaxTurns"
+          type="number"
+          min="1"
+          max="20"
+          class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white
                  focus:outline-none focus:border-blue-400"
+          @blur="config.historyMaxTurns = clampHistoryMaxTurns(config.historyMaxTurns)"
         >
       </label>
     </div>
@@ -264,17 +270,35 @@ async function save() {
 
     <!-- 说话润色 Prompt -->
     <div class="bg-gray-800 rounded-xl border border-gray-700">
-      <button
-        class="w-full flex items-center justify-between px-5 py-4 text-sm font-medium text-gray-200"
-        @click="expanded.speak = !expanded.speak"
-      >
-        <span>{{ t('settings.advanced.speakPolishPrompt') }}</span>
-        <component
-          :is="expanded.speak ? ChevronUp : ChevronDown"
-          :size="14"
-          class="text-gray-400"
-        />
-      </button>
+      <div class="flex items-center gap-4 px-5 py-4">
+        <button
+          class="min-w-0 flex-1 flex items-center justify-between text-left text-sm font-medium text-gray-200"
+          @click="expanded.speak = !expanded.speak"
+        >
+          <span class="truncate">{{ t('settings.advanced.speakPolishPrompt') }}</span>
+          <component
+            :is="expanded.speak ? ChevronUp : ChevronDown"
+            :size="14"
+            class="ml-3 shrink-0 text-gray-400"
+          />
+        </button>
+        <div class="flex shrink-0 items-center gap-3">
+          <span class="hidden text-xs text-gray-400 sm:inline">{{ t('settings.advanced.polishEnabled') }}</span>
+          <button
+            class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
+            :class="config.polishEnabled ? 'bg-blue-500' : 'bg-gray-600'"
+            :title="t('settings.advanced.polishEnabled')"
+            :aria-pressed="config.polishEnabled"
+            type="button"
+            @click="config.polishEnabled = !config.polishEnabled"
+          >
+            <span
+              class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
+              :class="config.polishEnabled ? 'translate-x-6' : 'translate-x-1'"
+            />
+          </button>
+        </div>
+      </div>
       <div
         v-if="expanded.speak"
         class="px-5 pb-4 space-y-2"

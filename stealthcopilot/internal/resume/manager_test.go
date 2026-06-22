@@ -22,7 +22,7 @@ func (f *fakeEmbedder) Ready() bool { return true }
 func newTestManager(t *testing.T) *resume.Manager {
 	t.Helper()
 	dir := t.TempDir()
-	m, err := resume.NewManager(dir, &fakeEmbedder{dim: 1024})
+	m, err := resume.NewManager(dir, &fakeEmbedder{dim: 384})
 	if err != nil {
 		t.Fatalf("NewManager: %v", err)
 	}
@@ -53,6 +53,27 @@ func TestManager_UploadAndList(t *testing.T) {
 	}
 	if list[0].Name != "resume.pdf" {
 		t.Errorf("name mismatch: want 'resume.pdf', got %q", list[0].Name)
+	}
+	if list[0].ResumeLanguage != resume.ResumeLanguageMixed {
+		t.Errorf("default resume language = %q, want mixed", list[0].ResumeLanguage)
+	}
+}
+
+// TestManager_UploadWithLanguage 验证上传时保存用户指定的简历语言。
+func TestManager_UploadWithLanguage(t *testing.T) {
+	m := newTestManager(t)
+
+	r, err := m.UploadWithLanguage("resume.pdf", []byte("后端工程师"), resume.ResumeLanguageZH, nil)
+	if err != nil {
+		t.Fatalf("UploadWithLanguage: %v", err)
+	}
+	if r.ResumeLanguage != resume.ResumeLanguageZH {
+		t.Errorf("resume language = %q, want zh", r.ResumeLanguage)
+	}
+
+	list := m.List()
+	if len(list) != 1 || list[0].ResumeLanguage != resume.ResumeLanguageZH {
+		t.Fatalf("stored resume language mismatch: %+v", list)
 	}
 }
 

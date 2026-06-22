@@ -12,8 +12,8 @@ const (
 type StepEvent struct {
 	Chain      string   `json:"chain"`
 	Step       StepKind `json:"step"`
-	SrcText    string   `json:"srcText,omitempty"`
-	DstText    string   `json:"dstText,omitempty"`
+	SrcText    string   `json:"srcText"`
+	DstText    string   `json:"dstText"`
 	IsFinal    bool     `json:"isFinal"`
 	AudioBytes int      `json:"audioBytes,omitempty"`
 	Provider   string   `json:"provider,omitempty"`

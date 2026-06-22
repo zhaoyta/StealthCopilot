@@ -47,6 +47,7 @@ type FrontendConfig struct {
 	RAGPrompt             string  `json:"rag_prompt"`
 	SpeakPolishPrompt     string  `json:"speak_polish_prompt"`
 	PolishEnabled         bool    `json:"polish_enabled"`
+	HistoryMaxTurns       int     `json:"history_max_turns"`
 	SetupCompleted        bool    `json:"setup_completed"`
 	ActiveResumeID        string  `json:"active_resume_id"`
 }
@@ -93,6 +94,7 @@ type SaveLocalConfigRequest struct {
 	RAGPrompt             string  `json:"rag_prompt"`
 	SpeakPolishPrompt     string  `json:"speak_polish_prompt"`
 	PolishEnabled         bool    `json:"polish_enabled"`
+	HistoryMaxTurns       int     `json:"history_max_turns"`
 	SetupCompleted        bool    `json:"setup_completed"`
 }
 

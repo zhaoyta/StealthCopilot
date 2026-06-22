@@ -77,7 +77,7 @@
 ## 第三部分：简历 RAG 系统
 
 - 用户本地上传简历（PDF / DOCX），在本地做 embedding，**不上云**
-- Embedding 模型：`multilingual-e5-large`（支持中英文简历，英文 query 也能检索中文简历）
+- Embedding 模型：默认 `multilingual-e5-small`（支持多语言简历和轻量本地索引）
 - 向量库：轻量本地实现（sqlite-vss 或内存级 hnswlib）
 - RAG 触发条件：讯飞返回 `is_end=true` 的 src_text 且意图识别为 question / followup
 - 多份简历可管理，支持切换激活
@@ -122,7 +122,7 @@
 | 说话链 TTS | 默认音色 TTS + 讯飞声音复刻流式 TTS（个人复刻音色为可选增强） |
 | 意图识别 | DeepSeek（轻量分类：question / followup / statement） |
 | 回答生成 | DeepSeek-V3（流式输出，带多轮对话历史） |
-| 简历 Embedding | multilingual-e5-large + 本地向量库 |
+| 简历 Embedding | multilingual-e5-small + 本地向量库 |
 | 口型同步 | Simli AI 官方 API（LipSyncProvider 接口，可切换 StealthCloudProvider） |
 | API Key 存储 | go-keyring（macOS Keychain / Windows Credential Manager） |
 | CI/CD | GitHub Actions（macOS runner + Windows runner 分别原生编译，CGO 不交叉编译） |

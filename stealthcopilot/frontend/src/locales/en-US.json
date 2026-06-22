@@ -12,7 +12,8 @@
     "back": "Back",
     "finish": "Finish",
     "skip": "Skip",
-    "delete": "Delete"
+    "delete": "Delete",
+    "refresh": "Refresh"
   },
   "setup": {
     "title": "Setup",
@@ -33,6 +34,7 @@
       "virtualMic": "Meeting audio virtual channel",
       "virtualMicHint": "Select this once. In the meeting app, choose the same device for both speaker and microphone; StealthCopilot captures interviewer audio from it and writes your target-language speech back to it.",
       "virtualCam": "Virtual Camera (OBS VirtualCam)",
+      "embeddingModel": "Local resume indexing model",
       "install": "Install",
       "installGuide": "View Install Guide",
       "installed": "Installed",
@@ -105,6 +107,7 @@
       "devices": "Devices",
       "voice": "Voice Clone",
       "resume": "Resume",
+      "history": "History",
       "ghost": "Teleprompter",
       "advanced": "Advanced"
     },
@@ -180,9 +183,27 @@
       "activate": "Set Active",
       "activeLabel": "Active",
       "statusPending": "Pending",
+      "statusDownloading": "Downloading model…",
       "statusProcessing": "Indexing…",
       "statusReady": "Ready",
-      "statusError": "Failed"
+      "statusError": "Failed",
+      "langModal": {
+        "title": "What is the primary language of this resume?",
+        "confirm": "Upload"
+      }
+    },
+    "history": {
+      "empty": "No interview sessions yet",
+      "active": "Active",
+      "ended": "Ended",
+      "noResume": "No resume linked",
+      "turnCount": "{count} turns",
+      "sessionMeta": "{resume} · {count} turns",
+      "question": "Question",
+      "answer": "Answer suggestion",
+      "noTurns": "No saved turns",
+      "confirmDelete": "Delete this interview session?",
+      "activeDeleteDisabled": "Active sessions cannot be deleted"
     },
     "ghost": {
       "opacity": "Opacity",
@@ -217,6 +238,7 @@
       "answerLlmProvider": "Answer LLM Provider",
       "llmProvider": "LLM Provider",
       "llmBaseURL": "LLM Base URL",
+      "historyMaxTurns": "History Turns",
       "ttsProvider": "TTS Provider",
       "lipsyncProvider": "Lip Sync Provider",
       "embeddingProvider": "Embedding Provider",
@@ -252,6 +274,8 @@
     "openTeleprompter": "Teleprompter",
     "openSettings": "Settings",
     "hearingChain": "Hearing Chain",
+    "submitHearingDraft": "Submit Sentence",
+    "submitHearingDraftHint": "Submit current ASR draft (⌘/Ctrl + Enter)",
     "speakingChain": "Speaking Chain",
     "videoChain": "Video Chain",
     "hearingDesc": "Understand the interviewer and show subtitles plus answer suggestions",

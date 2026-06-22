@@ -21,17 +21,19 @@ const (
 
 // DepsReport 包含所有依赖项的检测结果。
 type DepsReport struct {
-	VirtualMic DepStatus `json:"virtual_mic"` // BlackHole (macOS) / VB-Cable (Windows)
-	VirtualCam DepStatus `json:"virtual_cam"` // OBS 虚拟摄像头 / CoreMediaIO 插件
-	FFmpeg     DepStatus `json:"ffmpeg"`      // 音视频采集必需；macOS brew / Windows 官网
+	VirtualMic     DepStatus `json:"virtual_mic"`     // BlackHole (macOS) / VB-Cable (Windows)
+	VirtualCam     DepStatus `json:"virtual_cam"`     // OBS 虚拟摄像头 / CoreMediaIO 插件
+	FFmpeg         DepStatus `json:"ffmpeg"`          // 音视频采集必需；macOS brew / Windows 官网
+	EmbeddingModel DepStatus `json:"embedding_model"` // 简历本地 embedding：Python + sentence-transformers
 }
 
 // CheckDeps 检测运行所需的系统级依赖。
 func CheckDeps() DepsReport {
 	return DepsReport{
-		VirtualMic: checkVirtualMic(),
-		VirtualCam: checkVirtualCam(),
-		FFmpeg:     checkFFmpeg(),
+		VirtualMic:     checkVirtualMic(),
+		VirtualCam:     checkVirtualCam(),
+		FFmpeg:         checkFFmpeg(),
+		EmbeddingModel: checkEmbeddingModel(),
 	}
 }
 
@@ -42,6 +44,33 @@ func checkFFmpeg() DepStatus {
 		return DepStatusInstalled
 	}
 	return DepStatusMissing
+}
+
+func checkEmbeddingModel() DepStatus {
+	for _, python := range embeddingPythonCandidates() {
+		if exec.Command(python, "-c", `import importlib.util as u; raise SystemExit(0 if u.find_spec("sentence_transformers") and u.find_spec("torch") else 1)`).Run() == nil {
+			return DepStatusInstalled
+		}
+	}
+	return DepStatusMissing
+}
+
+func embeddingPythonCandidates() []string {
+	return []string{
+		"python3",
+		"python3.13",
+		"python3.12",
+		"python3.11",
+		"python3.10",
+		"/opt/homebrew/bin/python3.13",
+		"/opt/homebrew/bin/python3.12",
+		"/opt/homebrew/bin/python3.11",
+		"/opt/homebrew/bin/python3.10",
+		"/usr/local/bin/python3.13",
+		"/usr/local/bin/python3.12",
+		"/usr/local/bin/python3.11",
+		"/usr/local/bin/python3.10",
+	}
 }
 
 // checkVirtualMic 检测虚拟声卡是否已安装。
@@ -201,6 +230,11 @@ func installDepMac(key string) DepInstallResult {
 		return DepInstallResult{
 			Message: "已打开 OBS 官方下载页，安装后在 OBS 工具栏启用「虚拟摄像头」，再点击「重新检测」",
 		}
+	case "embedding_model":
+		python := preferredEmbeddingPython()
+		return DepInstallResult{
+			Message: "请在 Terminal 手动执行：" + python + " -m pip install -U sentence-transformers torch。安装完成后点击「重新检测」，首次上传简历会自动下载本地模型。",
+		}
 	default:
 		return DepInstallResult{Message: "未知依赖项：" + key}
 	}
@@ -224,7 +258,20 @@ func installDepWin(key string) DepInstallResult {
 		return DepInstallResult{
 			Message: "已打开 OBS 下载页，安装后在 OBS 工具栏启用「虚拟摄像头」，再点击「重新检测」",
 		}
+	case "embedding_model":
+		return DepInstallResult{
+			Message: "请在终端手动执行：py -3.11 -m pip install -U sentence-transformers torch。若未安装 Python 3.11，请先从 python.org 安装；完成后点击「重新检测」。",
+		}
 	default:
 		return DepInstallResult{Message: "未知依赖项：" + key}
 	}
+}
+
+func preferredEmbeddingPython() string {
+	for _, python := range []string{"python3.11", "/opt/homebrew/bin/python3.11", "/usr/local/bin/python3.11", "python3"} {
+		if _, err := exec.LookPath(python); err == nil {
+			return python
+		}
+	}
+	return "python3"
 }

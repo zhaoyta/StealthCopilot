@@ -43,6 +43,7 @@ type LocalConfig struct {
 	RAGPrompt             string                  `json:"rag_prompt"`
 	SpeakPolishPrompt     string                  `json:"speak_polish_prompt"`
 	PolishEnabled         bool                    `json:"polish_enabled"`
+	HistoryMaxTurns       int                     `json:"history_max_turns"`
 }
 
 // localStore 管理本地 JSON 配置文件的读写。

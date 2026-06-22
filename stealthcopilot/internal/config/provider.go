@@ -6,7 +6,7 @@ package config
 type TranslationProviderType string
 
 const (
-	// TranslationProviderXunfeiSimult 使用讯飞同声传译获取原文和译文。
+	// TranslationProviderXunfeiSimult 复用讯飞语音/翻译凭证；具体链路按业务选择 RTASR、文本翻译或同声传译。
 	TranslationProviderXunfeiSimult TranslationProviderType = "xunfei_simult"
 	TranslationProviderNull         TranslationProviderType = "null"
 )

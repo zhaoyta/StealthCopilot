@@ -6,6 +6,7 @@ package speaking
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/zhaoyta/stealthcopilot/internal/diag"
 	"github.com/zhaoyta/stealthcopilot/internal/llm"
 	"github.com/zhaoyta/stealthcopilot/internal/pipeline"
+	"github.com/zhaoyta/stealthcopilot/internal/session"
 	"github.com/zhaoyta/stealthcopilot/internal/trans"
 	"github.com/zhaoyta/stealthcopilot/internal/tts"
 	"github.com/zhaoyta/stealthcopilot/internal/vad"
@@ -40,6 +42,7 @@ const (
 type ResultEvent struct {
 	SrcText string `json:"srcText"`
 	DstText string `json:"dstText"`
+	IsFinal bool   `json:"isFinal"`
 }
 
 type ttsQueueItem struct {
@@ -75,6 +78,11 @@ type ChainConfig struct {
 	SilenceThresholdMs int
 	// AudioSink 接收 TTS 音频 chunk，用于驱动视频口型同步链。
 	AudioSink func([]byte)
+	// EventSink mirrors speaking events to non-Wails consumers such as the native teleprompter.
+	EventSink llm.EventEmitter
+	// SessionStore/SessionID append candidate speech to the active interview history.
+	SessionStore session.Store
+	SessionID    string
 
 	// --- DeepSeek 润色配置（可选，PolishEnabled=false 时完全跳过） ---
 
@@ -315,6 +323,11 @@ func (c *Chain) handleSegment(
 	diag.Infof("speaking asr_trans begin segment=%d pcm_ms=%d peak=%d", item.ID, pcmMs, audioPeak(item.Seg.PCM))
 	speechText, err := asrExtension.Translate(ctx, item.Seg.PCM)
 	if err != nil {
+		if isContextCanceled(ctx, err) {
+			diag.Infof("speaking translate canceled segment=%d asr_elapsed=%s elapsed=%s err=%v", item.ID, diag.Since(asrStarted), diag.Since(started), err)
+			runtime.EventsEmit(wailsCtx, EventSpeakDone)
+			return
+		}
 		if errors.Is(err, asr.ErrNoSpeechRecognized) {
 			diag.Infof("speaking recognition skipped segment=%d asr_elapsed=%s elapsed=%s reason=%q", item.ID, diag.Since(asrStarted), diag.Since(started), err)
 			runtime.EventsEmit(wailsCtx, EventSpeakDone)
@@ -368,9 +381,10 @@ func (c *Chain) handleSegment(
 		DstText: translatedText,
 		IsFinal: true,
 	})
-	runtime.EventsEmit(wailsCtx, EventSpeakResult, ResultEvent{
+	c.emitResult(wailsCtx, cfg, ResultEvent{
 		SrcText: speechText.SrcText,
 		DstText: translatedText,
+		IsFinal: !cfg.PolishEnabled,
 	})
 
 	// 3. [可选] DeepSeek 润色：将目标文本润色为更流利的英文
@@ -388,15 +402,19 @@ func (c *Chain) handleSegment(
 		if polished, polishErr := llm.PolishWithConfig(ctx, llmCfg, cfg.PolishPrompt, translatedText); polishErr == nil {
 			translatedText = polished
 			diag.Infof("speaking polish ok segment=%d elapsed=%s chars=%d", item.ID, diag.Since(polishStarted), len(translatedText))
-			runtime.EventsEmit(wailsCtx, EventSpeakResult, ResultEvent{
-				SrcText: speechText.SrcText,
-				DstText: translatedText,
-			})
 		} else {
 			diag.Warnf("speaking polish skipped segment=%d elapsed=%s err=%v", item.ID, diag.Since(polishStarted), polishErr)
 		}
 		// polish 出错时 translatedText 保持文本翻译原文，不中断流程
 	}
+	if cfg.PolishEnabled {
+		c.emitResult(wailsCtx, cfg, ResultEvent{
+			SrcText: speechText.SrcText,
+			DstText: translatedText,
+			IsFinal: true,
+		})
+	}
+	c.appendCandidateHistory(cfg, speechText.SrcText, translatedText)
 
 	sentences := splitForTTS(translatedText)
 	if len(sentences) == 0 {
@@ -468,6 +486,10 @@ func (c *Chain) playTTSItem(
 	audioCh, err := ttsExtension.Synthesize(ctx, item.Text)
 	if err != nil {
 		virtualMic.EndTTS()
+		if isContextCanceled(ctx, err) {
+			diag.Infof("speaking tts synth canceled segment=%d sentence=%d/%d err=%v", item.SegmentID, item.Index, item.Total, err)
+			return
+		}
 		diag.Warnf("speaking tts failed segment=%d sentence=%d/%d err=%v", item.SegmentID, item.Index, item.Total, err)
 		runtime.EventsEmit(wailsCtx, EventSpeakError, "TTS 合成失败："+err.Error())
 		return
@@ -481,7 +503,7 @@ func (c *Chain) playTTSItem(
 		select {
 		case <-ctx.Done():
 			virtualMic.EndTTS()
-			diag.Warnf("speaking tts stream canceled segment=%d chunks=%d bytes=%d", item.SegmentID, chunkCount, byteCount)
+			diag.Infof("speaking tts stream canceled segment=%d chunks=%d bytes=%d", item.SegmentID, chunkCount, byteCount)
 			return
 		default:
 		}
@@ -509,6 +531,42 @@ func (c *Chain) playTTSItem(
 
 func audioPeak(frame []byte) int {
 	return audio.PCMPeak(frame)
+}
+
+func isContextCanceled(ctx context.Context, err error) bool {
+	return ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+
+func (c *Chain) appendCandidateHistory(cfg ChainConfig, srcText, dstText string) {
+	if cfg.SessionStore == nil || cfg.SessionID == "" {
+		return
+	}
+	srcText = strings.TrimSpace(srcText)
+	dstText = strings.TrimSpace(dstText)
+	if srcText == "" && dstText == "" {
+		return
+	}
+	display := srcText
+	if dstText != "" && dstText != srcText {
+		display = srcText + "\n" + dstText
+	}
+	if err := cfg.SessionStore.AppendTurn(cfg.SessionID, "候选人发言", display, srcTextOrTarget(srcText, dstText)); err != nil {
+		diag.Warnf("speaking candidate history append failed session=%s err=%v", cfg.SessionID, err)
+	}
+}
+
+func (c *Chain) emitResult(wailsCtx context.Context, cfg ChainConfig, result ResultEvent) {
+	runtime.EventsEmit(wailsCtx, EventSpeakResult, result)
+	if cfg.EventSink != nil {
+		cfg.EventSink(EventSpeakResult, result)
+	}
+}
+
+func srcTextOrTarget(srcText, dstText string) string {
+	if strings.TrimSpace(srcText) != "" {
+		return strings.TrimSpace(srcText)
+	}
+	return strings.TrimSpace(dstText)
 }
 
 func splitSegmentForSpeaking(seg vad.SpeechSegment) []vad.SpeechSegment {

@@ -32,8 +32,9 @@ const (
 
 	// classifySystemPrompt 是 Go 后端硬编码的分类指令，不允许前端修改。
 	// 约束 DeepSeek 只输出 JSON，防止自由发挥导致解析失败。
-	classifySystemPrompt = `你是意图分类助手。判断下面的英文句子属于哪种意图：
-question（面试官提出独立新问题）、followup（基于上一个回答的追问）、statement（陈述背景信息或闲聊）。
+	classifySystemPrompt = `你是意图分类助手。判断下面的英文转写属于哪种意图：
+question（面试官提出独立新问题）、followup（基于上一个回答的追问）、statement（纯陈述背景信息或闲聊）。
+如果文本中先出现面试官问题，后面又混入候选人回答或解释，仍然按开头的问题分类，不要因为后半段是陈述而输出 statement。
 只输出 JSON，格式：{"intent":"question"}，不要其他文字。`
 )
 
@@ -66,9 +67,37 @@ func NewClassifierWithConfig(cfg llm.Config) *Classifier {
 func (c *Classifier) Classify(ctx context.Context, srcText string) IntentType {
 	result, err := c.callDeepSeek(ctx, srcText)
 	if err != nil {
+		if looksLikeInterviewQuestion(srcText) {
+			return IntentQuestion
+		}
 		return IntentStatement
 	}
+	if result == IntentStatement && looksLikeInterviewQuestion(srcText) {
+		return IntentQuestion
+	}
 	return result
+}
+
+func looksLikeInterviewQuestion(srcText string) bool {
+	text := strings.ToLower(strings.TrimSpace(srcText))
+	if text == "" {
+		return false
+	}
+	if idx := strings.Index(text, "?"); idx >= 0 && idx <= 220 {
+		return true
+	}
+	text = strings.TrimLeft(text, " .,!?:;，。！？；：\"'“”‘’()[]{}")
+	starters := []string{
+		"what ", "why ", "how ", "when ", "where ", "who ", "which ", "whose ",
+		"can you ", "could you ", "would you ", "do you ", "did you ", "have you ", "are you ", "were you ",
+		"tell me ", "describe ", "explain ", "walk me through ", "give me an example ", "share an example ",
+	}
+	for _, starter := range starters {
+		if strings.HasPrefix(text, starter) {
+			return true
+		}
+	}
+	return false
 }
 
 // callDeepSeek 发起单次 DeepSeek 分类请求并解析 JSON 响应。

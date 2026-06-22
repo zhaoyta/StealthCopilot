@@ -49,6 +49,10 @@ func newFileStore(dataDir string) (*fileStore, error) {
 // Save 接收源文件字节流和原始文件名，存储到 files/ 目录并添加索引条目。
 // 仅支持 .pdf 和 .docx 格式，否则返回 ErrUnsupportedFormat。
 func (fs *fileStore) Save(name string, data []byte) (*Resume, error) {
+	return fs.SaveWithLanguage(name, data, ResumeLanguageMixed)
+}
+
+func (fs *fileStore) SaveWithLanguage(name string, data []byte, language ResumeLanguage) (*Resume, error) {
 	ext := strings.ToLower(filepath.Ext(name))
 	if ext != ".pdf" && ext != ".docx" {
 		return nil, ErrUnsupportedFormat
@@ -65,6 +69,7 @@ func (fs *fileStore) Save(name string, data []byte) (*Resume, error) {
 		ID:              id,
 		Name:            name,
 		FilePath:        dst,
+		ResumeLanguage:  NormalizeResumeLanguage(string(language)),
 		EmbeddingStatus: EmbeddingStatusPending,
 		CreatedAt:       now,
 		UpdatedAt:       now,
@@ -75,11 +80,15 @@ func (fs *fileStore) Save(name string, data []byte) (*Resume, error) {
 
 // SaveFromPath 从已存在的临时文件路径导入简历（Wails 文件对话框返回路径）。
 func (fs *fileStore) SaveFromPath(srcPath string) (*Resume, error) {
+	return fs.SaveFromPathWithLanguage(srcPath, ResumeLanguageMixed)
+}
+
+func (fs *fileStore) SaveFromPathWithLanguage(srcPath string, language ResumeLanguage) (*Resume, error) {
 	data, err := os.ReadFile(srcPath)
 	if err != nil {
 		return nil, fmt.Errorf("fileStore.SaveFromPath: read: %w", err)
 	}
-	return fs.Save(filepath.Base(srcPath), data)
+	return fs.SaveWithLanguage(filepath.Base(srcPath), data, language)
 }
 
 // CopyFrom 从 io.Reader 读取简历数据并保存。
@@ -152,6 +161,12 @@ func (fs *fileStore) loadIndex() error {
 		return fmt.Errorf("fileStore: parse index: %w", err)
 	}
 	for _, r := range list {
+		r.ResumeLanguage = NormalizeResumeLanguage(string(r.ResumeLanguage))
+		// 应用中止时若处于中间状态，重置为待处理，避免永久卡住
+		if r.EmbeddingStatus == EmbeddingStatusDownloading ||
+			r.EmbeddingStatus == EmbeddingStatusProcessing {
+			r.EmbeddingStatus = EmbeddingStatusPending
+		}
 		fs.resumes[r.ID] = r
 	}
 	return nil

@@ -14,6 +14,7 @@ const eventHearingSubtitle = 'hearing:subtitle'
 const eventHearingError = 'hearing:error'
 const eventAnswerToken = 'answer:token'
 const eventAnswerDone = 'answer:done'
+const eventSpeakingResult = 'speaking:result'
 const eventHide = 'teleprompter:hide'
 const eventCircuitOpen = 'circuit:open'
 const eventCircuitClosed = 'circuit:closed'
@@ -67,6 +68,7 @@ function listenRuntimeEvents() {
   unlisteners.push(runtimeApi.EventsOn(eventHearingError, (msg: string) => { hearingError.value = msg }))
   unlisteners.push(runtimeApi.EventsOn(eventAnswerToken, appendAnswerToken))
   unlisteners.push(runtimeApi.EventsOn(eventAnswerDone, finishAnswer))
+  unlisteners.push(runtimeApi.EventsOn(eventSpeakingResult, appendSpeakingResult))
   unlisteners.push(runtimeApi.EventsOn(eventHide, () => emit('close')))
   unlisteners.push(runtimeApi.EventsOn(eventCircuitOpen, () => { circuitOpen.value = true }))
   unlisteners.push(runtimeApi.EventsOn(eventCircuitClosed, () => { circuitOpen.value = false }))
@@ -81,8 +83,28 @@ function appendSubtitle(payload: string | { text?: string }) {
   })
 }
 
+function appendSpeakingResult(result: { srcText?: string; dstText?: string; isFinal?: boolean } | string) {
+  if (typeof result === 'string') {
+    appendSubtitle(formatCandidateSpeech('', result))
+    return
+  }
+  if (!result?.isFinal) return
+  appendSubtitle(formatCandidateSpeech(result.srcText || '', result.dstText || ''))
+}
+
+function formatCandidateSpeech(srcText: string, dstText: string) {
+  const src = srcText.trim()
+  const dst = dstText.trim()
+  if (src && dst && src !== dst) return `我：${src}\n译文：${dst}`
+  if (dst) return `我：${dst}`
+  return src ? `我：${src}` : ''
+}
+
 function appendAnswerToken(token: string) {
   if (!token) return
+  if (!answering.value) {
+    answer.value = ''
+  }
   answering.value = true
   answer.value += token
   nextTick(() => {
@@ -152,7 +174,7 @@ function getRuntime(): { EventsOn: (eventName: string, callback: (...data: any[]
   <main class="min-h-screen bg-transparent text-gray-100">
     <button
       v-if="minimized"
-      class="fixed right-4 bottom-4 h-[38px] px-4 rounded-full bg-gray-900/90 border border-cyan-400/50 shadow-lg shadow-cyan-500/10 flex items-center gap-2 text-sm"
+      class="drag-region fixed right-4 bottom-4 h-[38px] px-4 rounded-full bg-gray-900/90 border border-cyan-400/50 shadow-lg shadow-cyan-500/10 flex items-center gap-2 text-sm"
       @click="toggleMinimized"
     >
       <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -161,24 +183,24 @@ function getRuntime(): { EventsOn: (eventName: string, callback: (...data: any[]
 
     <section
       v-else
-      class="fixed right-4 bottom-4 w-[400px] h-[300px] rounded-lg border border-cyan-400/30 shadow-2xl shadow-cyan-500/10 overflow-hidden backdrop-blur-md flex flex-col"
+      class="teleprompter-panel fixed right-4 bottom-4 w-[400px] h-[300px] rounded-lg border border-cyan-400/30 shadow-2xl shadow-cyan-500/10 overflow-hidden backdrop-blur-md flex flex-col"
       :style="panelStyle"
     >
-      <header class="h-9 px-3 border-b border-white/10 flex items-center justify-between select-none">
+      <header class="drag-region h-9 px-3 border-b border-white/10 flex items-center justify-between select-none">
         <div class="flex items-center gap-2 text-xs text-cyan-100">
           <span class="w-2 h-2 rounded-full bg-emerald-400" />
           <span>{{ t('teleprompter.title') }}</span>
         </div>
         <div class="flex items-center gap-1">
           <button
-            class="w-7 h-7 rounded-md hover:bg-white/10 text-gray-300 flex items-center justify-center"
+            class="no-drag-region w-7 h-7 rounded-md hover:bg-white/10 text-gray-300 flex items-center justify-center"
             :title="t('teleprompter.minimize')"
             @click="toggleMinimized"
           >
             <Minus :size="14" />
           </button>
           <button
-            class="w-7 h-7 rounded-md hover:bg-white/10 text-gray-300 flex items-center justify-center"
+            class="no-drag-region w-7 h-7 rounded-md hover:bg-white/10 text-gray-300 flex items-center justify-center"
             :title="t('teleprompter.close')"
             @click="closeTeleprompter"
           >
@@ -275,3 +297,21 @@ function getRuntime(): { EventsOn: (eventName: string, callback: (...data: any[]
     </section>
   </main>
 </template>
+
+<style scoped>
+.drag-region {
+  --wails-draggable: drag;
+}
+
+.no-drag-region {
+  --wails-draggable: no-drag;
+}
+
+.teleprompter-panel {
+  resize: both;
+  min-width: 320px;
+  min-height: 220px;
+  max-width: calc(100vw - 2rem);
+  max-height: calc(100vh - 2rem);
+}
+</style>

@@ -1,11 +1,12 @@
 <script lang="ts" setup>
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Key, Globe, Sliders, FileText, Eye, Settings, Mic } from 'lucide-vue-next'
+import { Key, Globe, Sliders, FileText, Eye, Settings, Mic, History } from 'lucide-vue-next'
 import TabApiKeys from './settings/TabApiKeys.vue'
 import TabLanguage from './settings/TabLanguage.vue'
 import TabDevices from './settings/TabDevices.vue'
 import TabResume from './settings/TabResume.vue'
+import TabHistory from './settings/TabHistory.vue'
 import TabGhost from './settings/TabGhost.vue'
 import TabAdvanced from './settings/TabAdvanced.vue'
 import Step4Voice from './setup/Step4Voice.vue'
@@ -14,7 +15,7 @@ defineOptions({ name: 'AppSettings' })
 const emit = defineEmits<{ (e: 'close'): void }>()
 const { t } = useI18n()
 
-type TabId = 'apiKeys' | 'language' | 'devices' | 'voice' | 'resume' | 'ghost' | 'advanced'
+type TabId = 'apiKeys' | 'language' | 'devices' | 'voice' | 'resume' | 'history' | 'ghost' | 'advanced'
 
 const props = withDefaults(defineProps<{
   initialTab?: TabId
@@ -28,6 +29,7 @@ const tabs: { id: TabId; label: string; icon: typeof Key }[] = [
   { id: 'devices',   label: t('settings.tabs.devices'),   icon: Sliders },
   { id: 'voice',     label: t('settings.tabs.voice'),     icon: Mic },
   { id: 'resume',    label: t('settings.tabs.resume'),    icon: FileText },
+  { id: 'history',   label: t('settings.tabs.history'),   icon: History },
   { id: 'ghost',     label: t('settings.tabs.ghost'),     icon: Eye },
   { id: 'advanced',  label: t('settings.tabs.advanced'),  icon: Settings },
 ]
@@ -81,7 +83,8 @@ watch(() => props.initialTab, tab => {
         <TabLanguage v-show="activeTab === 'language'" />
         <TabDevices v-show="activeTab === 'devices'" />
         <Step4Voice v-show="activeTab === 'voice'" />
-        <TabResume v-show="activeTab === 'resume'" />
+        <TabResume v-show="activeTab === 'resume'" :is-active="activeTab === 'resume'" />
+        <TabHistory v-show="activeTab === 'history'" :is-active="activeTab === 'history'" />
         <TabGhost v-show="activeTab === 'ghost'" />
         <TabAdvanced v-show="activeTab === 'advanced'" />
       </main>

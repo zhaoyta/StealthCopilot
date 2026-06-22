@@ -30,6 +30,7 @@ const (
 	DefaultSpeakingOutputLang = "en"
 	DefaultMonitorVolume      = 80
 	DefaultMonitorRate        = 0
+	DefaultHistoryMaxTurns    = 5
 )
 
 // DefaultRAGPrompt 是 RAG 回答生成的默认提示词，Go 后端硬编码，前端不存储。
@@ -106,6 +107,7 @@ type AppConfig struct {
 	RAGPrompt         string
 	SpeakPolishPrompt string
 	PolishEnabled     bool
+	HistoryMaxTurns   int
 
 	// 界面语言
 	UILocale string // "zh-CN" | "en-US"
@@ -191,6 +193,7 @@ func (m *Manager) applyLocalConfig(lc LocalConfig) {
 	m.Config.RAGPrompt = stringOr(lc.RAGPrompt, DefaultRAGPrompt)
 	m.Config.SpeakPolishPrompt = stringOr(lc.SpeakPolishPrompt, DefaultSpeakPolishPrompt)
 	m.Config.PolishEnabled = lc.PolishEnabled
+	m.Config.HistoryMaxTurns = clampInt(intOr(lc.HistoryMaxTurns, DefaultHistoryMaxTurns), 1, 20)
 }
 
 // SaveAPIKey 将单个 API Key 写入 Keychain 并同步内存配置。
@@ -300,6 +303,7 @@ func (m *Manager) ToLocalConfig() LocalConfig {
 		RAGPrompt:             m.Config.RAGPrompt,
 		SpeakPolishPrompt:     m.Config.SpeakPolishPrompt,
 		PolishEnabled:         m.Config.PolishEnabled,
+		HistoryMaxTurns:       m.Config.HistoryMaxTurns,
 	}
 }
 
@@ -313,6 +317,16 @@ func stringOr(s, def string) string {
 func intOr(v, def int) int {
 	if v == 0 {
 		return def
+	}
+	return v
+}
+
+func clampInt(v, min, max int) int {
+	if v < min {
+		return min
+	}
+	if v > max {
+		return max
 	}
 	return v
 }

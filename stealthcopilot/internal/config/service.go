@@ -68,6 +68,7 @@ func (s *Service) GetConfig() FrontendConfig {
 		RAGPrompt:                c.RAGPrompt,
 		SpeakPolishPrompt:        c.SpeakPolishPrompt,
 		PolishEnabled:            c.PolishEnabled,
+		HistoryMaxTurns:          c.HistoryMaxTurns,
 		SetupCompleted:           c.SetupCompleted,
 		ActiveResumeID:           c.ActiveResumeID,
 	}
@@ -115,6 +116,7 @@ func (s *Service) SaveLocalConfig(req SaveLocalConfigRequest) string {
 		RAGPrompt:             req.RAGPrompt,
 		SpeakPolishPrompt:     req.SpeakPolishPrompt,
 		PolishEnabled:         req.PolishEnabled,
+		HistoryMaxTurns:       req.HistoryMaxTurns,
 		SetupCompleted:        req.SetupCompleted,
 		ActiveResumeID:        s.manager.Config.ActiveResumeID, // 简历激活由 ResumeService 管理
 	}
