@@ -1,6 +1,6 @@
 module github.com/zhaoyta/stealthcopilot
 
-go 1.23.0
+go 1.25.0
 
 require (
 	github.com/google/uuid v1.6.0
@@ -10,7 +10,7 @@ require (
 	github.com/pion/webrtc/v3 v3.3.6
 	github.com/wailsapp/wails/v2 v2.12.0
 	github.com/zalando/go-keyring v0.2.8
-	golang.org/x/sys v0.30.0
+	golang.org/x/sys v0.46.0
 )
 
 require (
