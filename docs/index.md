@@ -30,15 +30,6 @@ features:
 
 ## 实机演示
 
-<iframe
-  src="//player.bilibili.com/player.html?bvid=BV1PHjm6HE75&page=1&high_quality=1&danmaku=0"
-  width="100%"
-  height="520"
-  scrolling="no"
-  border="0"
-  frameborder="no"
-  framespacing="0"
-  allowfullscreen="true">
-</iframe>
+[![StealthCopilot 实机演示](/assets/screenshots/dashboard-running.png)](https://www.bilibili.com/video/BV1PHjm6HE75/)
 
-如果文档站没有加载播放器，可以直接打开 [B 站演示视频](https://www.bilibili.com/video/BV1PHjm6HE75/)。
+点击封面可在 B 站观看：[StealthCopilot 实机演示](https://www.bilibili.com/video/BV1PHjm6HE75/)。
